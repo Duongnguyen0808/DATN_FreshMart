@@ -1,0 +1,24 @@
+{
+  "name": "smart-store-workspace",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "web-admin"
+  ],
+  "scripts": {
+    "dev": "concurrently --kill-others --names backend,web,ai --prefix-colors cyan,magenta,green \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:ai\"",
+    "dev:backend": "npm run dev -w backend",
+    "dev:web": "npm run dev -w web-admin",
+    "dev:ai": "node ai-service/scripts/dev.mjs",
+    "build": "npm run build -w backend && npm run build -w web-admin",
+    "test": "npm run test -w backend",
+    "db:generate": "npm run db:generate -w backend",
+    "db:migrate": "npm run db:migrate -w backend"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
+}

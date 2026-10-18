@@ -1,0 +1,28 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { ActionLink } from '../../components/ui/action-button';
+import { Icon } from '../../components/ui/icon';
+import { MetricCard, MetricGrid } from '../../components/ui/metric-card';
+import { StatusBadge, type StatusTone } from '../../components/ui/status-badge';
+import { TabBar, type TabItem } from '../../components/ui/tab-bar';
+import { TablePagination } from '../../components/ui/table-pagination';
+import { errorMessage } from '../../lib/auth-api';
+import { getSuppliers, type Supplier } from '../../lib/suppliers-api';
+import * as api from '../../lib/payables-api';
+type Filter = 'all' | api.PayableStatus | 'DUE_SOON' | 'OVERDUE';
+const empty: api.PayableList = { items: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 }, summary: { totalPayable: 0, paid: 0, dueSoon: 0, overdue: 0 } };
+const tabs: TabItem<Filter>[] = [{ value: 'all', label: 'Tất cả', tone: 'blue' }, { value: 'OPEN', label: 'Chưa thanh toán', tone: 'amber' }, { value: 'PARTIALLY_PAID', label: 'Đã trả một phần', tone: 'violet' }, { value: 'DUE_SOON', label: 'Sắp đến hạn', tone: 'cyan' }, { value: 'OVERDUE', label: 'Quá hạn', tone: 'red' }, { value: 'PAID', label: 'Đã thanh toán', tone: 'green' }];
+const statusLabel: Record<api.PayableTiming, string> = { CURRENT: 'Trong hạn', DUE_SOON: 'Sắp đến hạn', OVERDUE: 'Quá hạn', PAID: 'Đã thanh toán' }; const statusTone: Record<api.PayableTiming, StatusTone> = { CURRENT: 'blue', DUE_SOON: 'amber', OVERDUE: 'red', PAID: 'green' };
+const money = (value: number) => new Intl.NumberFormat('vi-VN').format(value) + ' đ'; const date = (value: string) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short' }).format(new Date(value));
+export default function PayablesPage() {
+  const router = useRouter();
+  const [result, setResult] = useState(empty); const [suppliers, setSuppliers] = useState<Supplier[]>([]); const [q, setQ] = useState(''); const [status, setStatus] = useState<Filter>('all'); const [supplierId, setSupplierId] = useState(''); const [page, setPage] = useState(1); const [loading, setLoading] = useState(true); const [error, setError] = useState('');
+  const load = async () => { setLoading(true); setError(''); try { setResult(await api.getPayables({ q: q.trim() || undefined, status, supplierId: supplierId || undefined, page })); } catch (reason) { setError(errorMessage(reason)); } finally { setLoading(false); } };
+  useEffect(() => { getSuppliers({ active: 'all' }).then(value => setSuppliers(value.items)).catch(reason => setError(errorMessage(reason))); }, []); useEffect(() => { const timer = setTimeout(load, 250); return () => clearTimeout(timer); }, [q, status, supplierId, page]); useEffect(() => setPage(1), [q, status, supplierId]);
+  return <div className="suite-page payable-page"><header className="suite-heading"><div><div className="breadcrumb">Tài chính <span>›</span> Công nợ</div><h1>Công nợ phải trả nhà cung cấp</h1><p>Theo dõi tổng phải trả, số đã thanh toán, số còn lại và hạn thanh toán.</p></div></header>
+    <MetricGrid className="suite-kpis"><MetricCard tone="red" label="TỔNG PHẢI TRẢ" value={money(result.summary.totalPayable)} /><MetricCard tone="green" label="ĐÃ THANH TOÁN" value={money(result.summary.paid)} /><MetricCard tone="amber" label="SẮP ĐẾN HẠN" value={money(result.summary.dueSoon)} /><MetricCard tone="violet" label="QUÁ HẠN" value={money(result.summary.overdue)} /></MetricGrid>
+    <section className="suite-panel panel"><TabBar value={status} onChange={setStatus} items={tabs} /><div className="suite-filters"><label><Icon name="search" /><input value={q} onChange={event => setQ(event.target.value)} placeholder="Tìm mã công nợ, PO hoặc nhà cung cấp..." /></label><select value={supplierId} onChange={event => setSupplierId(event.target.value)}><option value="">Tất cả nhà cung cấp</option>{suppliers.map(item => <option key={item.id} value={item.id}>{item.code} · {item.name}</option>)}</select><button onClick={() => { setQ(''); setStatus('all'); setSupplierId(''); }}>Xóa lọc</button></div>{error && <div className="ui-error">{error} <button onClick={load}>Thử lại</button></div>}
+      <div className="table-scroll"><table><thead><tr><th>Mã công nợ</th><th>Nhà cung cấp</th><th>Đơn mua hàng</th><th className="numeric">Phát sinh</th><th className="numeric">Đã trả</th><th className="numeric">Còn lại</th><th>Đến hạn</th><th>Trạng thái</th></tr></thead><tbody>{loading ? <tr><td colSpan={8}>Đang tải công nợ…</td></tr> : !result.items.length ? <tr><td colSpan={8}>Chưa có khoản phải trả phù hợp.</td></tr> : result.items.map(item => <tr key={item.id} className="clickable-row" tabIndex={0} onClick={() => router.push(`/cong-no/${item.id}`)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); router.push(`/cong-no/${item.id}`); } }}><td><strong className="document-code">{item.code}</strong><small>{item.purchaseOrder.warehouse.store.name}</small></td><td><strong>{item.supplier.name}</strong><small>{item.supplier.code}</small></td><td><strong>{item.purchaseOrder.code}</strong><small>{item.purchaseOrder.warehouse.name}</small></td><td className="numeric">{money(item.totalAmount)}</td><td className="numeric positive">{money(item.paidAmount)}</td><td className="numeric negative"><strong>{money(item.outstandingAmount)}</strong></td><td>{date(item.dueDate)}</td><td><StatusBadge tone={statusTone[item.timing]}>{statusLabel[item.timing]}</StatusBadge></td></tr>)}</tbody></table></div><TablePagination page={page} totalPages={result.pagination.totalPages} shown={result.items.length} total={result.pagination.total} noun="khoản phải trả" onChange={setPage} /></section>
+  </div>;
+}

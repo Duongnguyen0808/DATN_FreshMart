@@ -1,0 +1,14 @@
+import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
+import { z } from 'zod';
+import { authenticate, requirePermission } from '../../middleware/authenticate.js';
+import { payosConfigured } from './payos.client.js';
+import { cancelCheckout, checkoutInput, createCheckout, getCheckout, handlePayosWebhook } from './payos.service.js';
+export const payosRoutes = Router();
+const ok = (data: unknown) => ({ success: true, message: 'Success', data });
+payosRoutes.post('/payos/webhook', async (req, res) => { await handlePayosWebhook(req.body); res.json(ok(null)); });
+payosRoutes.use('/payos', authenticate, requirePermission('invoices.create'), (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+payosRoutes.get('/payos/config', (_req, res) => res.json(ok({ enabled: payosConfigured() })));
+payosRoutes.post('/payos/checkouts', rateLimit({ windowMs: 60000, limit: 20, keyGenerator: req => req.currentUser.id, standardHeaders: true, legacyHeaders: false }), async (req, res) => res.status(201).json(ok(await createCheckout(req.currentUser, checkoutInput.parse(req.body)))));
+payosRoutes.get('/payos/checkouts/:id', async (req, res) => res.json(ok(await getCheckout(req.currentUser, z.string().uuid().parse(req.params.id)))));
+payosRoutes.post('/payos/checkouts/:id/cancel', async (req, res) => res.json(ok(await cancelCheckout(req.currentUser, z.string().uuid().parse(req.params.id)))));

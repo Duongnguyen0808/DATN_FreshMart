@@ -1,0 +1,13 @@
+import { api } from './auth-api';
+export type Region = 'MIEN_BAC' | 'MIEN_TRUNG' | 'MIEN_NAM';
+export type Warehouse = { id: string; code: string; name: string; address: string; active: boolean; storeId: string; store: { id: string; code: string; name: string; active: boolean } };
+export type Store = { id: string; code: string; name: string; address: string; region: Region; phone: string | null; managerName: string | null; active: boolean; userCount: number; warehouseCount: number; warehouses: Omit<Warehouse, 'store'>[] };
+export type StoreCreate = Omit<Store, 'id'|'active'|'userCount'|'warehouseCount'|'warehouses'> & { warehouse: { code: string; name: string; address: string } };
+export const getStores = () => api<Store[]>('stores?active=all');
+export const createStore = (data: StoreCreate) => api<Store>('stores', 'POST', data);
+export const updateStore = (id: string, data: Omit<StoreCreate, 'code'|'warehouse'>) => api<Store>(`stores/${id}`, 'PUT', data);
+export const setStoreStatus = (id: string, active: boolean) => api<Store>(`stores/${id}/status`, 'PATCH', { active });
+export const getWarehouses = () => api<Warehouse[]>('warehouses?active=all');
+export const createWarehouse = (data: { code: string; name: string; address: string; storeId: string }) => api<Warehouse>('warehouses', 'POST', data);
+export const updateWarehouse = (id: string, data: { name: string; address: string }) => api<Warehouse>(`warehouses/${id}`, 'PUT', data);
+export const setWarehouseStatus = (id: string, active: boolean) => api<Warehouse>(`warehouses/${id}/status`, 'PATCH', { active });

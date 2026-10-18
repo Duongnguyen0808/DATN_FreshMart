@@ -1,0 +1,54 @@
+.session-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: #f7f8fc;
+}
+
+.session-loading-mark {
+  position: relative;
+  display: grid;
+  width: 86px;
+  height: 86px;
+  place-items: center;
+}
+
+.session-loading-mark img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: white;
+}
+
+.session-loading-spinner {
+  position: absolute;
+  inset: 0;
+  border: 4px solid #dce8f2;
+  border-top-color: #0878c8;
+  border-right-color: #16a579;
+  border-radius: 50%;
+  animation: session-loading-spin .85s linear infinite;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes session-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-loading-spinner { animation-duration: 2.5s; }
+}

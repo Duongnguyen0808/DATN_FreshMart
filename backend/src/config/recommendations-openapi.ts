@@ -1,0 +1,10 @@
+const security = [{ bearerAuth: [] }];
+const filters = [
+  { name: 'storeId', in: 'query', required: true, schema: { type: 'string', format: 'uuid' } },
+  { name: 'horizonDays', in: 'query', required: true, schema: { type: 'integer', enum: [7, 14, 30] } },
+];
+export const recommendationPaths = {
+  '/api/v1/recommendations': { get: { tags: ['Đề xuất xử lý thiếu hàng'], summary: 'Xem đề xuất của lần dự báo mới nhất', security, parameters: filters, responses: { '200': { description: 'Đề xuất điều chuyển và bổ sung, trạng thái xử lý và phiếu đã tạo.' }, '403': { description: 'Ngoài phạm vi chi nhánh.' } } } },
+  '/api/v1/recommendations/generate': { post: { tags: ['Đề xuất xử lý thiếu hàng'], summary: 'Tìm tồn dư trong phạm vi quyền và đề xuất mua phần còn thiếu', security, requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['storeId', 'horizonDays'], properties: { storeId: { type: 'string', format: 'uuid' }, horizonDays: { type: 'integer', enum: [7, 14, 30] } } } } } }, responses: { '201': { description: 'Đã lưu đề xuất chờ quản lý xử lý; không tự tạo phiếu nghiệp vụ.' }, '409': { description: 'Chưa có dự báo.' } } } },
+  '/api/v1/recommendations/{id}/decision': { post: { tags: ['Đề xuất xử lý thiếu hàng'], summary: 'Quản lý duyệt hoặc từ chối đề xuất; duyệt sẽ tạo phiếu chờ xử lý', security, parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['action', 'note'], properties: { action: { type: 'string', enum: ['APPROVE', 'REJECT'] }, quantity: { type: 'integer', minimum: 1 }, note: { type: 'string', minLength: 3, maxLength: 500 } } } } } }, responses: { '200': { description: 'Đã xử lý đề xuất; nếu duyệt, trả về liên kết phiếu điều chuyển hoặc đề nghị mua mới.' }, '403': { description: 'Thiếu quyền quản lý hoặc phạm vi kho.' }, '409': { description: 'Dự báo cũ, đề xuất đã xử lý hoặc nguồn hàng dư thay đổi.' } } } },
+};

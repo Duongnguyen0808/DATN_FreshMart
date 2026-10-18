@@ -1,0 +1,32 @@
+import request from 'supertest';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+const suite = process.env.TEST_DATABASE_URL ? describe : describe.skip;
+suite('Branch and warehouse lifecycle on PostgreSQL', () => {
+  let db: typeof import('./common/database.js').prisma;
+  let app: ReturnType<typeof import('./app.js').createApp>;
+  let token = '', scopedToken = '', scopedStore = '', createdStore = '', firstWarehouse = '', secondWarehouse = '';
+  const run = randomUUID(), key = run.slice(0, 8), password = 'Organization-test-password-123', users: string[] = [], roles: string[] = [], stores: string[] = [];
+  const api = (method: 'get'|'post'|'put'|'patch', path: string, body?: unknown, auth = token) => request(app)[method](`/api/v1/${path}`).auth(auth, { type: 'bearer' }).send(body);
+  beforeAll(async () => {
+    if (new URL(process.env.TEST_DATABASE_URL!).pathname !== '/smart_store_organization_test') throw new Error('Expected isolated organization database');
+    process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
+    ({ prisma: db } = await import('./common/database.js'));
+    const permissions = ['stores.read','stores.manage','warehouses.read','warehouses.manage'];
+    for (const code of permissions) await db.permission.upsert({ where: { code }, update: {}, create: { code, name: code } });
+    for (const [code, grants] of [['OWNER',permissions],[`SCOPED_${key}`,permissions]] as const) roles.push((await db.role.create({ data: { code, name: code, permissions: { create: grants.map(permissionCode=>({permissionCode})) } } })).id);
+    scopedStore = (await db.store.create({ data: { code:`SCOPE_${key}`,name:'Scoped',address:'Hà Nội',warehouses:{create:{code:`SW_${key}`,name:'Scoped warehouse',address:'Hà Nội'}}} })).id;stores.push(scopedStore);
+    const { hashPassword } = await import('./modules/auth/password.js'); const passwordHash = await hashPassword(password);
+    const owner = await db.user.create({data:{email:`owner-${run}@test.local`,name:'Owner',passwordHash,roles:{create:{roleId:roles[0]!}}}});users.push(owner.id);
+    const scoped = await db.user.create({data:{email:`scoped-${run}@test.local`,name:'Scoped',passwordHash,roles:{create:{roleId:roles[1]!}},stores:{create:{storeId:scopedStore}}}});users.push(scoped.id);
+    app=(await import('./app.js')).createApp(async()=>{});
+    token=(await request(app).post('/api/v1/auth/login').send({email:owner.email,password,client:'mobile'})).body.data.accessToken;
+    scopedToken=(await request(app).post('/api/v1/auth/login').send({email:scoped.email,password,client:'mobile'})).body.data.accessToken;
+  },30000);
+  afterAll(async()=>{if(!db)return;await db.auditLog.deleteMany({where:{actorId:{in:users}}});await db.session.deleteMany({where:{userId:{in:users}}});await db.user.deleteMany({where:{id:{in:users}}});await db.warehouse.deleteMany({where:{storeId:{in:stores}}});await db.store.deleteMany({where:{id:{in:stores}}});await db.role.deleteMany({where:{id:{in:roles}}});await db.$disconnect()});
+  it('creates a branch atomically with its first warehouse',async()=>{const result=await api('post','stores',{code:`CN_${key}`,name:'Chi nhánh test',address:'123 Đường test',region:'MIEN_NAM',phone:'0901234567',managerName:'Quản lý test',warehouse:{code:`WH1_${key}`,name:'Kho đầu',address:'123 Đường test'}});expect(result.status).toBe(201);createdStore=result.body.data.id;firstWarehouse=result.body.data.warehouses[0].id;stores.push(createdStore);expect(result.body.data.warehouseCount).toBe(1)});
+  it('limits scoped listing and prevents scoped branch creation',async()=>{const list=await api('get','stores?active=all',undefined,scopedToken);expect(list.body.data.map((s:{id:string})=>s.id)).toEqual([scopedStore]);expect((await api('post','stores',{code:`NO_${key}`,name:'No',address:'No address',region:'MIEN_BAC',phone:null,managerName:null,warehouse:{code:`NW_${key}`,name:'No',address:'No address'}},scopedToken)).status).toBe(403)});
+  it('updates branch and adds a second warehouse',async()=>{expect((await api('put',`stores/${createdStore}`,{name:'Chi nhánh đã sửa',address:'456 Đường mới',region:'MIEN_TRUNG',phone:null,managerName:null})).status).toBe(200);const result=await api('post','warehouses',{code:`WH2_${key}`,name:'Kho hai',address:'456 Đường mới',storeId:createdStore});expect(result.status).toBe(201);secondWarehouse=result.body.data.id});
+  it('keeps one active warehouse for an active branch',async()=>{expect((await api('patch',`warehouses/${secondWarehouse}/status`,{active:false})).status).toBe(200);const blocked=await api('patch',`warehouses/${firstWarehouse}/status`,{active:false});expect(blocked.status).toBe(409);expect(blocked.body.code).toBe('LAST_ACTIVE_WAREHOUSE')});
+  it('documents every organization operation in Swagger',async()=>{const paths=(await request(app).get('/api/v1/openapi.json')).body.paths;expect(paths['/api/v1/stores'].post).toBeTruthy();expect(paths['/api/v1/stores/{id}/status'].patch).toBeTruthy();expect(paths['/api/v1/warehouses'].post).toBeTruthy();expect(paths['/api/v1/warehouses/{id}/status'].patch).toBeTruthy()});
+});

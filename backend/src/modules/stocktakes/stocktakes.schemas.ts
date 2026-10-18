@@ -1,0 +1,6 @@
+import { z } from 'zod';
+export const stocktakeIdInput=z.string().uuid();
+export const stocktakeListInput=z.object({q:z.string().trim().max(100).optional(),status:z.enum(['all','COUNTING','PENDING_APPROVAL','APPROVED','REJECTED']).default('all'),warehouseId:z.string().uuid().optional(),page:z.coerce.number().int().min(1).default(1),pageSize:z.coerce.number().int().min(1).max(100).default(20)}).strict();
+export const createStocktakeInput=z.object({warehouseId:z.string().uuid(),type:z.enum(['PERIODIC','SPOT','SHELF']),area:z.string().trim().max(150).optional().nullable().transform(v=>v||null),note:z.string().trim().max(500).optional().nullable().transform(v=>v||null),skuIds:z.array(z.string().uuid()).min(1).max(500)}).strict().refine(v=>new Set(v.skuIds).size===v.skuIds.length,{message:'SKU không được trùng.',path:['skuIds']});
+export const submitStocktakeInput=z.object({items:z.array(z.object({itemId:z.string().uuid(),actualQuantity:z.coerce.number().int().min(0).max(100_000_000),reason:z.string().trim().max(500).optional().nullable().transform(v=>v||null)}).strict()).min(1).max(500)}).strict().refine(v=>new Set(v.items.map(i=>i.itemId)).size===v.items.length,{message:'Dòng kiểm đếm không được trùng.',path:['items']});
+export const stocktakeDecisionInput=z.object({note:z.string().trim().min(3).max(500)}).strict();

@@ -1,0 +1,170 @@
+{
+  "representative_validation_metrics": {
+    "RandomForest": {
+      "mae": 9.5883,
+      "rmse": 12.5117,
+      "mape": 26.0524,
+      "accuracy_pct": 73.9476
+    },
+    "XGBoost": {
+      "mae": 9.165,
+      "rmse": 12.0509,
+      "mape": 24.841,
+      "accuracy_pct": 75.159
+    },
+    "MovingAverage7": {
+      "mae": 17.7435,
+      "rmse": 21.28,
+      "mape": 53.8428,
+      "accuracy_pct": 46.1572
+    },
+    "SeasonalNaive7": {
+      "mae": 12.2976,
+      "rmse": 17.0619,
+      "mape": 31.0599,
+      "accuracy_pct": 68.9401
+    },
+    "Prophet": {
+      "mae": null,
+      "rmse": null,
+      "mape": null,
+      "accuracy_pct": null
+    }
+  },
+  "representative_test_metrics": {
+    "MovingAverage7": {
+      "mae": 12.0911,
+      "rmse": 15.5041,
+      "mape": 30.8925,
+      "accuracy_pct": 69.1075
+    },
+    "SeasonalNaive7": {
+      "mae": 11.6071,
+      "rmse": 15.1473,
+      "mape": 27.0872,
+      "accuracy_pct": 72.9128
+    },
+    "RandomForest": {
+      "mae": 8.6556,
+      "rmse": 12.1987,
+      "mape": 19.3439,
+      "accuracy_pct": 80.6561
+    },
+    "XGBoost": {
+      "mae": 8.6401,
+      "rmse": 11.9084,
+      "mape": 19.5499,
+      "accuracy_pct": 80.4501
+    },
+    "Prophet": {
+      "mae": null,
+      "rmse": null,
+      "mape": null,
+      "accuracy_pct": null
+    }
+  },
+  "full_sample_validation_metrics": {
+    "MovingAverage7": {
+      "mae": 8.9049,
+      "rmse": 12.9723,
+      "mape": 73.7183,
+      "accuracy_pct": 26.2817
+    },
+    "SeasonalNaive7": {
+      "mae": 8.0476,
+      "rmse": 12.0374,
+      "mape": 57.764,
+      "accuracy_pct": 42.236
+    },
+    "RandomForest": {
+      "mae": 7.572,
+      "rmse": 10.5812,
+      "mape": 57.2676,
+      "accuracy_pct": 42.7324
+    },
+    "XGBoost": {
+      "mae": 7.1246,
+      "rmse": 10.2835,
+      "mape": 55.6147,
+      "accuracy_pct": 44.3853
+    }
+  },
+  "full_sample_test_metrics": {
+    "MovingAverage7": {
+      "mae": 6.134,
+      "rmse": 9.2134,
+      "mape": 43.2417,
+      "accuracy_pct": 56.7583
+    },
+    "SeasonalNaive7": {
+      "mae": 6.3583,
+      "rmse": 9.4594,
+      "mape": 42.1697,
+      "accuracy_pct": 57.8303
+    },
+    "RandomForest": {
+      "mae": 6.1718,
+      "rmse": 8.6591,
+      "mape": 36.7905,
+      "accuracy_pct": 63.2095
+    },
+    "XGBoost": {
+      "mae": 4.9923,
+      "rmse": 7.5286,
+      "mape": 36.1426,
+      "accuracy_pct": 63.8574
+    }
+  },
+  "selected_model": "XGBoost",
+  "selection_metric": "full-sample validation MAE",
+  "deployment_fit_through_d": 1941,
+  "deployment_rows": 57390,
+  "validation_window": [
+    1886,
+    1913
+  ],
+  "test_window": [
+    1914,
+    1941
+  ],
+  "trained_items": 30,
+  "dataset_splits": [
+    {
+      "split": "train",
+      "from_d": 1,
+      "to_d": 1885,
+      "rows_in_csv": 56550,
+      "rows_used_for_model": 55710,
+      "sku_count": 30
+    },
+    {
+      "split": "validation",
+      "from_d": 1886,
+      "to_d": 1913,
+      "rows_in_csv": 840,
+      "rows_used_for_model": 840,
+      "sku_count": 30
+    },
+    {
+      "split": "test_holdout",
+      "from_d": 1914,
+      "to_d": 1941,
+      "rows_in_csv": 840,
+      "rows_used_for_model": 840,
+      "sku_count": 30
+    }
+  ],
+  "model_algorithms": [
+    "MovingAverage7",
+    "SeasonalNaive7",
+    "RandomForest",
+    "XGBoost",
+    "Prophet (3 SKU representative)"
+  ],
+  "prophet_error": "CmdStan kh\u00f4ng \u0111\u01b0\u1ee3c Windows c\u1ea5p quy\u1ec1n t\u1ea1o file output trong th\u01b0 m\u1ee5c t\u1ea1m; Prophet b\u1ecb b\u1ecf qua, c\u00e1c model c\u00f2n l\u1ea1i v\u1eabn \u0111\u01b0\u1ee3c \u0111\u00e1nh gi\u00e1 \u0111\u1ea7y \u0111\u1ee7.",
+  "representative_item_ids": [
+    "FOODS_3_090",
+    "FOODS_3_586",
+    "FOODS_3_252"
+  ]
+}

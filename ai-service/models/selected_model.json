@@ -1,0 +1,8 @@
+{
+  "model": "XGBoost",
+  "selection_metric": "full-sample validation MAE",
+  "validation_mae": 7.1246,
+  "holdout_test_mae": 4.9923,
+  "fit_through_d": 1941,
+  "training_rows": 57390
+}

@@ -1,0 +1,976 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  name         String
+  passwordHash String
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  roles        UserRole[]
+  stores       UserStore[]
+  sessions     Session[]
+  priceChanges PriceHistory[]
+  cashierShifts WorkShift[] @relation("ShiftCashier")
+  approvedShifts WorkShift[] @relation("ShiftApprover")
+  salesInvoices Invoice[] @relation("InvoiceCashier")
+  cancelledInvoices Invoice[] @relation("InvoiceCanceller")
+  inventoryTransactions InventoryTransaction[]
+  payosCheckouts PayosCheckout[]
+  createdIotTagMappings IotTagMapping[]
+  processedIotEvents IotEvent[] @relation("IotEventProcessor")
+  createdStocktakes Stocktake[] @relation("StocktakeCreator")
+  approvedStocktakes Stocktake[] @relation("StocktakeApprover")
+  createdTransfers StockTransfer[] @relation("TransferCreator")
+  approvedTransfers StockTransfer[] @relation("TransferApprover")
+  dispatchedTransfers StockTransfer[] @relation("TransferDispatcher")
+  receivedTransfers StockTransfer[] @relation("TransferReceiver")
+  cancelledTransfers StockTransfer[] @relation("TransferCanceller")
+  resolvedTransferDiscrepancies StockTransfer[] @relation("TransferDiscrepancyResolver")
+  createdPurchaseRequests PurchaseRequest[] @relation("PurchaseRequestCreator")
+  approvedPurchaseRequests PurchaseRequest[] @relation("PurchaseRequestApprover")
+  createdPurchaseOrders PurchaseOrder[] @relation("PurchaseOrderCreator")
+  receivedGoodsReceipts GoodsReceipt[] @relation("GoodsReceiptReceiver")
+  payablePayments PayablePayment[] @relation("PayablePaymentActor")
+  processedSalesReturns SalesReturn[] @relation("SalesReturnProcessor")
+  processedSupplierReturns SupplierReturn[] @relation("SupplierReturnProcessor")
+  receivablePayments ReceivablePayment[] @relation("ReceivablePaymentActor")
+  generatedRecommendations InventoryRecommendation[] @relation("RecommendationGenerator")
+  decidedRecommendations InventoryRecommendation[] @relation("RecommendationDecider")
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(uuid()) @db.Uuid
+  code        String @unique
+  name        String
+  system      Boolean @default(false)
+  users       UserRole[]
+  permissions RolePermission[]
+  @@map("roles")
+}
+
+model Permission {
+  code  String @id
+  name  String
+  roles RolePermission[]
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId String @db.Uuid
+  permissionCode String
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Restrict)
+  @@id([roleId, permissionCode])
+  @@map("role_permissions")
+}
+
+// Minimal organization records needed for phase 1 branch assignments.
+model Store {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+  address String @default("")
+  region String @default("MIEN_BAC")
+  phone String?
+  managerName String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users UserStore[]
+  warehouses Warehouse[]
+  shifts WorkShift[]
+  invoices Invoice[]
+  purchaseRequests PurchaseRequest[]
+  receivables Receivable[]
+  forecastRuns ForecastRun[]
+  inventoryRecommendations InventoryRecommendation[]
+  @@map("stores")
+}
+
+model Warehouse {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+  address String @default("")
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  storeId String @db.Uuid
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  payosCheckouts PayosCheckout[]
+  inventories Inventory[]
+  inventoryTransactions InventoryTransaction[]
+  invoices Invoice[]
+  stocktakes Stocktake[]
+  sourceTransfers StockTransfer[] @relation("TransferSourceWarehouse")
+  destinationTransfers StockTransfer[] @relation("TransferDestinationWarehouse")
+  sourceRecommendations InventoryRecommendation[] @relation("RecommendationSource")
+  destinationRecommendations InventoryRecommendation[] @relation("RecommendationDestination")
+  purchaseOrders PurchaseOrder[]
+  salesReturns SalesReturn[]
+  supplierReturns SupplierReturn[]
+  iotEvents IotEvent[]
+  iotTagMappings IotTagMapping[]
+  @@index([storeId])
+  @@map("warehouses")
+}
+
+model UserStore {
+  userId String @db.Uuid
+  storeId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store Store @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  @@id([userId, storeId])
+  @@map("user_stores")
+}
+
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  refreshHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  actorId String? @db.Uuid
+  action String
+  targetId String?
+  createdAt DateTime @default(now())
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model IotEvent {
+  id             String    @id @default(uuid()) @db.Uuid
+  eventId        String
+  deviceId       String
+  eventType      String
+  tagId          String
+  warehouseId    String    @db.Uuid
+  timestamp      DateTime
+  payload        Json
+  tagMappingId   String?   @db.Uuid
+  mappedSkuId    String?   @db.Uuid
+  palletCode     String?
+  processed      Boolean   @default(false)
+  processedAt    DateTime?
+  processedById  String?   @db.Uuid
+  confirmedReferenceType String?
+  confirmedReferenceId String?
+  source         String    @default("DEVICE")
+  receivedAt     DateTime  @default(now())
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  tagMapping     IotTagMapping? @relation(fields: [tagMappingId], references: [id], onDelete: SetNull)
+  mappedSku      Sku?      @relation("IotEventMappedSku", fields: [mappedSkuId], references: [id], onDelete: SetNull)
+  processedBy    User?     @relation("IotEventProcessor", fields: [processedById], references: [id], onDelete: SetNull)
+
+  @@unique([deviceId, eventId])
+  @@index([warehouseId, timestamp])
+  @@index([processed, timestamp])
+  @@index([tagId, timestamp])
+  @@map("iot_events")
+}
+
+model IotTagMapping {
+  id          String    @id @default(uuid()) @db.Uuid
+  tagId       String    @unique
+  skuId       String    @db.Uuid
+  warehouseId String    @db.Uuid
+  palletCode  String?
+  source      String    @default("HARDWARE")
+  active      Boolean   @default(true)
+  createdById String    @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sku         Sku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy   User      @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  events      IotEvent[]
+
+  @@index([warehouseId, active])
+  @@index([skuId])
+  @@map("iot_tag_mappings")
+}
+
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  name        String    @unique
+  description String?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id         String   @id @default(uuid()) @db.Uuid
+  code       String   @unique
+  name       String
+  unit       String
+  baseUnit   String?
+  unitsPerUnit Int    @default(1)
+  active     Boolean  @default(true)
+  categoryId String   @db.Uuid
+  imageUrl      String?
+  imagePublicId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  skus       Sku[]
+
+  @@index([categoryId, active])
+  @@index([name])
+  @@map("products")
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  phone     String   @unique
+  email     String?
+  address   String?
+  note      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  invoices  Invoice[]
+  receivables Receivable[]
+
+  @@index([name])
+  @@index([active, updatedAt])
+  @@map("customers")
+}
+
+model Sku {
+  id           String         @id @default(uuid()) @db.Uuid
+  code         String         @unique
+  barcode      String         @unique
+  sellingPrice Decimal        @db.Decimal(14, 2)
+  costPrice    Decimal        @db.Decimal(14, 2)
+  active       Boolean        @default(true)
+  productId    String         @db.Uuid
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  priceHistory PriceHistory[]
+  invoiceItems InvoiceItem[]
+  inventories Inventory[]
+  inventoryTransactions InventoryTransaction[]
+  stocktakeItems StocktakeItem[]
+  transferItems StockTransferItem[]
+  purchaseRequestItems PurchaseRequestItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  goodsReceiptItems GoodsReceiptItem[]
+  iotTagMappings IotTagMapping[]
+  iotMappedEvents IotEvent[] @relation("IotEventMappedSku")
+  salesReturnItems SalesReturnItem[]
+  supplierReturnItems SupplierReturnItem[]
+  demandForecasts DemandForecast[]
+  inventoryRecommendations InventoryRecommendation[]
+
+  @@index([productId, active])
+  @@map("skus")
+}
+
+model ForecastRun {
+  id           String   @id @default(uuid()) @db.Uuid
+  storeId      String   @db.Uuid
+  horizonDays  Int
+  historyDays  Int
+  model        String
+  forecastFrom DateTime
+  forecastTo   DateTime
+  generatedAt  DateTime @default(now())
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  forecasts    DemandForecast[]
+  recommendations InventoryRecommendation[]
+
+  @@index([storeId, horizonDays, generatedAt])
+  @@map("forecast_runs")
+}
+
+model DemandForecast {
+  id                String   @id @default(uuid()) @db.Uuid
+  runId             String   @db.Uuid
+  skuId             String   @db.Uuid
+  predictedQuantity Int
+  observedQuantity  Int
+  dataQuality       String
+  availableAtRun    Int
+  safetyStockAtRun  Int
+  run               ForecastRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  sku               Sku         @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, skuId])
+  @@index([skuId])
+  @@map("demand_forecasts")
+}
+
+model InventoryRecommendation {
+  id                     String   @id @default(uuid()) @db.Uuid
+  dedupeKey              String   @unique
+  forecastRunId          String   @db.Uuid
+  targetStoreId          String   @db.Uuid
+  skuId                  String   @db.Uuid
+  type                   String
+  status                 String   @default("PENDING")
+  suggestedQuantity      Int
+  finalQuantity          Int?
+  sourceWarehouseId      String?  @db.Uuid
+  destinationWarehouseId String?  @db.Uuid
+  generatedById          String   @db.Uuid
+  decidedById            String?  @db.Uuid
+  decisionNote           String?
+  decidedAt              DateTime?
+  transferId             String?  @unique @db.Uuid
+  purchaseRequestId      String?  @unique @db.Uuid
+  createdAt              DateTime @default(now())
+  forecastRun            ForecastRun @relation(fields: [forecastRunId], references: [id], onDelete: Restrict)
+  targetStore            Store @relation(fields: [targetStoreId], references: [id], onDelete: Restrict)
+  sku                    Sku @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  sourceWarehouse        Warehouse? @relation("RecommendationSource", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse   Warehouse? @relation("RecommendationDestination", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  generatedBy            User @relation("RecommendationGenerator", fields: [generatedById], references: [id], onDelete: Restrict)
+  decidedBy              User? @relation("RecommendationDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  transfer               StockTransfer? @relation(fields: [transferId], references: [id], onDelete: SetNull)
+  purchaseRequest        PurchaseRequest? @relation(fields: [purchaseRequestId], references: [id], onDelete: SetNull)
+
+  @@index([forecastRunId, createdAt])
+  @@index([targetStoreId, status])
+  @@map("inventory_recommendations")
+}
+
+model PriceHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  skuId        String   @db.Uuid
+  sellingPrice Decimal  @db.Decimal(14, 2)
+  costPrice    Decimal  @db.Decimal(14, 2)
+  changedById  String?  @db.Uuid
+  effectiveAt  DateTime @default(now())
+  sku          Sku      @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  changedBy    User?    @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([skuId, effectiveAt])
+  @@map("price_history")
+}
+
+model WorkShift {
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  storeId           String   @db.Uuid
+  cashierId         String   @db.Uuid
+  posCode           String
+  name              String
+  status            String   @default("OPEN")
+  openingCash       Decimal  @db.Decimal(14, 2)
+  cashRevenue       Decimal  @default(0) @db.Decimal(14, 2)
+  digitalRevenue    Decimal  @default(0) @db.Decimal(14, 2)
+  cashExpenses      Decimal  @default(0) @db.Decimal(14, 2)
+  closingCash       Decimal? @db.Decimal(14, 2)
+  cashDiscrepancy   Decimal? @db.Decimal(14, 2)
+  discrepancyReason String?
+  denominations     Json?
+  openedAt          DateTime @default(now())
+  closedAt          DateTime?
+  approvedAt        DateTime?
+  approvedById      String?  @db.Uuid
+  managerNote       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  store             Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  cashier           User     @relation("ShiftCashier", fields: [cashierId], references: [id], onDelete: Restrict)
+  approvedBy        User?    @relation("ShiftApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  invoices           Invoice[]
+  payosCheckouts     PayosCheckout[]
+
+  @@index([storeId, openedAt])
+  @@index([cashierId, openedAt])
+  @@index([status, openedAt])
+  @@map("work_shifts")
+}
+
+model Invoice {
+  id                 String           @id @default(uuid()) @db.Uuid
+  code               String           @unique
+  shiftId            String           @db.Uuid
+  warehouseId        String?          @db.Uuid
+  storeId            String           @db.Uuid
+    cashierId          String           @db.Uuid
+    customerId         String?          @db.Uuid
+  customerName       String?
+  customerPhone      String?
+  status             String           @default("COMPLETED")
+  subtotal           Decimal          @db.Decimal(14, 2)
+  discount           Decimal          @default(0) @db.Decimal(14, 2)
+  total              Decimal          @db.Decimal(14, 2)
+  refundedAmount     Decimal          @default(0) @db.Decimal(14, 2)
+  creditAmount       Decimal          @default(0) @db.Decimal(14, 2)
+  note               String?
+  completedAt        DateTime         @default(now())
+  cancelledAt        DateTime?
+  cancelledById      String?          @db.Uuid
+  cancellationReason String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  shift              WorkShift        @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  warehouse          Warehouse?       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  store              Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+    cashier            User             @relation("InvoiceCashier", fields: [cashierId], references: [id], onDelete: Restrict)
+    customer           Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  cancelledBy        User?            @relation("InvoiceCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  items              InvoiceItem[]
+  payments           InvoicePayment[]
+  salesReturns       SalesReturn[]
+  receivable         Receivable?
+  payosCheckout      PayosCheckout?
+
+  @@index([storeId, completedAt])
+  @@index([shiftId, completedAt])
+  @@index([warehouseId, completedAt])
+    @@index([cashierId, completedAt])
+    @@index([customerId, completedAt])
+  @@index([status, completedAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  invoiceId   String   @db.Uuid
+  skuId       String   @db.Uuid
+  productCode String
+  skuCode     String
+  productName String
+  unit        String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(14, 2)
+  costPrice   Decimal  @db.Decimal(14, 2)
+  lineTotal   Decimal  @db.Decimal(14, 2)
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sku         Sku      @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  salesReturnItems SalesReturnItem[]
+
+  @@unique([invoiceId, skuId])
+  @@index([skuId])
+  @@map("invoice_items")
+}
+
+model InvoicePayment {
+  id        String  @id @default(uuid()) @db.Uuid
+  invoiceId String  @db.Uuid
+  method    String
+  amount    Decimal @db.Decimal(14, 2)
+  reference String?
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_payments")
+}
+
+// A checkout holds stock but is not a completed sale or revenue until verified paid.
+model PayosCheckout {
+  id              String   @id @db.Uuid
+  orderCode       BigInt   @unique @default(autoincrement())
+  actorId         String   @db.Uuid
+  shiftId         String   @db.Uuid
+  storeId         String   @db.Uuid
+  warehouseId     String   @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  status          String   @default("CREATING")
+  snapshot        Json
+  paymentLinkId   String?  @unique
+  checkoutUrl     String?
+  qrCode          String?
+  accountName     String?
+  accountNumber   String?
+  description     String?
+  invoiceId       String?  @unique @db.Uuid
+  expiresAt       DateTime
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  actor           User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  shift           WorkShift @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([shiftId, status])
+  @@index([status, expiresAt])
+  @@index([actorId, createdAt])
+  @@map("payos_checkouts")
+}
+
+model SalesReturn {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  invoiceId       String   @db.Uuid
+  warehouseId     String   @db.Uuid
+  processedById   String   @db.Uuid
+  reason          String
+  refundMethod    String
+  refundReference String?
+  refundAmount    Decimal  @db.Decimal(14, 2)
+  createdAt       DateTime @default(now())
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  processedBy     User     @relation("SalesReturnProcessor", fields: [processedById], references: [id], onDelete: Restrict)
+  items           SalesReturnItem[]
+
+  @@index([invoiceId, createdAt])
+  @@index([warehouseId, createdAt])
+  @@map("sales_returns")
+}
+
+model SalesReturnItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  salesReturnId String   @db.Uuid
+  invoiceItemId String   @db.Uuid
+  skuId         String   @db.Uuid
+  quantity      Int
+  restock       Boolean  @default(true)
+  unitRefund    Decimal  @db.Decimal(14, 2)
+  lineRefund    Decimal  @db.Decimal(14, 2)
+  salesReturn   SalesReturn @relation(fields: [salesReturnId], references: [id], onDelete: Cascade)
+  invoiceItem   InvoiceItem @relation(fields: [invoiceItemId], references: [id], onDelete: Restrict)
+  sku           Sku @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([salesReturnId, invoiceItemId])
+  @@index([invoiceItemId])
+  @@index([skuId])
+  @@map("sales_return_items")
+}
+
+model Receivable {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  invoiceId   String   @unique @db.Uuid
+  customerId  String   @db.Uuid
+  storeId     String   @db.Uuid
+  totalAmount Decimal  @db.Decimal(14, 2)
+  paidAmount  Decimal  @default(0) @db.Decimal(14, 2)
+  dueDate     DateTime
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  payments    ReceivablePayment[]
+
+  @@index([customerId, status])
+  @@index([storeId, dueDate])
+  @@index([status, dueDate])
+  @@map("receivables")
+}
+
+model ReceivablePayment {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  receivableId String   @db.Uuid
+  amount       Decimal  @db.Decimal(14, 2)
+  method       String
+  reference    String?
+  note         String?
+  paidAt       DateTime @default(now())
+  paidById     String   @db.Uuid
+  receivable   Receivable @relation(fields: [receivableId], references: [id], onDelete: Restrict)
+  paidBy       User @relation("ReceivablePaymentActor", fields: [paidById], references: [id], onDelete: Restrict)
+
+  @@index([receivableId, paidAt])
+  @@map("receivable_payments")
+}
+
+model Inventory {
+  id           String   @id @default(uuid()) @db.Uuid
+  warehouseId  String   @db.Uuid
+  skuId        String   @db.Uuid
+  onHand       Int      @default(0)
+  reserved     Int      @default(0)
+  inTransfer   Int      @default(0)
+  incoming     Int      @default(0)
+  safetyStock  Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  warehouse    Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  sku          Sku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  transactions InventoryTransaction[]
+  stocktakeItems StocktakeItem[]
+
+  @@unique([warehouseId, skuId])
+  @@index([skuId])
+  @@map("inventories")
+}
+
+model InventoryTransaction {
+  id            String    @id @default(uuid()) @db.Uuid
+  inventoryId   String    @db.Uuid
+  warehouseId   String    @db.Uuid
+  skuId         String    @db.Uuid
+  type          String
+  quantity      Int
+  beforeQuantity Int
+  afterQuantity Int
+  referenceType String
+  referenceId   String
+  reason        String
+  actorId       String?   @db.Uuid
+  occurredAt    DateTime  @default(now())
+  inventory     Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  sku           Sku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  actor         User?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([inventoryId, occurredAt])
+  @@index([warehouseId, occurredAt])
+  @@index([skuId, occurredAt])
+  @@index([referenceType, referenceId])
+  @@map("inventory_transactions")
+}
+
+model Stocktake {
+  id           String          @id @default(uuid()) @db.Uuid
+  code         String          @unique
+  warehouseId  String          @db.Uuid
+  createdById  String          @db.Uuid
+  approvedById String?         @db.Uuid
+  type         String
+  area         String?
+  status       String          @default("COUNTING")
+  note         String?
+  decisionNote String?
+  submittedAt  DateTime?
+  approvedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  warehouse    Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy    User            @relation("StocktakeCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?           @relation("StocktakeApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  items        StocktakeItem[]
+
+  @@index([warehouseId, createdAt])
+  @@index([status, createdAt])
+  @@map("stocktakes")
+}
+
+model StocktakeItem {
+  id               String    @id @default(uuid()) @db.Uuid
+  stocktakeId      String    @db.Uuid
+  inventoryId      String    @db.Uuid
+  skuId            String    @db.Uuid
+  systemQuantity   Int
+  actualQuantity   Int?
+  difference       Int?
+  costPrice        Decimal   @db.Decimal(14, 2)
+  reason           String?
+  stocktake        Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  inventory        Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  sku              Sku       @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([stocktakeId, skuId])
+  @@index([inventoryId])
+  @@map("stocktake_items")
+}
+
+model StockTransfer {
+  id                     String    @id @default(uuid()) @db.Uuid
+  code                   String    @unique
+  sourceWarehouseId      String    @db.Uuid
+  destinationWarehouseId String    @db.Uuid
+  createdById            String    @db.Uuid
+  approvedById           String?   @db.Uuid
+  dispatchedById         String?   @db.Uuid
+  receivedById           String?   @db.Uuid
+  cancelledById          String?   @db.Uuid
+  discrepancyResolvedById String?  @db.Uuid
+  status                 String    @default("PENDING_APPROVAL")
+  reason                 String
+  decisionNote           String?
+  dispatchNote           String?
+  receiptNote            String?
+  dispatchEvidenceUrls   Json?
+  receiptEvidenceUrls     Json?
+  cancelReason           String?
+  approvedAt             DateTime?
+  dispatchedAt           DateTime?
+  receivedAt             DateTime?
+  cancelledAt            DateTime?
+  discrepancyResolvedAt  DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  sourceWarehouse        Warehouse @relation("TransferSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse   Warehouse @relation("TransferDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  createdBy              User      @relation("TransferCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy             User?     @relation("TransferApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  dispatchedBy           User?     @relation("TransferDispatcher", fields: [dispatchedById], references: [id], onDelete: SetNull)
+  receivedBy             User?     @relation("TransferReceiver", fields: [receivedById], references: [id], onDelete: SetNull)
+  cancelledBy            User?     @relation("TransferCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  discrepancyResolvedBy  User?     @relation("TransferDiscrepancyResolver", fields: [discrepancyResolvedById], references: [id], onDelete: SetNull)
+  items                  StockTransferItem[]
+  inventoryRecommendation InventoryRecommendation?
+
+  @@index([sourceWarehouseId, createdAt])
+  @@index([destinationWarehouseId, createdAt])
+  @@index([status, createdAt])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id                 String        @id @default(uuid()) @db.Uuid
+  transferId         String        @db.Uuid
+  skuId              String        @db.Uuid
+  requestedQuantity  Int
+  approvedQuantity   Int?
+  dispatchedQuantity Int?
+  receivedQuantity   Int?
+  discrepancy        Int?
+  discrepancyReason  String?
+  discrepancyResolution String?
+  costPrice           Decimal       @db.Decimal(14, 2)
+  transfer            StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  sku                 Sku           @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([transferId, skuId])
+  @@index([skuId])
+  @@map("stock_transfer_items")
+}
+
+model Supplier {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  name        String
+  contactName String
+  phone       String
+  email       String
+  address     String
+  currentDebt Decimal  @default(0) @db.Decimal(14, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  purchaseOrders PurchaseOrder[]
+  payables Payable[]
+  returns SupplierReturn[]
+
+  @@index([name])
+  @@index([active, name])
+  @@map("suppliers")
+}
+
+model PurchaseRequest {
+  id           String    @id @default(uuid()) @db.Uuid
+  code         String    @unique
+  storeId      String    @db.Uuid
+  createdById  String    @db.Uuid
+  approvedById String?   @db.Uuid
+  status       String    @default("PENDING_APPROVAL")
+  reason       String
+  decisionNote String?
+  approvedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  store        Store     @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  createdBy    User      @relation("PurchaseRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy   User?     @relation("PurchaseRequestApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  items        PurchaseRequestItem[]
+  purchaseOrder PurchaseOrder?
+  inventoryRecommendation InventoryRecommendation?
+
+  @@index([storeId, createdAt])
+  @@index([status, createdAt])
+  @@map("purchase_requests")
+}
+
+model PurchaseOrder {
+  id                String   @id @default(uuid()) @db.Uuid
+  code              String   @unique
+  purchaseRequestId String?  @unique @db.Uuid
+  supplierId        String   @db.Uuid
+  warehouseId       String   @db.Uuid
+  createdById       String   @db.Uuid
+  status            String   @default("OPEN")
+  expectedAt        DateTime?
+  paymentDueAt      DateTime
+  note              String?
+  totalAmount       Decimal  @db.Decimal(14, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  purchaseRequest   PurchaseRequest? @relation(fields: [purchaseRequestId], references: [id], onDelete: SetNull)
+  supplier          Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy         User @relation("PurchaseOrderCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  items             PurchaseOrderItem[]
+  receipts          GoodsReceipt[]
+  payable           Payable?
+  returns           SupplierReturn[]
+
+  @@index([warehouseId, createdAt])
+  @@index([supplierId, createdAt])
+  @@index([status, createdAt])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  purchaseOrderId  String   @db.Uuid
+  skuId            String   @db.Uuid
+  orderedQuantity  Int
+  receivedQuantity Int      @default(0)
+  unitCost         Decimal  @db.Decimal(14, 2)
+  lineTotal        Decimal  @db.Decimal(14, 2)
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  sku              Sku @relation(fields: [skuId], references: [id], onDelete: Restrict)
+  receiptItems     GoodsReceiptItem[]
+  supplierReturnItems SupplierReturnItem[]
+
+  @@unique([purchaseOrderId, skuId])
+  @@index([skuId])
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  purchaseOrderId String   @db.Uuid
+  receivedById    String   @db.Uuid
+  note            String?
+  evidenceUrls    Json?
+  receivedAt      DateTime @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  receivedBy      User @relation("GoodsReceiptReceiver", fields: [receivedById], references: [id], onDelete: Restrict)
+  items           GoodsReceiptItem[]
+
+  @@index([purchaseOrderId, receivedAt])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  receiptId           String   @db.Uuid
+  purchaseOrderItemId String   @db.Uuid
+  skuId               String   @db.Uuid
+  quantity            Int
+  unitCost            Decimal  @db.Decimal(14, 2)
+  receipt             GoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  sku                 Sku @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([receiptId, purchaseOrderItemId])
+  @@index([skuId])
+  @@map("goods_receipt_items")
+}
+
+model Payable {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  supplierId      String   @db.Uuid
+  purchaseOrderId String   @unique @db.Uuid
+  totalAmount     Decimal  @db.Decimal(14, 2)
+  paidAmount      Decimal  @default(0) @db.Decimal(14, 2)
+  dueDate         DateTime
+  status          String   @default("OPEN")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  payments        PayablePayment[]
+
+  @@index([supplierId, dueDate])
+  @@index([status, dueDate])
+  @@map("payables")
+}
+
+model PayablePayment {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique
+  payableId   String   @db.Uuid
+  amount      Decimal  @db.Decimal(14, 2)
+  method      String
+  reference   String?
+  note        String?
+  paidById    String   @db.Uuid
+  paidAt      DateTime @default(now())
+  payable     Payable @relation(fields: [payableId], references: [id], onDelete: Restrict)
+  paidBy      User @relation("PayablePaymentActor", fields: [paidById], references: [id], onDelete: Restrict)
+
+  @@index([payableId, paidAt])
+  @@map("payable_payments")
+}
+
+model SupplierReturn {
+  id              String   @id @default(uuid()) @db.Uuid
+  code            String   @unique
+  purchaseOrderId String   @db.Uuid
+  supplierId      String   @db.Uuid
+  warehouseId     String   @db.Uuid
+  processedById   String   @db.Uuid
+  reason          String
+  totalAmount     Decimal  @db.Decimal(14, 2)
+  createdAt       DateTime @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  supplier        Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  processedBy     User @relation("SupplierReturnProcessor", fields: [processedById], references: [id], onDelete: Restrict)
+  items           SupplierReturnItem[]
+
+  @@index([purchaseOrderId, createdAt])
+  @@index([supplierId, createdAt])
+  @@map("supplier_returns")
+}
+
+model SupplierReturnItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  supplierReturnId    String   @db.Uuid
+  purchaseOrderItemId String   @db.Uuid
+  skuId               String   @db.Uuid
+  quantity            Int
+  unitCost            Decimal  @db.Decimal(14, 2)
+  lineTotal           Decimal  @db.Decimal(14, 2)
+  supplierReturn      SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Restrict)
+  sku                 Sku @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([supplierReturnId, purchaseOrderItemId])
+  @@index([skuId])
+  @@map("supplier_return_items")
+}
+
+model PurchaseRequestItem {
+  id                String          @id @default(uuid()) @db.Uuid
+  purchaseRequestId String          @db.Uuid
+  skuId             String          @db.Uuid
+  requestedQuantity Int
+  approvedQuantity  Int?
+  purchaseRequest   PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  sku               Sku             @relation(fields: [skuId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseRequestId, skuId])
+  @@index([skuId])
+  @@map("purchase_request_items")
+}

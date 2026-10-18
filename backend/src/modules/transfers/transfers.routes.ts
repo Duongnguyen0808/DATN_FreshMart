@@ -1,0 +1,15 @@
+import { Router } from 'express';
+import { authenticate, requirePermission } from '../../middleware/authenticate.js';
+import { approveTransfer, cancelTransfer, createTransfer, dispatchTransfer, getTransfer, listTransfers, receiveTransfer, rejectTransfer, resolveTransferDiscrepancy } from './transfers.service.js';
+import { approveTransferInput, createTransferInput, dispatchTransferInput, receiveTransferInput, resolveTransferDiscrepancyInput, transferIdInput, transferListInput, transferNoteInput } from './transfers.schemas.js';
+export const transferRoutes = Router(); const ok = (data: unknown) => ({ success: true, message: 'Success', data });
+transferRoutes.use(authenticate); transferRoutes.use((_q, response, next) => { response.set('Cache-Control', 'no-store'); next(); });
+transferRoutes.get('/transfers', requirePermission('transfers.read'), async (request, response) => response.json(ok(await listTransfers(request.currentUser, transferListInput.parse(request.query)))));
+transferRoutes.get('/transfers/:id', requirePermission('transfers.read'), async (request, response) => response.json(ok(await getTransfer(request.currentUser, transferIdInput.parse(request.params.id)))));
+transferRoutes.post('/transfers', requirePermission('transfers.create'), async (request, response) => response.status(201).json(ok(await createTransfer(request.currentUser, createTransferInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/approve', requirePermission('transfers.approve'), async (request, response) => response.json(ok(await approveTransfer(request.currentUser, transferIdInput.parse(request.params.id), approveTransferInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/reject', requirePermission('transfers.approve'), async (request, response) => response.json(ok(await rejectTransfer(request.currentUser, transferIdInput.parse(request.params.id), transferNoteInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/cancel', requirePermission('transfers.read'), async (request, response) => response.json(ok(await cancelTransfer(request.currentUser, transferIdInput.parse(request.params.id), transferNoteInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/dispatch', requirePermission('transfers.dispatch'), async (request, response) => response.json(ok(await dispatchTransfer(request.currentUser, transferIdInput.parse(request.params.id), dispatchTransferInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/receive', requirePermission('transfers.receive'), async (request, response) => response.json(ok(await receiveTransfer(request.currentUser, transferIdInput.parse(request.params.id), receiveTransferInput.parse(request.body)))));
+transferRoutes.post('/transfers/:id/resolve-discrepancy', requirePermission('transfers.approve'), async (request, response) => response.json(ok(await resolveTransferDiscrepancy(request.currentUser, transferIdInput.parse(request.params.id), resolveTransferDiscrepancyInput.parse(request.body)))));

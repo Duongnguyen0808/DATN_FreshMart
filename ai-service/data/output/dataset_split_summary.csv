@@ -1,0 +1,4 @@
+split,from_d,to_d,rows_in_csv,rows_used_for_model,sku_count
+train,1,1885,56550,55710,30
+validation,1886,1913,840,840,30
+test_holdout,1914,1941,840,840,30

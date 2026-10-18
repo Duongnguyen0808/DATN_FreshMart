@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.next/
+coverage/
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.tsbuildinfo
+.tools/
+.logs/
+backend/src/generated/
+
+# External reference checkout requested to stay local
+references/waretrack-3d/
+
+# Large upstream M5 dataset files (download separately)
+M5/m5-forecasting-accuracy/*.csv
+
+# Local AI runtime and temporary model files
+ai-service/tmp-ai/
+ai-service/pytest-cache-files-*/
+ai-service/data/output/cmdstan_tmp/
+
+web-admin/twin-*.png
