@@ -11,7 +11,7 @@ for (const product of products) {
   // Older demo databases use numeric codes 100008..100040 for PRD-DEMO-007..040.
   const numericCode = /^1000(\d{2})$/.exec(product.code);
   if (numericCode) originalCode = `PRD-DEMO-${String(Number(numericCode[1]) - 1).padStart(3, '0')}`;
-  const imageUrl = `/products/${originalCode.toLowerCase()}.svg`;
+  const imageUrl = `/products/${originalCode.toLowerCase()}.png`;
   await prisma.product.update({ where: { id: product.id }, data: { imageUrl, imagePublicId: null } });
   updated += 1;
 }
