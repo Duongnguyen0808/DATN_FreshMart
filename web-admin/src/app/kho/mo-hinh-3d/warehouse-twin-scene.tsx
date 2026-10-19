@@ -24,7 +24,8 @@ type Props = {
 const movement = new Set<DemoState>(['TRUCK_APPROACHING','TRUCK_DOCKING','TRUCK_UNLOADING','FORKLIFT_TO_TRUCK','FORKLIFT_PICKUP','MOVE_TO_OUTBOUND','MOVE_TO_STORAGE','IN_TRANSIT','DESTINATION_ARRIVAL','DESTINATION_PALLET_PICKUP','TRANSFER_PREPARING','IOT_RFID_SIMULATED','IOT_RFID_IN_SIMULATED','FORKLIFT_DELIVER_TO_TRUCK']);
 const route: Partial<Record<DemoState, [number, number][]>> = {
   // Inbound truck parks to the right of the entrance, leaving the doorway and RFID aisle clear.
-  TRUCK_APPROACHING: [[19.8,15],[19.8,11.5],[9,11.5],[4.4,11.5]], TRUCK_DOCKING: [[4.4,11.5],[3.8,11.5]],
+  // Start on the centre of the inbound lane, follow the road straight, then turn once at the apron.
+  TRUCK_APPROACHING: [[ROAD_LANES[1],28],[ROAD_LANES[1],15],[ROAD_LANES[1],11.5],[9,11.5],[4.4,11.5]], TRUCK_DOCKING: [[4.4,11.5],[3.8,11.5]],
   WORKER_APPROACHING: [[10,5.1],[10,10]],
   // Approach the inbound truck's rear loading edge from the east apron.
   FORKLIFT_TO_TRUCK: [[10,10],[10,11.5],[8.8,11.5]],
@@ -191,7 +192,7 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
   useEffect(()=>{if(current.current!==state){current.current=state;elapsed.current=0;done.current='';}},[state,runId]);
   useEffect(()=>{
     if((state==='TRUCK_APPROACHING'||state==='TRANSFER_PREPARING')&&truck.current){
-      truck.current.position.set(19.8,0,15);truck.current.rotation.y=0;
+      truck.current.position.set(ROAD_LANES[1],0,28);truck.current.rotation.y=Math.PI/2;
       if(cargo.current){cargo.current.visible=true;cargo.current.position.set(-.8,1.15,0);}
       if(gate.current)gate.current.rotation.z=0;
       if(forkCargo.current)forkCargo.current.visible=false;
