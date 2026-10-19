@@ -12,6 +12,8 @@ for (const product of products) {
   const numericCode = /^1000(\d{2})$/.exec(product.code);
   if (numericCode) originalCode = `PRD-DEMO-${String(Number(numericCode[1]) - 1).padStart(3, '0')}`;
   const legacyCustom: Record<string, string> = {
+    '100001': 'PRD-YM-041',
+    '100002': 'PRD-DN-077',
     '100003': 'PRD-CF-088',
     '100004': 'PRD-LV-019',
     '100005': 'PRD-OL-060',
