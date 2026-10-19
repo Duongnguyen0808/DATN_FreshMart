@@ -105,13 +105,23 @@ async function seed() {
       { code: 'PRD-DEMO-039', sku: 'SKU-DEMO-039', barcode: '8930000000039', name: 'Xúc xích CP tiệt trùng gói 10 cây', category: 'THUC_PHAM_DONG_LANH', unit: 'Gói', cost: 38500, price: 52000 },
       { code: 'PRD-DEMO-040', sku: 'SKU-DEMO-040', barcode: '8930000000040', name: 'Kem hộp Vinamilk vani 1L', category: 'THUC_PHAM_DONG_LANH', unit: 'Hộp', cost: 72000, price: 95000 },
     ] as const;
+    const productImageUrls: Record<string, string> = {
+      'PRD-YM-041': '/products/prd-ym-041.png',
+      'PRD-DN-077': '/products/prd-dn-077.png',
+      'PRD-CF-088': '/products/prd-cf-088.png',
+      'PRD-LV-019': '/products/prd-lv-019.png',
+      'PRD-OL-060': '/products/prd-ol-060.png',
+      'PRD-TE-077': '/products/prd-te-077.png',
+      'PRD-DEMO-007': '/products/prd-demo-007.png',
+      'PRD-DEMO-008': '/products/prd-demo-008.png',
+    };
     const skus = new Map<string, string>();
     for (const item of products) {
       const productCode = readableProductCodes[item.code] ?? item.code;
       const product = await tx.product.upsert({
         where: { code: productCode },
-        update: { name: item.name, unit: item.unit, categoryId: categories.get(item.category)! },
-        create: { code: productCode, name: item.name, unit: item.unit, categoryId: categories.get(item.category)! },
+        update: { name: item.name, unit: item.unit, categoryId: categories.get(item.category)!, imageUrl: productImageUrls[item.code] ?? `/products/${item.code.toLowerCase()}.svg` },
+        create: { code: productCode, name: item.name, unit: item.unit, categoryId: categories.get(item.category)!, imageUrl: productImageUrls[item.code] ?? `/products/${item.code.toLowerCase()}.svg` },
       });
       const sku = await tx.sku.upsert({
         where: { code: item.sku }, update: { productId: product.id, barcode: item.barcode },

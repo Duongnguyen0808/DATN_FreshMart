@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+const out = path.resolve('web-admin/public/products');
+fs.mkdirSync(out, { recursive: true });
+const items = [
+['PRD-YM-041','Yomost','Sữa chua uống tiệt trùng Yomost Cam'],['PRD-DN-077','Danisa','Bánh quy bơ cao cấp Danisa'],['PRD-CF-088','Cầu Đất','Cà phê rang xay Arabica'],['PRD-LV-019','Lavie','Nước khoáng bình 19L'],['PRD-OL-060','Borges','Dầu ô liu Extra Virgin'],['PRD-TE-077','Shan Tuyết','Trà Ô Long'],['PRD-DEMO-007','Coca-Cola','Nước ngọt Coca-Cola'],['PRD-DEMO-008','TH true MILK','Sữa tươi ít đường'],
+['PRD-DEMO-009','Milo','Sữa lúa mạch Milo'],['PRD-DEMO-010','Aquafina','Nước tinh khiết'],['PRD-DEMO-011','Oreo','Bánh quy Oreo Vanilla'],['PRD-DEMO-012','Oishi','Snack tôm cay'],['PRD-DEMO-013','Orion','Bánh ChocoPie'],['PRD-DEMO-014','Calbee','Ngũ cốc dinh dưỡng'],['PRD-DEMO-015','Tân Cương','Trà xanh Thái Nguyên'],['PRD-DEMO-016','G7','Cà phê hòa tan'],['PRD-DEMO-017','Lipton','Trà túi lọc'],['PRD-DEMO-018','Vinacacao','Bột cacao nguyên chất'],['PRD-DEMO-019','Nam Ngư','Nước mắm'],['PRD-DEMO-020','Chinsu','Nước tương'],['PRD-DEMO-021','Neptune','Dầu ăn'],['PRD-DEMO-022','Biên Hòa','Đường tinh luyện'],['PRD-DEMO-023','Bạc Liêu','Muối i-ốt'],['PRD-DEMO-024','ST25','Gạo thơm'],['PRD-DEMO-025','Hảo Hảo','Mì tôm chua cay'],['PRD-DEMO-026','Omachi','Mì sườn hầm ngũ quả'],['PRD-DEMO-027','Kokomi','Mì đại'],['PRD-DEMO-028','Vifon','Phở bò'],['PRD-DEMO-029','Clear Men','Dầu gội'],['PRD-DEMO-030','P/S','Kem đánh răng'],['PRD-DEMO-031','Lifebuoy','Nước rửa tay'],['PRD-DEMO-032','Pulppy','Khăn giấy'],['PRD-DEMO-033','Sunlight','Nước rửa chén'],['PRD-DEMO-034','OMO','Nước giặt'],['PRD-DEMO-035','Túi Rác Xanh','Túi rác tự hủy'],['PRD-DEMO-036','Lock&Lock','Hộp bảo quản'],['PRD-DEMO-037','Panasonic','Pin tiểu AA'],['PRD-DEMO-038','CP','Cá viên chiên đông lạnh'],['PRD-DEMO-039','CP','Xúc xích tiệt trùng'],['PRD-DEMO-040','Vinamilk','Kem hộp vani']
+];
+const colors = ['#ef6c5b','#2d8fd5','#e6a52d','#38a889','#7356b6','#e66c9a'];
+for (const [code, brand, name] of items) {
+  const color = colors[items.findIndex(x => x[0] === code) % colors.length];
+  const safe = code.toLowerCase();
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640"><rect width="640" height="640" fill="#f4f7fb"/><ellipse cx="320" cy="570" rx="190" ry="24" fill="#d7e0ea"/><rect x="150" y="90" width="340" height="430" rx="24" fill="${color}"/><rect x="180" y="122" width="280" height="365" rx="14" fill="#fff" opacity=".94"/><text x="320" y="190" text-anchor="middle" font-family="Arial,sans-serif" font-size="34" font-weight="700" fill="${color}">${brand}</text><line x1="215" y1="220" x2="425" y2="220" stroke="${color}" stroke-width="4"/><text x="320" y="278" text-anchor="middle" font-family="Arial,sans-serif" font-size="23" font-weight="700" fill="#18324d">${name.slice(0,28)}</text><text x="320" y="315" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" fill="#577089">FRESH MART</text><circle cx="320" cy="400" r="52" fill="${color}" opacity=".18"/><path d="M285 407h70M320 372v70" stroke="${color}" stroke-width="12" stroke-linecap="round"/><text x="320" y="460" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" fill="#71869c">SẢN PHẨM CHÍNH HÃNG</text></svg>`;
+  fs.writeFileSync(path.join(out, `${safe}.svg`), svg);
+}
+console.log(`Generated ${items.length} product images`);
