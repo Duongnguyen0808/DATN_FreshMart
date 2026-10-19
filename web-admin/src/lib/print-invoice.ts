@@ -6,7 +6,9 @@ const paymentName: Record<PaymentMethod, string> = { CASH: 'Tiền mặt', QR: '
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
 export function printInvoice(invoice: Invoice) {
-  const printWindow = window.open('', '_blank', 'width=420,height=760');
+  // Open a full-size tab: Edge sizes its print preview to the opener window, and
+  // a small popup makes the receipt preview look tiny even when paper sizing is correct.
+  const printWindow = window.open('', '_blank');
   if (!printWindow) {
     window.alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.');
     return;
