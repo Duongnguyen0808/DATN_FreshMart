@@ -23,6 +23,7 @@
     "db:migrate": "prisma migrate deploy",
     "db:check": "tsx src/check-database.ts",
     "db:seed": "tsx src/seed.ts",
+    "db:update-product-images": "tsx src/update-product-images.ts",
     "db:seed-demo-users": "node dist/seed-demo-users.js"
   },
   "dependencies": {
