@@ -49,7 +49,8 @@ const os = require('node:os');
   const output = path.join(os.tmpdir(), 'freshmart-twin-review');
   fs.mkdirSync(output, { recursive: true });
   try {
-    await page.goto(process.env.TWIN_REVIEW_URL ?? 'http://localhost:3000/kho/mo-hinh-3d', { waitUntil: 'networkidle' });
+    // The 3D scene keeps animation/realtime work active, so networkidle never settles.
+    await page.goto(process.env.TWIN_REVIEW_URL ?? 'http://localhost:3000/kho/mo-hinh-3d', { waitUntil: 'domcontentloaded' });
     const start = page.locator('.twin-stage-demo-controls .primary-button');
     await expect(start).toBeEnabled({ timeout: 30000 });
     const progress = page.getByRole('complementary', { name: 'Tiến trình demo' });
