@@ -7,7 +7,10 @@ const originalCodeByReadable = new Map(Object.entries(readableProductCodes).map(
 const products = await prisma.product.findMany({ select: { id: true, code: true } });
 let updated = 0;
 for (const product of products) {
-  const originalCode = originalCodeByReadable.get(product.code) ?? product.code;
+  let originalCode = originalCodeByReadable.get(product.code) ?? product.code;
+  // Older demo databases use numeric codes 100008..100040 for PRD-DEMO-007..040.
+  const numericCode = /^1000(\d{2})$/.exec(product.code);
+  if (numericCode) originalCode = `PRD-DEMO-${String(Number(numericCode[1]) - 1).padStart(3, '0')}`;
   const imageUrl = `/products/${originalCode.toLowerCase()}.svg`;
   await prisma.product.update({ where: { id: product.id }, data: { imageUrl, imagePublicId: null } });
   updated += 1;
