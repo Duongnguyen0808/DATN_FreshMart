@@ -37,7 +37,8 @@ function CircuitTruck({ phase, enabled }: { phase: number; enabled: boolean }) {
     curve.getPointAt(distance.current, point);
     curve.getTangentAt(distance.current, tangent);
     vehicle.current.position.copy(point);
-    vehicle.current.rotation.y = Math.atan2(-tangent.z, tangent.x);
+    // Truck models face local +Z; align that axis with the road tangent.
+    vehicle.current.rotation.y = Math.atan2(tangent.x, tangent.z);
   });
   return <group ref={vehicle}>
     <FreightTruckModel refrigerated={phase > 0} />

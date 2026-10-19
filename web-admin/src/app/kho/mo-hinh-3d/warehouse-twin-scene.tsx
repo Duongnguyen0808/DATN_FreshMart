@@ -192,7 +192,7 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
   useEffect(()=>{if(current.current!==state){current.current=state;elapsed.current=0;done.current='';}},[state,runId]);
   useEffect(()=>{
     if((state==='TRUCK_APPROACHING'||state==='TRANSFER_PREPARING')&&truck.current){
-      truck.current.position.set(ROAD_LANES[1],0,28);truck.current.rotation.y=Math.PI/2;
+      truck.current.position.set(ROAD_LANES[1],0,28);truck.current.rotation.y=Math.PI;
       if(cargo.current){cargo.current.visible=true;cargo.current.position.set(-.8,1.15,0);}
       if(gate.current)gate.current.rotation.z=0;
       if(forkCargo.current)forkCargo.current.visible=false;
@@ -215,7 +215,7 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
       : route[phase];
     if(phase==='TRUCK_APPROACHING'||phase==='TRUCK_DOCKING'||phase==='IN_TRANSIT'||phase==='DESTINATION_ARRIVAL'){
       const t=Math.min(1,elapsed.current*(phase==='IN_TRANSIT'?1/7:phase==='TRUCK_APPROACHING'?1/7:phase==='DESTINATION_ARRIVAL'?1/4:.6));
-      if(truck.current&&routeNow){const p=sampleRoute(routeNow,smoothstep(0,1,t),1.7);truck.current.position.set(p.x,0,p.z);const heading=Math.atan2(-p.dz,p.dx);truck.current.rotation.y=heading;}
+      if(truck.current&&routeNow){const p=sampleRoute(routeNow,smoothstep(0,1,t),1.7);truck.current.position.set(p.x,0,p.z);const heading=Math.atan2(p.dx,p.dz);truck.current.rotation.y=heading;}
       if(((phase==='TRUCK_APPROACHING'||phase==='TRUCK_DOCKING')&&t>=1 || phase==='DESTINATION_ARRIVAL'&&elapsed.current>4 || phase==='IN_TRANSIT'&&t>=1)&&done.current!==phase){done.current=phase;callback(phase)}
     }
     if(phase==='TRUCK_UNLOADING'||phase==='DESTINATION_ARRIVAL'){
