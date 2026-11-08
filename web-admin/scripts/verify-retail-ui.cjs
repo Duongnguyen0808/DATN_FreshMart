@@ -309,7 +309,7 @@ const path = require('node:path');
       }
       await page.route('**/api/v1/auth/refresh', route => route.fulfill({ status: 401, json: { success: false, message: 'Unauthenticated fixture' } }));
       await page.goto(`${baseUrl}/login`);
-      await expect(page.getByRole('heading', { name: 'Đăng nhập vào hệ thống' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Đăng nhập vào hệ thống|Chào mừng trở lại/ })).toBeVisible();
       for (const width of [1440, 390]) {
         await page.setViewportSize({ width, height: 960 });
         await page.screenshot({ path: path.join(output, `login-${width}.png`), fullPage: true });

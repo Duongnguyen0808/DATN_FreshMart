@@ -45,12 +45,45 @@ function CompactDropdown({ label, value, placeholder, options, onChange }: { lab
 }
 
 function ProductDetails({ product, loading, canManage, onEdit, onClose }: { product: productsApi.Product; loading: boolean; canManage: boolean; onEdit: () => void; onClose: () => void }) {
+  const sku = product.skus[0];
+  const costPrice = sku?.costPrice ?? 0;
+  const sellingPrice = sku?.sellingPrice ?? 0;
+  const profit = sellingPrice - costPrice;
+  const margin = sellingPrice > 0 ? (profit / sellingPrice) * 100 : 0;
+  const stock = product.availableStock ?? 0;
+  const conversionText = product.baseUnit && product.unitsPerUnit > 1 ? `1 ${product.unit} = ${product.unitsPerUnit} ${product.baseUnit}` : `Bán trực tiếp theo ${product.unit}`;
   return <section className="product-inline-detail">
     {loading ? <p className="muted">Đang tải thông tin…</p> : <>
-      <div className="product-view-summary">{product.imageUrl ? <img src={product.imageUrl} alt={product.name}/> : <div className="product-thumb">{product.name.slice(0,1)}</div>}<div><h3>{product.name}</h3><p><CategoryBadge category={product.category}/></p><StatusBadge tone={product.active?'green':'red'}>{product.active?'Đang kinh doanh':'Ngừng kinh doanh'}</StatusBadge></div></div>
-      <div className="product-detail-fields">{[['Mã sản phẩm',product.code],['Mã vạch',product.skus[0]?.barcode||'Chưa có'],['Giá vốn',money(product.skus[0]?.costPrice??0)],['Giá bán',money(product.skus[0]?.sellingPrice??0)],['Đơn vị',product.unit],['Danh mục',product.category.name]].map(([label,value])=><div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
+      <div className="product-view-summary">
+        <div className="product-view-media">
+          {product.imageUrl ? <img src={product.imageUrl} alt={product.name}/> : <div className="product-thumb">{product.name.slice(0,1)}</div>}
+        </div>
+        <div className="product-view-headline">
+          <div className="product-view-eyebrow">
+            <span className="product-code-pill">MÃ SP: {product.code}</span>
+            <CategoryBadge category={product.category}/>
+            <StatusBadge tone={product.active ? 'green' : 'red'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge>
+            <StatusBadge tone={stock > 0 ? 'cyan' : 'amber'}>{stock > 0 ? `Còn ${stock} ${product.unit}` : 'Hết hàng'}</StatusBadge>
+          </div>
+          <h3>{product.name}</h3>
+          <p className="product-view-sub">Đơn vị tính: <strong>{product.unit}</strong> · {conversionText} · Barcode: <strong>{sku?.barcode || 'Chưa có'}</strong></p>
+        </div>
+      </div>
+      <div className="product-detail-fields">
+        <div className="detail-metric-box tone-blue"><small>Giá bán niêm yết</small><strong>{money(sellingPrice)}</strong><span>Giá bán lẻ tại quầy POS</span></div>
+        <div className="detail-metric-box tone-amber"><small>Giá vốn nhập</small><strong>{money(costPrice)}</strong><span>Lãi gộp: {money(profit)} / {product.unit}</span></div>
+        <div className="detail-metric-box tone-emerald"><small>Biên lợi nhuận</small><strong>{margin.toFixed(1)}%</strong><span>{margin >= 15 ? 'Hiệu quả sinh lời tốt' : 'Biên lợi nhuận tiêu chuẩn'}</span></div>
+        <div className="detail-metric-box tone-cyan"><small>Tồn kho khả dụng</small><strong>{stock} {product.unit}</strong><span>{stock > 0 ? 'Sẵn sàng xuất bán' : 'Cần lập đơn nhập bổ sung'}</span></div>
+        <div className="detail-metric-box tone-indigo"><small>Mã sản phẩm & Barcode</small><strong>{product.code}</strong><span>Barcode: {sku?.barcode || 'Chưa gán'}</span></div>
+        <div className="detail-metric-box tone-violet"><small>Danh mục & Quy cách</small><strong>{product.category.name}</strong><span>{conversionText}</span></div>
+      </div>
     </>}
-    <footer><Link className="outline-button" href={`/ton-kho?q=${encodeURIComponent(product.code)}`}>Xem tồn kho</Link><button className="outline-button" type="button" onClick={onClose}>Đóng</button>{canManage&&<button className="primary-button" type="button" onClick={onEdit}>Chỉnh sửa</button>}</footer>
+    <footer>
+      <Link className="primary-button" href={`/san-pham/${product.id}`}>Xem chi tiết & quy cách</Link>
+      <Link className="outline-button" href={`/ton-kho?q=${encodeURIComponent(product.code)}`}>Xem tồn kho</Link>
+      {canManage && <button className="outline-button product-edit-btn" type="button" onClick={onEdit}>Chỉnh sửa</button>}
+      <button className="outline-button" type="button" onClick={onClose}>Đóng</button>
+    </footer>
   </section>;
 }
 
@@ -277,7 +310,7 @@ export default function Products() {
             <td><CategoryBadge category={product.category}/></td><td><strong>{product.unit}</strong>{product.baseUnit && product.unitsPerUnit > 1 && <small>1 {product.unit} = {product.unitsPerUnit} {product.baseUnit}</small>}</td><td className="numeric"><strong>{product.availableStock ?? 0}</strong><small>{(product.availableStock ?? 0) > 0 ? 'Còn hàng' : 'Hết hàng'}</small></td>
             <td className="numeric">{money(sku?.costPrice ?? 0)}</td><td className="numeric"><strong>{money(sku?.sellingPrice ?? 0)}</strong></td><td className="numeric"><strong className="positive">{margin.toFixed(1)}%</strong></td>
             <td><StatusBadge tone={product.active ? 'green' : 'red'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge></td>
-            <td onClick={event => event.stopPropagation()}><div className="row-actions">{canManage && <><ActionButton tone="edit" onClick={() => open('edit', product)}>Sửa</ActionButton><ActionButton tone={product.active ? 'danger' : 'approve'} onClick={() => changeStatus(product)}>{product.active ? 'Ngừng' : 'Mở lại'}</ActionButton></>}</div></td>
+            <td onClick={event => event.stopPropagation()}><div className="row-actions"><ActionLink tone="view" href={`/san-pham/${product.id}`}>Chi tiết</ActionLink>{canManage && <><ActionButton tone="edit" onClick={() => open('edit', product)}>Sửa</ActionButton><ActionButton tone={product.active ? 'danger' : 'approve'} onClick={() => changeStatus(product)}>{product.active ? 'Ngừng' : 'Mở lại'}</ActionButton></>}</div></td>
           </tr>{viewing?.id===product.id&&<tr className="product-detail-row"><td colSpan={11}><ProductDetails product={viewing} loading={viewLoading} canManage={canManage} onEdit={()=>open('edit',viewing)} onClose={()=>setViewing(null)}/></td></tr>}</Fragment>;
         })}
       </tbody></table></div>
