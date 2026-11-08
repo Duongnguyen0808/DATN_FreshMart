@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 (async () => {
-  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
+  const browser = await chromium.launch({ channel: 'msedge', headless: true, args: ['--use-angle=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const base = process.env.REVIEW_BASE_URL || 'http://localhost:3000';
   const output = path.resolve('artifacts/camera-review'); fs.mkdirSync(output, { recursive: true });
@@ -34,11 +34,19 @@ const path = require('node:path');
     else if (resource === 'warehouses') data = [warehouse];
     else if (resource === 'purchase-orders') data = { items: [fixtures('purchase-orders/review')], pagination: { totalPages: 1 } };
     else if (resource === 'inventory') data = { items: [stock], pagination: { totalPages: 1 }, summary: {} };
-    else if (resource === 'iot/inbound-parcels') {
-      if (route.request().method() === 'POST') {
-        parcel = { ...route.request().postDataJSON(), id: 'parcel-review', status: 'READY', warehouseId: warehouse.id, purchaseOrderId: 'review', purchaseOrderCode: 'DH-TEST', product, goodsReceiptId: null };
-        data = parcel;
-      } else data = parcel ? [parcel] : [];
+    else if (resource === 'iot/inbound-parcels' || resource === 'iot/inbound-parcels/prepare-orders') {
+      if (!parcel) {
+        parcel = { id: 'parcel-review', tagId: 'QR-REVIEW-0001', deviceId: 'FRESHMART-CAMERA-IN-01', quantity: 24, status: 'READY', warehouseId: warehouse.id, purchaseOrderId: 'review', purchaseOrderCode: 'DH-TEST', purchaseOrderStatus: 'OPEN', expiresAt: null, noExpiry: false, product, goodsReceiptId: null };
+      }
+      data = [parcel];
+    } else if (resource === 'iot/camera-demo-session') {
+      data = { active: true, parcelId: parcel?.id ?? 'parcel-review' };
+    } else if (resource === 'purchase-orders/forecast-replenishment') {
+      data = { forecastRunId: null, horizonDays: 7, storeName: store.name, suppliers: [], items: [] };
+    } else if (resource === 'iot/camera-device-status') {
+      data = { lastCameraIp: null, hostWifi: null, usbPorts: [], preferredPort: null };
+    } else if (resource === 'iot/access/monitor') {
+      data = { mode: 'SIMULATION', accessWindowSeconds: 1, maxDoorOpenSeconds: 30, simulationDoorOpenSeconds: 2, devices: [], doors: [], cards: [], employees: [], events: [], alerts: [] };
     } else if (resource === 'iot/events') data = scanned ? [scanned] : [];
     else if (resource === 'iot/camera-scans') {
       const body = route.request().postDataJSON();
@@ -54,10 +62,7 @@ const path = require('node:path');
   });
   try {
     await page.goto(`${base}/kho/mo-hinh-3d/camera`);
-    await page.getByLabel('Đơn mua hàng / sản phẩm').selectOption('item-review');
-    await page.getByLabel('Số lượng trong kiện').fill('24');
-    await page.getByLabel('Sản phẩm không có hạn sử dụng').check();
-    await page.getByRole('button', { name: 'Tạo mã kiện và tem QR' }).click();
+    await page.getByRole('button', { name: 'Xem mã QR' }).click();
     await expect(page.locator('.camera-parcel-label svg')).toBeVisible();
     expect(parcel.deviceId).toBe('FRESHMART-CAMERA-IN-01');
     for (const width of [1440, 768, 390]) {
@@ -69,8 +74,9 @@ const path = require('node:path');
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${base}/kho/mo-hinh-3d`);
     await expect(page.getByRole('button', { name: 'Mở camera quét kiện' })).toHaveCount(0);
+    await page.getByRole('button', { name: '2×' }).click();
     await page.getByRole('button', { name: 'Chạy demo', exact: false }).click();
-    await page.getByLabel('Hoặc dùng kiện đã tạo').selectOption('parcel-review');
+    await page.getByLabel('Kiện chờ nhận').selectOption('parcel-review');
     await page.getByRole('button', { name: 'Bắt đầu xe vào kho' }).click();
     await expect(page.locator('.esp-station.is-waiting')).toBeVisible({ timeout: 60000 });
     await page.locator('canvas').scrollIntoViewIfNeeded();
@@ -84,8 +90,10 @@ const path = require('node:path');
     await expect(page.locator('.rfid-dialog')).toHaveCount(0);
     scanned = event;
     await expect(page.locator('.rfid-dialog')).toBeVisible({ timeout: 10000 });
+    await page.locator('.rfid-dialog').getByLabel('Sản phẩm không có hạn sử dụng').check();
     await page.getByRole('button', { name: 'Xác nhận nhập kho', exact: true }).click();
-    await expect(page.locator('.rfid-dialog')).toContainText('Đã lưu phiếu nhập và cập nhật tồn kho.');
+    await expect(page.locator('.rfid-dialog.is-processed')).toContainText('Đã lưu phiếu nhập và cập nhật tồn kho.');
+    await page.screenshot({ path: path.join(output, 'esp-processed-dialog.png') });
     await page.getByRole('button', { name: 'Đóng', exact: true }).click();
     await expect(page.locator('.li-timeline-heading')).toContainText('Hoàn tất 5/5 bước', { timeout: 30000 });
     expect(stock.onHand).toBe(24);

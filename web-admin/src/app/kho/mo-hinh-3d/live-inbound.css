@@ -273,7 +273,7 @@
 .rfid-success-product{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px dashed #cbd5e1}
 .rfid-success-product strong{font-size:16px;color:#0f3d3e}
 .rfid-success-product span{font-size:12px;color:#475569;overflow-wrap:anywhere}
-.rfid-success-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.rfid-success-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px}
 .rfid-success-metrics div{display:grid;gap:3px;padding:10px;border-radius:10px;background:#fff;border:1px solid #e2e8f0}
 .rfid-success-metrics span{font-size:11px;color:#64748b}
 .rfid-success-metrics b{font-size:14px;color:#0f766e}
