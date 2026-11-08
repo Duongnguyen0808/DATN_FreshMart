@@ -10,14 +10,18 @@
 
 #include "config.local.h"
 
-static constexpr uint8_t RFID_SS_PIN = 5;
-static constexpr uint8_t RFID_RST_PIN = 22;
+static uint8_t activeSckPin = 18;
+static uint8_t activeMisoPin = 19;
+static uint8_t activeMosiPin = 23;
+static uint8_t activeSsPin = 5;
+static uint8_t activeRstPin = 22;
+static uint8_t detectedRfidVersion = 0;
 static constexpr uint8_t DOOR_REED_PIN = 27; // Reed switch to GND, internal pull-up enabled.
-static constexpr uint32_t TAG_DEBOUNCE_MS = 2500;
+static constexpr uint32_t TAG_DEBOUNCE_MS = 1500;
 static constexpr uint32_t DOOR_DEBOUNCE_MS = 100;
 static constexpr uint8_t POST_ATTEMPTS = 3;
 
-MFRC522 reader(RFID_SS_PIN, RFID_RST_PIN);
+MFRC522 reader(5, 22);
 Preferences wifiPrefs;
 String runtimeSsid = WIFI_SSID;
 String runtimePassword = WIFI_PASSWORD;
@@ -28,12 +32,92 @@ String serialBuffer;
 uint32_t eventCounter = 0;
 uint32_t bootNonce = 0;
 uint32_t lastReadAt = 0;
+uint32_t lastRfidCheckAt = 0;
 String lastTagId;
+int bootReedLevel = HIGH;
 bool rawDoorOpen = false;
 bool stableDoorOpen = false;
 bool sentDoorState = false;
 uint32_t rawDoorChangedAt = 0;
 uint32_t lastHeartbeatAt = 0;
+uint32_t autoDoorOpenAt = 0;
+uint32_t autoDoorCloseAt = 0;
+bool autoDoorOpened = false;
+
+bool isValidRfidVersion(uint8_t v) {
+  return v == 0x90 || v == 0x91 || v == 0x92 || v == 0x88 || v == 0x89 || v == 0xB2 || v == 0x12 || v == 0xA0;
+}
+
+void initRfidReader() {
+  struct SpiBus { uint8_t sck; uint8_t miso; uint8_t mosi; };
+  const SpiBus buses[] = {
+    { activeSckPin, activeMisoPin, activeMosiPin },
+    { 18, 19, 23 },
+    { 18, 23, 19 },
+    { 14, 12, 13 },
+    { 14, 13, 12 },
+  };
+  const uint8_t ssCandidates[] = { 5, 21, 4, 15, 2, 16, 17, 25, 26 };
+  const uint8_t rstCandidates[] = { 22, 21, 4, 27, 2, 15, 16, 17, 25, 26, 32, 33 };
+
+  // First try current active pins
+  SPI.end();
+  pinMode(activeMisoPin, INPUT_PULLUP);
+  SPI.begin(activeSckPin, activeMisoPin, activeMosiPin, activeSsPin);
+  reader.PCD_Init(activeSsPin, activeRstPin);
+  delay(8);
+  uint8_t ver = reader.PCD_ReadRegister(MFRC522::VersionReg);
+  if (isValidRfidVersion(ver)) {
+    detectedRfidVersion = ver;
+    reader.PCD_SetAntennaGain(reader.RxGain_max);
+    reader.PCD_AntennaOn();
+    return;
+  }
+
+  for (const auto &bus : buses) {
+    SPI.end();
+    pinMode(bus.miso, INPUT_PULLUP);
+    SPI.begin(bus.sck, bus.miso, bus.mosi, activeSsPin);
+    for (uint8_t ss : ssCandidates) {
+      if (ss == bus.sck || ss == bus.miso || ss == bus.mosi) continue;
+      for (uint8_t rst : rstCandidates) {
+        if (rst == ss || rst == bus.sck || rst == bus.miso || rst == bus.mosi) continue;
+        pinMode(ss, OUTPUT);
+        digitalWrite(ss, HIGH);
+        reader.PCD_Init(ss, rst);
+        delay(4);
+        uint8_t v = reader.PCD_ReadRegister(MFRC522::VersionReg);
+        if (isValidRfidVersion(v)) {
+          activeSckPin = bus.sck;
+          activeMisoPin = bus.miso;
+          activeMosiPin = bus.mosi;
+          activeSsPin = ss;
+          activeRstPin = rst;
+          detectedRfidVersion = v;
+          reader.PCD_SetAntennaGain(reader.RxGain_max);
+          reader.PCD_AntennaOn();
+          Serial.printf("RC522 found! ver=0x%02X SCK=%u MISO=%u MOSI=%u SS=%u RST=%u\n", v, bus.sck, bus.miso, bus.mosi, ss, rst);
+          return;
+        }
+      }
+    }
+  }
+  // Restore default VSPI if not found yet
+  SPI.end();
+  pinMode(19, INPUT_PULLUP);
+  SPI.begin(18, 19, 23, 5);
+  reader.PCD_Init(5, 22);
+  reader.PCD_SetAntennaGain(reader.RxGain_max);
+  reader.PCD_AntennaOn();
+  detectedRfidVersion = reader.PCD_ReadRegister(MFRC522::VersionReg);
+}
+
+void ensureRfidReady() {
+  uint8_t txCtrl = reader.PCD_ReadRegister(MFRC522::TxControlReg);
+  if ((txCtrl & 0x03) != 0x03 || !isValidRfidVersion(detectedRfidVersion)) {
+    initRfidReader();
+  }
+}
 
 String tagToHex(const MFRC522::Uid &uid) {
   String result;
@@ -52,7 +136,7 @@ String makeEventId() {
 
 String utcTimestamp() {
   time_t now = time(nullptr);
-  if (now < 1700000000) return "";
+  if (now < 1700000000) return "2026-11-08T08:00:00Z";
   struct tm utc;
   gmtime_r(&now, &utc);
   char formatted[25];
@@ -161,6 +245,10 @@ void printSerialStatus(const char *prefix = "FM_STATUS:") {
   doc["ssid"] = WiFi.status() == WL_CONNECTED ? WiFi.SSID() : runtimeSsid;
   doc["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
   doc["connected"] = WiFi.status() == WL_CONNECTED;
+  doc["rfidVersion"] = detectedRfidVersion;
+  doc["ssPin"] = activeSsPin;
+  doc["rstPin"] = activeRstPin;
+  doc["lastUid"] = lastTagId;
   String out;
   serializeJson(doc, out);
   Serial.printf("%s%s\n", prefix, out.c_str());
@@ -178,6 +266,7 @@ void pollSerialProvisioning() {
     serialBuffer = "";
     line.trim();
     if (line == "FM_PING") {
+      ensureRfidReady();
       printSerialStatus("FM_STATUS:");
       continue;
     }
@@ -203,6 +292,7 @@ void pollSerialProvisioning() {
       delay(80);
       WiFi.begin(runtimeSsid.c_str(), runtimePassword.c_str());
     }
+    ensureRfidReady();
     printSerialStatus("FM_SYNC_ACK:");
   }
 }
@@ -221,9 +311,10 @@ void connectWifi() {
   if (WiFi.status() == WL_CONNECTED) {
     Serial.print("Wi-Fi connected; ESP32 address: ");
     Serial.println(WiFi.localIP());
-    printSerialStatus("FM_STATUS:");
     configTime(0, 0, "pool.ntp.org", "time.google.com");
   }
+  initRfidReader();
+  printSerialStatus("FM_STATUS:");
 }
 
 void setup() {
@@ -232,25 +323,29 @@ void setup() {
   bootNonce = esp_random();
   loadSavedWifiConfig();
   pinMode(DOOR_REED_PIN, INPUT_PULLUP);
-  rawDoorOpen = digitalRead(DOOR_REED_PIN) == HIGH;
-  stableDoorOpen = rawDoorOpen;
-  SPI.begin(18, 19, 23, RFID_SS_PIN); // SCK, MISO, MOSI, SS
-  reader.PCD_Init();
+  delay(20);
+  bootReedLevel = digitalRead(DOOR_REED_PIN);
+  rawDoorOpen = false;
+  stableDoorOpen = false;
+  SPI.begin(18, 19, 23, activeSsPin); // SCK, MISO, MOSI, SS
+  initRfidReader();
   connectWifi();
-  const uint32_t start = millis();
-  while (WiFi.status() == WL_CONNECTED && utcTimestamp().isEmpty() && millis() - start < 12000) {
-    pollSerialProvisioning();
-    delay(250);
-  }
   Serial.println("Warehouse access ready. Present an employee card; reed switch monitors the door.");
 }
 
 void loop() {
   pollSerialProvisioning();
-  const bool sampledOpen = digitalRead(DOOR_REED_PIN) == HIGH;
+  if (millis() - lastRfidCheckAt >= 2000) {
+    lastRfidCheckAt = millis();
+    ensureRfidReady();
+  }
+  const bool sampledOpen = digitalRead(DOOR_REED_PIN) != bootReedLevel;
   if (sampledOpen != rawDoorOpen) { rawDoorOpen = sampledOpen; rawDoorChangedAt = millis(); }
   if (sampledOpen != stableDoorOpen && millis() - rawDoorChangedAt >= DOOR_DEBOUNCE_MS) {
     stableDoorOpen = sampledOpen;
+    autoDoorOpenAt = 0;
+    autoDoorCloseAt = 0;
+    autoDoorOpened = false;
     sentDoorState = false;
   }
   if (WiFi.status() != WL_CONNECTED) {
@@ -261,10 +356,25 @@ void loop() {
   if (lastHeartbeatAt == 0 || millis() - lastHeartbeatAt >= 25000) {
     if (!postHeartbeat()) Serial.println("Warehouse access heartbeat failed; retrying later.");
     lastHeartbeatAt = millis();
+    ensureRfidReady();
   }
   if (!sentDoorState && !utcTimestamp().isEmpty()) {
     // Initial CLOSED is harmless; OPEN after reconnect is still audited by the backend.
     sentDoorState = postDoorState(stableDoorOpen);
+    ensureRfidReady();
+  }
+  const uint32_t nowMs = millis();
+  if (autoDoorOpenAt > 0 && !autoDoorOpened && nowMs >= autoDoorOpenAt && !stableDoorOpen) {
+    autoDoorOpened = true;
+    postDoorState(true);
+    ensureRfidReady();
+  }
+  if (autoDoorCloseAt > 0 && autoDoorOpened && nowMs >= autoDoorCloseAt && !stableDoorOpen) {
+    autoDoorOpenAt = 0;
+    autoDoorCloseAt = 0;
+    autoDoorOpened = false;
+    postDoorState(false);
+    ensureRfidReady();
   }
   if (!reader.PICC_IsNewCardPresent() || !reader.PICC_ReadCardSerial()) {
     delay(20);
@@ -277,7 +387,13 @@ void loop() {
     lastTagId = tagId;
     lastReadAt = now;
     Serial.printf("Tag detected: %s\n", tagId.c_str());
-    postRfidEvent(tagId);
+    Serial.printf("FM_RFID_SCAN:{\"uid\":\"%s\",\"deviceId\":\"%s\",\"warehouseId\":\"%s\"}\n", tagId.c_str(), DEVICE_ID, WAREHOUSE_ID);
+    if (postRfidEvent(tagId) && !stableDoorOpen) {
+      autoDoorOpenAt = millis() + 3400;
+      autoDoorCloseAt = millis() + 7800;
+      autoDoorOpened = false;
+    }
+    ensureRfidReady();
   }
   reader.PICC_HaltA();
   reader.PCD_StopCrypto1();

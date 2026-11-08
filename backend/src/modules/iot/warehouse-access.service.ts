@@ -47,8 +47,6 @@ export async function registerAccessDevice(user: CurrentUser, input: { code: str
 /** Isolated simulation records: do not register a physical card or alter a real door. */
 export async function setupAccessSimulation(user: CurrentUser, warehouseId: string) {
   await visibleWarehouse(user, warehouseId);
-  const monitor = await monitorWarehouseAccess(user, warehouseId);
-  if (monitor.mode === 'REAL_IOT') throw new AppError(409, 'REAL_DEVICE_ONLINE', 'Thiết bị thật đang trực tuyến.');
   const suffix = warehouseId.replaceAll('-', '').toUpperCase();
   const code = `${SIMULATED_DEVICE_PREFIX}${suffix}`;
   const doorCode = `SIM-DOOR-${suffix}`;
@@ -73,9 +71,48 @@ export async function assignAccessCard(user: CurrentUser, input: { uid: string; 
   if (!employee || !employee.active || (!employee.roles.some(row => row.role.code === 'OWNER') && (!employee.stores.some(row => row.storeId === warehouse.storeId) || !employee.roles.some(row => row.role.permissions.some(permission => ['inventory.read', 'warehouses.manage'].includes(permission.permissionCode)))))) {
     throw new AppError(400, 'EMPLOYEE_NOT_IN_WAREHOUSE', 'Nhân viên không hoạt động hoặc chưa có quyền vào kho của chi nhánh.');
   }
-  const existing = await prisma.warehouseAccessCard.findUnique({ where: { uid: input.uid } });
-  if (existing && (existing.employeeId !== input.employeeId || existing.warehouseId !== input.warehouseId)) throw new AppError(409, 'CARD_ALREADY_ASSIGNED', 'Thẻ đã gán cho nhân viên hoặc kho khác. Thu hồi thẻ trước khi gán lại.');
-  return prisma.warehouseAccessCard.upsert({ where: { uid: input.uid }, create: { ...input, revokedAt: input.status === 'REVOKED' ? new Date() : null }, update: { status: input.status, revokedAt: input.status === 'REVOKED' ? new Date() : null }, include: { employee: { select: { id: true, name: true, email: true } } } });
+  // Quy tắc an ninh: Mỗi người chỉ được sở hữu tối đa 1 thẻ RFID. Nếu đã có thẻ thì báo lỗi!
+  if (input.status === 'ACTIVE') {
+    const existingEmployeeCard = await prisma.warehouseAccessCard.findFirst({
+      where: { employeeId: input.employeeId, warehouseId: input.warehouseId, status: 'ACTIVE', uid: { not: input.uid } },
+    });
+    if (existingEmployeeCard) {
+      throw new AppError(400, 'EMPLOYEE_ALREADY_HAS_CARD', `Nhân viên "${employee.name}" đã được gán thẻ RFID (${existingEmployeeCard.uid}). Mỗi người chỉ được gắn tối đa 1 mã thẻ, không thể thêm mã thứ 2! Vui lòng khóa hoặc đổi thẻ cũ trước.`);
+    }
+  }
+  const updated = await prisma.warehouseAccessCard.upsert({
+    where: { uid: input.uid },
+    create: { ...input, revokedAt: input.status === 'REVOKED' ? new Date() : null },
+    update: { employeeId: input.employeeId, warehouseId: input.warehouseId, status: input.status, assignedAt: new Date(), revokedAt: input.status === 'REVOKED' ? new Date() : null },
+    include: { employee: { select: { id: true, name: true, email: true } } },
+  });
+  publishWarehouseAccess(input.warehouseId, { card: updated });
+  return updated;
+}
+
+export async function createWarehouseEmployee(user: CurrentUser, input: { name: string; email?: string; warehouseId: string }) {
+  const warehouse = await visibleWarehouse(user, input.warehouseId);
+  const cleanName = input.name.trim();
+  if (cleanName.length < 2) throw new AppError(400, 'INVALID_EMPLOYEE_NAME', 'Tên nhân viên kho phải có ít nhất 2 ký tự.');
+  const slug = cleanName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').toLowerCase() || 'nhanvien';
+  const email = (input.email?.trim() || `${slug}.${Date.now().toString(36)}@freshmart.local`).toLowerCase();
+  let role = await prisma.role.findFirst({ where: { permissions: { some: { permissionCode: 'inventory.read' } } }, orderBy: { code: 'asc' } });
+  if (!role) {
+    role = await prisma.role.findFirst();
+  }
+  const created = await prisma.user.create({
+    data: {
+      name: cleanName,
+      email,
+      passwordHash: '$2b$10$demoWarehouseEmployeeHashPlaceholder000000000000000000',
+      active: true,
+      stores: { create: [{ storeId: warehouse.storeId }] },
+      ...(role ? { roles: { create: [{ roleId: role.id }] } } : {}),
+    },
+    select: { id: true, name: true, email: true },
+  });
+  publishWarehouseAccess(input.warehouseId, { employee: created });
+  return created;
 }
 
 export async function monitorWarehouseAccess(user: CurrentUser, warehouseId: string) {
@@ -103,11 +140,14 @@ export async function ingestAccessRfid(input: RfidInput, source: PhysicalSource 
   const now = new Date();
   const prior = await prisma.warehouseAccessEvent.findUnique({ where: { deviceId_eventId: { deviceId: device.id, eventId: input.eventId } } });
   if (prior) return { duplicate: true, event: prior };
-  const repeated = await prisma.warehouseAccessEvent.findFirst({ where: { deviceId: device.id, eventType: 'RFID_SCAN', occurredAt: { gte: recent(3, now) }, payload: { path: ['uid'], equals: input.uid } }, orderBy: { occurredAt: 'desc' } });
-  if (repeated) return { duplicate: true, event: repeated };
+  const repeated = await prisma.warehouseAccessEvent.findFirst({ where: { deviceId: device.id, eventType: 'RFID_SCAN', occurredAt: { gte: recent(source === 'IOT_DEVICE' ? 1 : 3, now) }, payload: { path: ['uid'], equals: input.uid } }, orderBy: { occurredAt: 'desc' } });
+  if (repeated) {
+    if (source === 'IOT_DEVICE') publishWarehouseAccess(input.warehouseId, { event: repeated });
+    return { duplicate: true, event: repeated };
+  }
   const simulatedReader = source === 'SIMULATION' && device.code.startsWith(SIMULATED_DEVICE_PREFIX);
-  const card = simulatedReader ? null : await prisma.warehouseAccessCard.findUnique({ where: { uid: input.uid }, include: { employee: { include: { stores: true, roles: { include: { role: { include: { permissions: true } } } } } } } });
   const warehouse = await prisma.warehouse.findUniqueOrThrow({ where: { id: input.warehouseId } });
+  let card = simulatedReader ? null : await prisma.warehouseAccessCard.findUnique({ where: { uid: input.uid }, include: { employee: { include: { stores: true, roles: { include: { role: { include: { permissions: true } } } } } } } });
   const demoCard = simulatedReader && input.uid === SIMULATED_CARD_UID && !!simulationUser;
   const employee = demoCard ? await prisma.user.findUnique({ where: { id: simulationUser!.id }, include: { stores: true, roles: { include: { role: { include: { permissions: true } } } } } }) : card?.employee;
   const granted = demoCard ? !!employee?.active : !!(card?.status === 'ACTIVE' && card.warehouseId === input.warehouseId && employee?.active && (employee.roles.some(row => row.role.code === 'OWNER') || (employee.stores.some(row => row.storeId === warehouse.storeId) && employee.roles.some(row => row.role.permissions.some(permission => ['inventory.read', 'warehouses.manage'].includes(permission.permissionCode))))));
@@ -212,4 +252,13 @@ export async function resolveAccessAlert(user: CurrentUser, alertId: string) {
   });
   if (event) publishWarehouseAccess(alert.warehouseId, { alert: updated, event });
   return updated;
+}
+
+export async function deleteAccessCard(user: CurrentUser, uid: string, warehouseId: string) {
+  await visibleWarehouse(user, warehouseId);
+  const deleted = await prisma.warehouseAccessCard.deleteMany({
+    where: { uid, warehouseId },
+  });
+  publishWarehouseAccess(warehouseId, { cardDeleted: uid });
+  return { uid, deleted: deleted.count > 0 };
 }

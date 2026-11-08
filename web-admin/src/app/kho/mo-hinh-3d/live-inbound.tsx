@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { createPortal } from 'react-dom';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ExcelJS from 'exceljs';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from './camera-preview';
@@ -16,7 +16,7 @@ import { getPurchaseOrders, type PurchaseOrder } from '../../../lib/purchase-ord
 import type { IotEvent } from '../../../lib/iot-api';
 import { subscribeIotEvents } from '../../../lib/iot-realtime';
 import type { DemoState } from './warehouse-twin-scene';
-import { useWarehouseDoor, WarehouseDoorPanel, type AccessKind, type AccessPhase } from './warehouse-door-experience';
+import { useWarehouseDoor, WarehouseDoorPanel, WarehouseCardStaffModal, WarehouseAccessCompleteModal, type AccessKind, type AccessPhase } from './warehouse-door-experience';
 const WarehouseTwinScene = dynamic(() => import('./warehouse-twin-scene').then(m => m.WarehouseTwinScene), { ssr: false, loading: () => <p>Đang tải mô hình minh họa…</p> });
 import './live-inbound.css';
 
@@ -42,9 +42,9 @@ const TIMELINE: Record<DemoFlow, TimelineStep[]> = {
 };
 const ACCESS_TIMELINE: Record<AccessKind, { title: string; detail: string; phases: AccessPhase[] }[]> = {
   authorized: [
-    { title: 'Đến cửa', detail: 'Nhân viên đi tới checkpoint', phases: ['APPROACH'] },
+    { title: 'Đến cửa', detail: 'Nhân viên đi tới checkpoint', phases: ['APPROACH', 'WAITING_REAL'] },
     { title: 'Quét RFID', detail: 'RC522 đọc thẻ nhân viên', phases: ['SCANNING'] },
-    { title: 'Xác thực', detail: 'Backend kiểm tra thẻ và quyền', phases: ['VERIFYING', 'GRANTED', 'WAITING_REAL'] },
+    { title: 'Xác thực', detail: 'Backend kiểm tra thẻ và quyền', phases: ['VERIFYING', 'GRANTED'] },
     { title: 'Mở cửa', detail: 'Reed Switch gửi DOOR_OPEN', phases: ['OPENING'] },
     { title: 'Vào kho', detail: 'Ghi truy cập hợp lệ', phases: ['ENTERING'] },
     { title: 'Đóng cửa', detail: 'Cảm biến báo cửa đóng và lưu nhật ký', phases: ['CLOSING', 'COMPLETE'] },
@@ -79,6 +79,7 @@ const NEXT_ON_TIMER: Record<DemoFlow, Partial<Record<DemoState, [DemoState, numb
 export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' }) {
   const [prepareOpen, setPrepareOpen] = useState(false);
   const [setupOpen, setSetupOpen] = useState(false), [loadedWarehouse, setLoadedWarehouse] = useState('');
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [prepared, setPrepared] = useState<CameraParcel | null>(null);
   const demoSession = useRef<{ parcel: CameraParcel; started: number } | null>(null);
   const motionRef = useRef<DemoState>('IDLE');
@@ -97,7 +98,8 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]), [warehouseId, setWarehouseId] = useState('');
   const [items, setItems] = useState<Inventory[]>([]), [orders, setOrders] = useState<PurchaseOrder[]>([]), [parcels, setParcels] = useState<Parcel[]>([]), [events, setEvents] = useState<IotEvent[]>([]);
   const [connected, setConnected] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
-  const access = useWarehouseDoor(warehouseId);
+  const [speedMultiplier, setSpeedMultiplier] = useState<1 | 1.5 | 2>(1.5);
+  const access = useWarehouseDoor(warehouseId, speedMultiplier);
   const [accessKind, setAccessKind] = useState<AccessKind | null>(null);
   const [doorInspector, setDoorInspector] = useState(false);
   const [lineId, setLineId] = useState(''), [noExpiry, setNoExpiry] = useState(false);
@@ -107,7 +109,6 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const [importBusy, setImportBusy] = useState(false);
   const [motion, setMotion] = useState<DemoState>('IDLE'), [run, setRun] = useState(0), [movingEvent, setMovingEvent] = useState<IotEvent | null>(null);
   motionRef.current = motion;
-  const [speedMultiplier, setSpeedMultiplier] = useState<1 | 1.5 | 2>(1.5);
   const [queue, setQueue] = useState<IotEvent[]>([]), [selected, setSelected] = useState<Inventory | null>(null), [zone, setZone] = useState('overview');
   // Inbound waits for a real camera-code event; transfer remains a simulated visualization.
   const [flow, setFlow] = useState<DemoFlow>('inbound'), [destId, setDestId] = useState(''), [transferSkuId, setTransferSkuId] = useState('');
@@ -416,6 +417,30 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     : motion === 'COMPLETE' ? (flow === 'inbound' ? 'Đã nhập kho và cất hàng. Có thể xem phiếu nhập và tồn kho.' : 'Phiếu thật thực hiện ở trang Phiếu điều chuyển')
     : movingEvent?.automationMessage ?? (flow === 'inbound' ? 'Cảnh minh họa, không tự cộng tồn' : `Mô phỏng ${transferItem?.sku.product.name ?? 'pallet'} → ${destination?.name ?? 'kho đích'}`);
   const tone = (status?: string | null) => status === 'RECEIVED' ? 'ok' : status === 'WAITING_CONFIRMATION' || status === 'READY' ? 'wait' : status === 'BLOCKED' || status === 'UNREGISTERED' ? 'bad' : 'neutral';
+  const scanStepStatus = useMemo(() => {
+    if (access.phase === 'SCANNING') {
+      return { text: '⏳ Đang chờ quét thẻ RC522…', tone: 'wait' };
+    }
+    if (access.lastAccess) {
+      const scanAgeMs = Date.now() - new Date(access.lastAccess.occurredAt).getTime();
+      if (scanAgeMs < 300000) {
+        const tStr = new Date(access.lastAccess.occurredAt).toLocaleTimeString('vi-VN');
+        if (access.lastAccess.eventType === 'ACCESS_GRANTED') {
+          const empName = access.lastAccess.employee?.name ?? 'Lý Chí Chương';
+          const uid = access.lastAccess.payload?.uid ? ` (${access.lastAccess.payload.uid})` : '';
+          return { text: `✓ Quét thành công: ${empName}${uid} lúc ${tStr}`, tone: 'ok' };
+        }
+        if (access.lastAccess.eventType === 'ACCESS_DENIED') {
+          const uid = access.lastAccess.payload?.uid ? ` (${access.lastAccess.payload.uid})` : '';
+          return { text: `✕ Quét bị từ chối · Thẻ chưa cấp quyền${uid} lúc ${tStr}`, tone: 'bad' };
+        }
+      }
+    }
+    if (access.phase === 'WAITING_REAL') {
+      return { text: 'Đưa thẻ vào RC522 để quét…', tone: 'prompt' };
+    }
+    return { text: 'RC522 sẵn sàng đọc thẻ', tone: 'neutral' };
+  }, [access.phase, access.lastAccess]);
   return <main className="live-inbound">
     {prepareOpen && <PrepareCameraDemo orders={orders} parcels={parcels} warehouses={warehouses} warehouseId={warehouseId} onWarehouseChange={id => { setLoadedWarehouse(''); setWarehouseId(id); }} onClose={() => { setPrepareOpen(false); void refresh(warehouseId).catch(e => setError(errorMessage(e))); }} onStart={parcel => { dismissedTagIds.current.clear(); demoSession.current = { parcel, started: Date.now() }; setPrepared(parcel); void refresh(warehouseId).catch(e => setError(errorMessage(e))); setPrepareOpen(false); setScanQueue([]); setQueue([]); setRun(n => n + 1); setPaused(false); setMovingEvent(null); setZone('receiving'); setMotion('TRUCK_APPROACHING'); }} />}
     {setupOpen && <div className="ui-modal" role="presentation"><div className="ui-modal-card" role="dialog" aria-modal="true" aria-labelledby="demo-setup-title"><header><h2 id="demo-setup-title">{accessKind ? 'Chọn kho truy cập' : 'Chuẩn bị chuyển hàng'}</h2><button type="button" aria-label="Đóng" onClick={() => setSetupOpen(false)}>×</button></header><div className="li-form"><label>{accessKind ? 'Chi nhánh · kho' : 'Chi nhánh · kho nguồn'}<select value={warehouseId} onChange={e => { setLoadedWarehouse(''); setWarehouseId(e.target.value); setTransferSkuId(''); }}>{warehouses.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label>{!accessKind && <><label>Chi nhánh · kho đích<select value={destId} onChange={e => setDestId(e.target.value)}>{!destinations.length && <option value="">Cần ít nhất 2 kho</option>}{destinations.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label><label>Hàng chuyển (minh họa)<select value={transferItem?.skuId ?? ''} disabled={loadedWarehouse !== warehouseId || !stocked.length} onChange={e => setTransferSkuId(e.target.value)}>{loadedWarehouse !== warehouseId ? <option value="">Đang tải hàng...</option> : !stocked.length ? <option value="">Kho nguồn chưa có tồn</option> : stocked.map(i => <option key={i.skuId} value={i.skuId}>{i.sku.product.name} · tồn {i.onHand} {i.sku.product.unit}</option>)}</select></label><p className="li-muted">Đây là mô phỏng; phiếu chuyển hàng thật được tạo tại <Link href="/dieu-chuyen">Điều chuyển</Link>.</p></>}</div><footer><button type="button" disabled={accessKind ? loadedWarehouse !== warehouseId || !access.device || !access.door : loadedWarehouse !== warehouseId || !destination || !transferItem} onClick={() => { setSetupOpen(false); if (accessKind) { void access.start(accessKind); return; } setRun(n => n + 1); setPaused(false); setMovingEvent(null); setZone('shipping'); setMotion('TRANSFER_PREPARING'); }}>Bắt đầu demo</button></footer></div></div>}
@@ -489,6 +514,13 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
         <div className="li-head-nav">
           <Link className="li-nav-card" href={section === 'scene' ? '/kho/mo-hinh-3d/camera' : '/kho/mo-hinh-3d'}><span>{section === 'scene' ? '▣' : '◈'}</span><strong>{section === 'scene' ? 'Kiện hàng & tem QR' : 'Mô hình kho 3D'}</strong><small>{section === 'scene' ? 'Đăng ký và in mã kiện' : 'Quay lại sơ đồ kho'}</small></Link>
           {section === 'scene' && <Link className="li-nav-card" href="/dieu-chuyen"><span>⇄</span><strong>Phiếu điều chuyển</strong><small>Tạo và theo dõi chuyển kho</small></Link>}
+          {section === 'scene' && (
+            <button type="button" className="li-nav-card li-nav-btn" onClick={() => setStaffModalOpen(true)}>
+              <span>📇</span>
+              <strong>Gán thẻ nhân viên</strong>
+              <small>Thẻ RFID & Nhân viên kho</small>
+            </button>
+          )}
         </div>
       </div>
     </header>
@@ -503,16 +535,28 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
         <div className="li-timeline" aria-label={`Tiến trình ${accessKind ? ACCESS_NAMES[accessKind] : flow === 'inbound' ? 'nhập hàng' : 'điều chuyển'}, ${timeline.length} bước`}>
           <div className="li-timeline-heading"><div><h2>Tiến trình · {accessKind ? ACCESS_NAMES[accessKind] : flow === 'inbound' ? 'Nhập hàng' : 'Chuyển hàng'}</h2><small>{(accessKind ? access.phase : motion) === 'IDLE' ? `${timeline.length} bước · sẵn sàng bắt đầu` : (accessKind ? access.phase : motion) === 'COMPLETE' ? `Hoàn tất ${timeline.length}/${timeline.length} bước` : `Bước ${Math.min(shownStep + 1, timeline.length)}/${timeline.length} · ${timeline[Math.max(activeStep, 0)]?.title ?? 'Đang chuẩn bị'}`}</small></div></div>
           <ol className={`li-timeline-list ${accessKind ? 'access' : ''}`}>
-            {timeline.map((step, index) => <li key={step.title} className={index < activeStep || (accessKind ? access.phase : motion) === 'COMPLETE' ? 'done' : index === activeStep ? 'current' : ''} aria-current={index === activeStep && (accessKind ? access.phase : motion) !== 'IDLE' ? 'step' : undefined}>
-              <span className="li-timeline-number">{index < activeStep || (accessKind ? access.phase : motion) === 'COMPLETE' ? '✓' : index + 1}</span>
-              <span className="li-timeline-copy"><strong>{step.title}</strong><small>{step.detail}</small></span>
-            </li>)}
+            {timeline.map((step, index) => {
+              const isDone = index < activeStep || (accessKind ? access.phase : motion) === 'COMPLETE';
+              const isCurrent = index === activeStep;
+              const isScanStep = accessKind && index === 1;
+              return <li key={step.title} className={isDone ? 'done' : isCurrent ? 'current' : ''} aria-current={isCurrent && (accessKind ? access.phase : motion) !== 'IDLE' ? 'step' : undefined}>
+                <span className="li-timeline-number">{isDone ? '✓' : index + 1}</span>
+                <span className="li-timeline-copy">
+                  <strong>{step.title}</strong>
+                  {isScanStep ? (
+                    <small className={`li-scan-indicator tone-${scanStepStatus.tone}`}>{scanStepStatus.text}</small>
+                  ) : (
+                    <small>{step.detail}</small>
+                  )}
+                </span>
+              </li>;
+            })}
           </ol>
         </div>
         <div className="live-scene">
           {warehouse && <WarehouseTwinScene key={`${flow}-${warehouseId}-${flow === 'transfer' ? destId : ''}`} demoRunId={run} onMotionComplete={onMotionComplete} warehouseName={warehouse.name}
             accessDoorState={access.door?.state ?? 'UNKNOWN'} accessAlert={access.activeAlerts.length > 0}
-            accessFocus={!!accessKind || doorInspector} accessEmployeePhase={accessKind || doorInspector ? access.phase : 'IDLE'} onAccessMotionComplete={access.motionComplete} onSelectDoor={() => setDoorInspector(true)}
+            accessFocus={!!accessKind || doorInspector} accessEmployeePhase={accessKind || doorInspector ? access.phase : 'IDLE'} accessEmployeeName={access.lastAccess?.employee?.name ?? access.monitor.cards[0]?.employee.name} onAccessMotionComplete={access.motionComplete} onSelectDoor={() => setDoorInspector(true)}
             destinationWarehouseId={flow === 'transfer' ? destId : ''}
             campusWarehouses={[warehouse, ...warehouses.filter(w => w.id !== warehouse.id)
               .sort((a, b) => Number(b.id === destId && flow === 'transfer') - Number(a.id === destId && flow === 'transfer')).slice(0, 2)]
@@ -527,6 +571,16 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
           <div className="live-demo-controls">
             {!accessKind && motion === 'WAITING_DISPATCH_CONFIRM' && <button onClick={() => setMotion('DISPATCHED')}>Xác nhận xuất kho</button>}
             {!accessKind && motion === 'WAITING_RECEIVE_CONFIRM' && <button onClick={() => setMotion('RECEIVED')}>Xác nhận nhận hàng</button>}
+            {accessKind && access.phase === 'SCANNING' && (
+              <button
+                type="button"
+                className="li-ghost"
+                style={{ borderColor: '#0d9488', color: '#0f766e', fontWeight: 600 }}
+                onClick={() => void access.action({ action: 'RFID', uid: '6563CC04' }, 'Đã quét thẻ thử: Lý Chí Chương (6563CC04)')}
+              >
+                📇 Quét thẻ thử (6563CC04)
+              </button>
+            )}
             {accessKind && access.door?.state === 'OPEN' && access.monitor.mode === 'SIMULATION' && <button className="li-ghost" disabled={access.busy} onClick={() => void access.close()}>Đóng cửa kết thúc</button>}
             {!running && <button disabled={!warehouseId || (accessKind ? !access.canSimulate : flow === 'inbound' && (!canReceive || queue.length > 0))} onClick={startDemo}>▶ {(accessKind ? access.phase : motion) === 'COMPLETE' ? 'Chạy lại' : 'Chạy demo'}</button>}
             {running && (accessKind ? <button className="li-ghost" onClick={resetDemo}>Dừng theo dõi</button> : <><button className="li-ghost" onClick={() => setPaused(v => !v)}>{paused ? 'Tiếp tục' : 'Tạm dừng'}</button><button className="li-ghost" onClick={resetDemo}>Đặt lại</button></>)}
@@ -541,7 +595,20 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
           {selected && <div className="li-selected"><ProductImage src={selected.sku.product.imageUrl} name={selected.sku.product.name} size="sm"/><div><strong>{selected.sku.product.name}</strong><small>Tồn {selected.onHand} {selected.sku.product.unit}</small></div><button type="button" className="li-close" aria-label="Bỏ chọn" onClick={() => setSelected(null)}>×</button></div>}
           <div className="li-legend"><span><i className="rx" />Cổng nhận</span><span><i className="tx" />Cổng xuất</span><span>Kéo để xoay · cuộn để zoom · bấm thùng để xem</span></div>
         </div>
-        <WarehouseDoorPanel access={access} warehouseId={warehouseId} warehouseName={warehouse?.name ?? 'Kho chưa chọn'} active={!!accessKind || doorInspector}/>
+        <WarehouseCardStaffModal
+          isOpen={staffModalOpen}
+          onClose={() => setStaffModalOpen(false)}
+          access={access}
+          warehouseId={warehouseId}
+          warehouseName={warehouse?.name ?? 'Kho chưa chọn'}
+        />
+        <WarehouseAccessCompleteModal
+          isOpen={accessKind !== null && access.phase === 'COMPLETE'}
+          onClose={access.stop}
+          onRestart={() => void access.start('authorized')}
+          access={access}
+          warehouseName={warehouse?.name ?? 'Kho Ba Đình'}
+        />
     </section></>}
     {section === 'rfid' && <>
     {canReceive && <section className="li-card" ref={registrationRef}>

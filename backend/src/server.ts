@@ -11,8 +11,18 @@ import { attachIotRealtime } from './modules/iot/iot.realtime.js';
 import { sweepOpenDoors } from './modules/iot/warehouse-access.service.js';
 
 const httpServer = createServer(createApp(checkDatabase));
+const allowedOrigins = env.CORS_ORIGINS.split(',').map(value => value.trim());
 const io = new SocketServer(httpServer, {
-  cors: { origin: env.CORS_ORIGINS.split(',').map(value => value.trim()), credentials: true },
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || (env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin))) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+  },
 });
 attachIotRealtime(io);
 io.use(async (socket, next) => {

@@ -38,7 +38,17 @@ export function createApp(checkDatabase: () => Promise<void>) {
   app.use(helmet({ contentSecurityPolicy: { directives: {
     upgradeInsecureRequests: env.NODE_ENV === 'production' ? [] : null,
   } } }));
-  app.use(cors({ origin: env.CORS_ORIGINS.split(',').map(value => value.trim()), credentials: true }));
+  const allowedOrigins = env.CORS_ORIGINS.split(',').map(value => value.trim());
+  app.use(cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || (env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin))) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
+    credentials: true,
+  }));
   app.use(pinoHttp({ logger }));
   // A 20 MB image becomes ~27 MB when sent as a base64 JSON data URL.
   app.use(express.json({ limit: '30mb' }));

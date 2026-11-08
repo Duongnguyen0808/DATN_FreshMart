@@ -15,6 +15,7 @@ type CameraEndpointState = {
 
 let latestCameraState: CameraEndpointState | null = null;
 let lastSyncedSignature = '';
+let lastAttemptedSignature = '';
 let syncInProgress: Promise<{
   synced: boolean;
   ssid: string;
@@ -122,16 +123,17 @@ export async function syncLaptopWifiOverUsb(force = false) {
       };
     }
     const signature = `${ssid}|${password}|${hostIp}`;
-    if (!force && signature === lastSyncedSignature && latestCameraState?.cameraIp) {
+    if (!force && (signature === lastSyncedSignature || signature === lastAttemptedSignature)) {
       return {
-        synced: true,
+        synced: signature === lastSyncedSignature,
         ssid,
         hostIp,
-        cameraIp: latestCameraState.cameraIp,
-        port: latestCameraState.port,
-        message: `Đã đồng bộ Wi-Fi ${ssid} (${latestCameraState.cameraIp}).`,
+        cameraIp: latestCameraState?.cameraIp ?? '',
+        port: latestCameraState?.port ?? '',
+        message: `Đã đồng bộ Wi-Fi ${ssid} (${latestCameraState?.cameraIp || hostIp}).`,
       };
     }
+    lastAttemptedSignature = signature;
     if (process.platform !== 'win32') {
       return {
         synced: false,

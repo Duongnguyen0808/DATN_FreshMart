@@ -10,7 +10,7 @@ import { authenticate, requirePermission } from '../../middleware/authenticate.j
 import { iotEventInput, iotEventListInput, iotTagMappingInput } from './iot.schemas.js';
 import { prisma } from '../../common/database.js';
 import { ingestEvent, listEvents, listTagMappings, upsertTagMapping } from './iot.service.js';
-import { assignAccessCard, heartbeatAccessDevice, ingestAccessDoor, ingestAccessRfid, monitorWarehouseAccess, registerAccessDevice, registerAccessDoor, resolveAccessAlert, setupAccessSimulation, SIMULATED_DEVICE_PREFIX } from './warehouse-access.service.js';
+import { assignAccessCard, createWarehouseEmployee, deleteAccessCard, heartbeatAccessDevice, ingestAccessDoor, ingestAccessRfid, monitorWarehouseAccess, registerAccessDevice, registerAccessDoor, resolveAccessAlert, setupAccessSimulation, SIMULATED_DEVICE_PREFIX } from './warehouse-access.service.js';
 import { randomUUID } from 'node:crypto';
 import { startCameraDemo, getCameraDemo } from './camera-demo-session.service.js';
 import { ingestCameraFrame } from './camera-image.service.js';
@@ -57,6 +57,15 @@ iotRoutes.post('/iot/access/doors', authenticate, requirePermission('warehouses.
 iotRoutes.post('/iot/access/cards', authenticate, requirePermission('warehouses.manage'), async (request, response) => {
   response.status(201).json(ok(await assignAccessCard(request.currentUser, cardInput.parse(request.body))));
 });
+iotRoutes.delete('/iot/access/cards/:uid', authenticate, requirePermission('warehouses.manage'), async (request, response) => {
+  const uid = accessUid.parse(request.params.uid);
+  const warehouseId = z.string().uuid().parse(request.query.warehouseId);
+  response.json(ok(await deleteAccessCard(request.currentUser, uid, warehouseId)));
+});
+iotRoutes.post('/iot/access/employees', authenticate, requirePermission('warehouses.manage'), async (request, response) => {
+  const input = z.object({ name: z.string().trim().min(2).max(100), email: z.string().trim().email().optional().or(z.literal('')), warehouseId: z.string().uuid() }).strict().parse(request.body);
+  response.status(201).json(ok(await createWarehouseEmployee(request.currentUser, input)));
+});
 iotRoutes.post('/iot/access/simulation/setup', authenticate, requirePermission('inventory.read'), async (request, response) => {
   const input = z.object({ warehouseId: z.string().uuid() }).strict().parse(request.body);
   response.json(ok(await setupAccessSimulation(request.currentUser, input.warehouseId)));
@@ -72,17 +81,22 @@ iotRoutes.post('/iot/access/simulation/alerts/:id/resolve', authenticate, requir
 });
 iotRoutes.post('/iot/access/rfid', deviceLimiter, async (request, response) => {
   requireDeviceToken(request.header('x-iot-device-token'));
-  const result = await ingestAccessRfid(rfidAccessInput.parse(request.body));
+  const parsed = rfidAccessInput.parse(request.body);
+  recordCameraDeviceIp(parsed.deviceId, request.header('x-iot-device-ip'), request.ip);
+  const result = await ingestAccessRfid(parsed);
   response.status(result.duplicate ? 200 : 202).json(ok(result));
 });
 iotRoutes.post('/iot/door/event', deviceLimiter, async (request, response) => {
   requireDeviceToken(request.header('x-iot-device-token'));
-  const result = await ingestAccessDoor(doorAccessInput.parse(request.body));
+  const parsed = doorAccessInput.parse(request.body);
+  recordCameraDeviceIp(parsed.deviceId, request.header('x-iot-device-ip'), request.ip);
+  const result = await ingestAccessDoor(parsed);
   response.status(result.duplicate ? 200 : 202).json(ok(result));
 });
 iotRoutes.post('/iot/access/heartbeat', deviceLimiter, async (request, response) => {
   requireDeviceToken(request.header('x-iot-device-token'));
   const input = z.object({ deviceId: accessCode, warehouseId: z.string().uuid() }).strict().parse(request.body);
+  recordCameraDeviceIp(input.deviceId, request.header('x-iot-device-ip'), request.ip);
   response.json(ok(await heartbeatAccessDevice(input)));
 });
 iotRoutes.post('/iot/access/simulate', authenticate, requirePermission('inventory.read'), async (request, response) => {
@@ -90,11 +104,22 @@ iotRoutes.post('/iot/access/simulate', authenticate, requirePermission('inventor
     z.object({ action: z.literal('RFID'), warehouseId: z.string().uuid(), deviceId: accessCode, uid: accessUid }).strict(),
     z.object({ action: z.literal('DOOR'), warehouseId: z.string().uuid(), deviceId: accessCode, doorId: accessCode, state: z.enum(['OPEN', 'CLOSED']) }).strict(),
   ]).parse(request.body);
-  const monitor = await monitorWarehouseAccess(request.currentUser, input.warehouseId);
-  if (monitor.mode === 'REAL_IOT') throw new AppError(409, 'REAL_DEVICE_ONLINE', 'Thiết bị thật đang trực tuyến; tạm ngừng mô phỏng để ưu tiên dữ liệu vật lý.');
-  if (!input.deviceId.startsWith(SIMULATED_DEVICE_PREFIX)) throw new AppError(400, 'SIMULATION_DEVICE_REQUIRED', 'Hãy sử dụng thiết bị mô phỏng để không thay đổi cửa vật lý.');
-  const base = { eventId: randomUUID(), deviceId: input.deviceId, warehouseId: input.warehouseId, timestamp: new Date().toISOString() };
-  const result = input.action === 'RFID' ? await ingestAccessRfid({ ...base, uid: input.uid }, 'SIMULATION', request.currentUser) : await ingestAccessDoor({ ...base, doorId: input.doorId, state: input.state }, 'SIMULATION');
+  const suffix = input.warehouseId.replaceAll('-', '').toUpperCase();
+  const simDeviceCode = `${SIMULATED_DEVICE_PREFIX}${suffix}`;
+  const effectiveDeviceId = input.deviceId.startsWith(SIMULATED_DEVICE_PREFIX) ? input.deviceId : simDeviceCode;
+  await prisma.warehouseAccessDevice.upsert({ where: { code: effectiveDeviceId }, create: { code: effectiveDeviceId, name: 'ESP32 mô phỏng', warehouseId: input.warehouseId }, update: {} });
+  let effectiveDoorId = input.action === 'DOOR' ? input.doorId : undefined;
+  if (effectiveDoorId) {
+    const simDoorCode = `SIM-DOOR-${suffix}`;
+    const targetDoorCode = effectiveDoorId.startsWith('SIM-DOOR-') ? effectiveDoorId : simDoorCode;
+    const simDevice = await prisma.warehouseAccessDevice.findUnique({ where: { code: effectiveDeviceId } });
+    if (simDevice) {
+      await prisma.warehouseAccessDoor.upsert({ where: { code: targetDoorCode }, create: { code: targetDoorCode, name: 'Cửa mô phỏng', warehouseId: input.warehouseId, deviceId: simDevice.id }, update: {} });
+      effectiveDoorId = targetDoorCode;
+    }
+  }
+  const base = { eventId: randomUUID(), deviceId: effectiveDeviceId, warehouseId: input.warehouseId, timestamp: new Date().toISOString() };
+  const result = input.action === 'RFID' ? await ingestAccessRfid({ ...base, uid: input.uid }, 'SIMULATION', request.currentUser) : await ingestAccessDoor({ ...base, doorId: effectiveDoorId!, state: input.state }, 'SIMULATION');
   response.status(result.duplicate ? 200 : 202).json(ok(result));
 });
 

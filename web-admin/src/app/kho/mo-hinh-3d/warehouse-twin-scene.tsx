@@ -37,7 +37,7 @@ type Props = {
   onSelectZone: (zone: string) => void; demoState: DemoState; demoPaused: boolean;
   demoProduct: { code: string; name: string; unit: string } | null; demoInventory?: Inventory;
   accessDoorState?: 'OPEN' | 'CLOSED' | 'UNKNOWN'; accessAlert?: boolean;
-  accessFocus?: boolean; onAccessMotionComplete?: (phase: AccessPhase) => void; accessEmployeePhase?: AccessPhase; onSelectDoor?: () => void;
+  accessFocus?: boolean; onAccessMotionComplete?: (phase: AccessPhase) => void; accessEmployeePhase?: AccessPhase; accessEmployeeName?: string; onSelectDoor?: () => void;
   speedMultiplier?: number;
 };
 
@@ -159,52 +159,84 @@ function Rack({ x, z, items, onSelect, selectedItemId }: { x: number; z: number;
 function speedScale(raw = 1) { return raw === 1.5 ? 1.6 : raw === 2 ? 2.2 : raw; }
 function vehicleSpeedScale(raw = 1) { return raw === 1.5 ? 2.4 : raw === 2 ? 4 : raw; }
 function AccessDoor({ state, alert, phase, speedMultiplier = 1, onSelect, onComplete }: { state: 'OPEN' | 'CLOSED' | 'UNKNOWN'; alert: boolean; phase: AccessPhase; speedMultiplier?: number; onSelect?: () => void; onComplete?: (phase: AccessPhase) => void }) {
-  const left = useRef<THREE.Group>(null), right = useRef<THREE.Group>(null);
-  const amount = useRef(0), velocity = useRef(0);
+  const curtain = useRef<THREE.Group>(null), drum = useRef<THREE.Mesh>(null);
+  const amount = useRef(state === 'OPEN' ? 1 : 0), velocity = useRef(0);
   const reported = useRef<AccessPhase | null>(null);
   const speedRef = useRef(speedMultiplier);
   speedRef.current = speedMultiplier;
   useEffect(() => { reported.current = null; }, [phase]);
   useFrame((_, delta) => {
     const target = state === 'OPEN' ? 1 : 0;
-    // Motorised sliding door: spring-damper gives a soft start, gentle deceleration and a tiny settle.
-    const dt = Math.min(delta, .05) * speedScale(speedRef.current);
-    velocity.current += ((target - amount.current) * 38 - velocity.current * 10.5) * dt;
-    amount.current = THREE.MathUtils.clamp(amount.current + velocity.current * dt, -.02, 1.02);
-    if (Math.abs(target - amount.current) < .002 && Math.abs(velocity.current) < .01) { amount.current = target; velocity.current = 0; }
-    if (left.current) left.current.position.x = -.36 - amount.current * .74;
-    if (right.current) right.current.position.x = .36 + amount.current * .74;
+    // Motorised industrial roller shutter door: smooth, realistic vertical roll-up and roll-down (~2.2s at 1x)
+    const dt = Math.min(delta, .05);
+    const speed = speedScale(speedRef.current);
+    const motorRate = 0.45 * speed;
+    if (amount.current < target) {
+      amount.current = Math.min(target, amount.current + motorRate * dt);
+    } else if (amount.current > target) {
+      amount.current = Math.max(target, amount.current - motorRate * dt);
+    }
+    if (curtain.current) {
+      curtain.current.scale.y = Math.max(0.035, 1 - amount.current * 0.965);
+    }
+    if (drum.current) {
+      drum.current.rotation.x = amount.current * Math.PI * 6;
+    }
     if (reported.current !== phase && Math.abs(amount.current - target) < .01 && ((phase === 'OPENING' && target === 1) || (phase === 'CLOSING' && target === 0))) {
       reported.current = phase; onComplete?.(phase);
     }
   });
-  const checkpoint = alert ? '#e4534c' : phase === 'SCANNING' || phase === 'VERIFYING' ? '#efba45' : ['GRANTED','OPENING','ENTERING','WAITING_ALERT'].includes(phase) || state === 'OPEN' ? '#28b780' : '#8caaa9';
-  return <group position={[-8.3,0,2.5]} rotation={[0,-Math.PI/2,0]} onClick={event => { event.stopPropagation(); onSelect?.(); }} onPointerOver={() => { document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
-    {/* Full-depth portal frame visible from both outside and inside the warehouse */}
-    {[-.88,.88].map(x => <mesh key={x} position={[x,1.58,0]} castShadow><boxGeometry args={[.18,3.16,.52]}/><meshStandardMaterial color={alert?'#b84e46':'#355c61'} roughness={.6}/></mesh>)}
-    <mesh position={[0,3.16,0]} castShadow><boxGeometry args={[2.12,.24,.56]}/><meshStandardMaterial color="#355c61" roughness={.6}/></mesh>
-    {/* Glowing LED status bar on both exterior and interior sides + overhead canopy */}
-    {[-.29,.29].map(z => <mesh key={`led-${z}`} position={[0,3.16,z]}><boxGeometry args={[1.76,.09,.02]}/><meshBasicMaterial color={checkpoint}/></mesh>)}
-    <mesh position={[0,3.34,.55]} rotation={[.12,0,0]} castShadow><boxGeometry args={[2.35,.08,.95]}/><meshStandardMaterial color="#426c70" roughness={.5}/></mesh>
-    {/* Reed Switch magnetic sensor mounted at the top header */}
-    <mesh position={[.42,2.98,.26]}><boxGeometry args={[.28,.08,.08]}/><meshStandardMaterial color={state==='OPEN'?'#efba45':'#28b780'} emissive={state==='OPEN'?'#efba45':'#28b780'} emissiveIntensity={.45}/></mesh>
-    {/* Yellow threshold safety mat visible from both inside and outside */}
-    <mesh position={[0,.012,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[1.72,1.35]}/><meshBasicMaterial color={alert?'#e4534c':'#f2c144'} transparent opacity={.45}/></mesh>
-    {/* Sliding double-leaf security doors visible from both sides */}
-    {[-1,1].map(side => <group key={side} ref={side < 0 ? left : right} position={[side*.36,0,0]}>
-      <mesh position={[0,1.5,0]} castShadow><boxGeometry args={[.71,2.95,.14]}/><meshStandardMaterial color={alert?'#df9481':'#55c4bc'} roughness={.55}/></mesh>
-      <mesh position={[0,2.05,0]}><boxGeometry args={[.48,.85,.16]}/><meshStandardMaterial color="#d4f4ef" transparent opacity={.72}/></mesh>
-      {[-.09,.09].map(z => <mesh key={z} position={[-side*.23,1.3,z]}><boxGeometry args={[.035,.38,.04]}/><meshStandardMaterial color="#1f4c50"/></mesh>)}
-    </group>)}
-    {/* RFID reader terminal pedestal */}
-    <mesh position={[1.28,1.35,.22]} castShadow><boxGeometry args={[.46,.74,.28]}/><meshStandardMaterial color="#25484f"/></mesh>
-    <mesh position={[1.28,1.53,.37]}><boxGeometry args={[.3,.16,.025]}/><meshBasicMaterial color={checkpoint}/></mesh>
-    <mesh position={[1.28,1.26,.37]}><boxGeometry args={[.26,.2,.025]}/><meshStandardMaterial color="#e3f1ec"/></mesh>
-    <Label position={[1.28,2.04,.24]} size={.13}>RFID · REED SWITCH</Label>
-    <Label position={[0,3.72,.1]} size={.19} color={alert?'#b23930':'#145a5a'}>{alert?'WARNING · CỬA KHO':phase==='OPENING'?'OPENING · CỬA KHO':phase==='CLOSING'?'CLOSING · CỬA KHO':state==='OPEN'?'OPEN · CỬA NHÂN VIÊN':state==='CLOSED'?'CLOSED · CỬA NHÂN VIÊN':'CỬA NHÂN VIÊN'}</Label>
+  const checkpoint = alert ? '#e4534c' : phase === 'SCANNING' || phase === 'VERIFYING' ? '#efba45' : ['GRANTED','OPENING','ENTERING','WAITING_ALERT'].includes(phase) || state === 'OPEN' ? '#28b780' : '#0d9488';
+  const slatCount = 7;
+  return <group position={[0, 0, 6.82]} onClick={event => { event.stopPropagation(); onSelect?.(); }} onPointerOver={() => { document.body.style.cursor = 'pointer'; }} onPointerOut={() => { document.body.style.cursor = ''; }}>
+    {/* Heavy-duty vertical side guide tracks for the front roller shutter */}
+    {[-6.46, 6.46].map(x => <mesh key={`guide-${x}`} position={[x, 1.82, 0.08]} castShadow><boxGeometry args={[0.18, 3.64, 0.28]}/><meshStandardMaterial color={alert ? '#b84e46' : '#243f4b'} roughness={0.5} metalness={0.35}/></mesh>)}
+    {/* Overhead roller drum inside the front portal header */}
+    <mesh ref={drum} position={[0, 3.66, 0.06]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.16, 0.16, 12.76, 12]}/><meshStandardMaterial color="#47626e" metalness={0.55} roughness={0.38}/></mesh>
+    {/* Glowing LED status strip across the front portal header */}
+    <mesh position={[0, 3.88, 0.26]}><boxGeometry args={[12.8, 0.1, 0.04]}/><meshBasicMaterial color={checkpoint}/></mesh>
+    {/* Reed Switch magnetic door sensor mounted at top-left of the roller frame */}
+    <mesh position={[-5.95, 3.5, 0.25]}><boxGeometry args={[0.38, 0.11, 0.1]}/><meshStandardMaterial color={state === 'OPEN' ? '#efba45' : '#28b780'} emissive={state === 'OPEN' ? '#efba45' : '#28b780'} emissiveIntensity={0.55}/></mesh>
+    {/* Safety yellow-black threshold line across the front entrance */}
+    <mesh position={[0, 0.014, 0.18]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[12.76, 0.42]}/><meshBasicMaterial color={alert ? '#e4534c' : '#f59e0b'} transparent opacity={0.65}/></mesh>
+    {/* Motorised vertical roller-shutter curtain anchored at top header (y = 3.62) */}
+    <group ref={curtain} position={[0, 3.62, 0.06]}>
+      {/* Main metallic backing sheet */}
+      <mesh position={[0, -1.81, 0]} castShadow receiveShadow>
+        <boxGeometry args={[12.76, 3.58, 0.09]}/>
+        <meshStandardMaterial color={alert ? '#d9776c' : '#8fa6b2'} roughness={0.46} metalness={0.42}/>
+      </mesh>
+      {/* Horizontal ribbed industrial roller slats */}
+      {Array.from({ length: slatCount }, (_, i) => {
+        const y = -0.26 - i * (3.1 / slatCount);
+        return <mesh key={`slat-${i}`} position={[0, y, 0]}>
+          <boxGeometry args={[12.72, 0.22, 0.13]}/>
+          <meshStandardMaterial color={alert ? '#c85a4f' : i % 2 === 0 ? '#b8c9d1' : '#9fb4be'} roughness={0.42} metalness={0.48}/>
+        </mesh>;
+      })}
+      {/* Glazed vision strip across eye level */}
+      <mesh position={[0, -1.48, 0]}>
+        <boxGeometry args={[11.2, 0.28, 0.15]}/>
+        <meshStandardMaterial color="#d8f5f1" transparent opacity={0.78} emissive="#38bdf8" emissiveIntensity={0.12}/>
+      </mesh>
+      {/* Heavy bottom sealing bar with high-visibility yellow hazard stripe */}
+      <mesh position={[0, -3.54, 0]}>
+        <boxGeometry args={[12.78, 0.16, 0.16]}/>
+        <meshStandardMaterial color={alert ? '#dc2626' : '#f59e0b'} roughness={0.45} metalness={0.25}/>
+      </mesh>
+    </group>
+    {/* RFID + Reed Switch access control pedestal stationed at the left front column */}
+    <group position={[-7.25, 0, 0.62]}>
+      <mesh position={[0, 0.58, 0]} castShadow><boxGeometry args={[0.22, 1.16, 0.22]}/><meshStandardMaterial color="#1e3a46" metalness={0.35} roughness={0.5}/></mesh>
+      <mesh position={[0, 1.28, 0.06]} castShadow><boxGeometry args={[0.52, 0.68, 0.26]}/><meshStandardMaterial color="#18333d" roughness={0.45}/></mesh>
+      <mesh position={[0, 1.44, 0.2]}><boxGeometry args={[0.36, 0.18, 0.025]}/><meshBasicMaterial color={checkpoint}/></mesh>
+      <mesh position={[0, 1.16, 0.2]}><boxGeometry args={[0.3, 0.22, 0.025]}/><meshStandardMaterial color="#e6f7f5" emissive={checkpoint} emissiveIntensity={phase === 'SCANNING' ? 0.5 : 0.15}/></mesh>
+      <Label position={[0, 1.92, 0.12]} size={0.14}>RFID · REED SWITCH</Label>
+    </group>
+    <Label position={[0, 4.18, 0.32]} size={0.21} color={alert ? '#b23930' : '#0f5257'}>{alert ? 'WARNING · CỬA CUỐN KHO CHÍNH' : phase === 'OPENING' ? 'ĐANG CUỐN LÊN · CỬA KHO CHÍNH' : phase === 'CLOSING' ? 'ĐANG HẠ XUỐNG · CỬA KHO CHÍNH' : state === 'OPEN' ? 'OPEN · CỬA CUỐN KHO CHÍNH' : 'CLOSED · CỬA CUỐN KHO CHÍNH'}</Label>
   </group>;
 }
-function WarehouseEmployee({ phase, doorOpen, speedMultiplier = 1, onComplete, targetsRef }: { phase: AccessPhase; doorOpen: boolean; speedMultiplier?: number; onComplete?: (phase: AccessPhase) => void; targetsRef?: React.MutableRefObject<SceneTargets> }) {
+function WarehouseEmployee({ phase, doorOpen, employeeName, speedMultiplier = 1, onComplete, targetsRef }: { phase: AccessPhase; doorOpen: boolean; employeeName?: string; speedMultiplier?: number; onComplete?: (phase: AccessPhase) => void; targetsRef?: React.MutableRefObject<SceneTargets> }) {
   const actor = useRef<THREE.Group>(null), body = useRef<THREE.Group>(null), torso = useRef<THREE.Group>(null);
   useEffect(() => {
     if (targetsRef) targetsRef.current.employee = actor.current;
@@ -216,20 +248,32 @@ function WarehouseEmployee({ phase, doorOpen, speedMultiplier = 1, onComplete, t
   const speedRef = useRef(speedMultiplier);
   speedRef.current = speedMultiplier;
   const target = useMemo(() => new THREE.Vector3(), []), offset = useMemo(() => new THREE.Vector3(), []);
-  useEffect(() => { elapsed.current = 0; reported.current = false; if (phase === 'APPROACH' || phase === 'IDLE') entered.current = false; }, [phase]);
+  useEffect(() => {
+    elapsed.current = 0;
+    reported.current = false;
+    if (phase === 'APPROACH' || phase === 'IDLE' || phase === 'WAITING_REAL') {
+      entered.current = false;
+      if (actor.current && actor.current.position.z < 7.5) {
+        actor.current.position.set(-7.25, 0, 10.6);
+        actor.current.rotation.y = Math.PI;
+      }
+    }
+  }, [phase]);
   useFrame(({ clock }, rawDelta) => {
     const sp = speedScale(speedRef.current);
     const delta = Math.min(rawDelta, .05) * sp; elapsed.current += delta;
     if (!actor.current) return;
-    target.set(-12.5, 0, 3.75);
-    if (phase !== 'IDLE' && phase !== 'WAITING_REAL') target.set(-9.55, 0, 3.75);
+    // Wait in the front yard facing the main roller-shutter entrance.
+    target.set(-7.25, 0, 10.6);
+    if (phase !== 'IDLE' && phase !== 'WAITING_REAL') target.set(-7.25, 0, 8.05);
     if ((['ENTERING','CLOSING','COMPLETE','WAITING_ALERT'].includes(phase) || entered.current) && doorOpen) {
-      // Align with the doorway outside the wall before crossing it.
-      if (Math.abs(actor.current.position.z - 2.5) > .035) target.set(-9.55, 0, 2.5); else target.set(-6.7, 0, 2.5);
-      if (actor.current.position.x > -7) entered.current = true;
-    } else if (entered.current) target.set(-6.7, 0, 2.5);
-    // A closed sensor never permits walking through the wall.
-    if (!doorOpen && actor.current.position.x < -8.52 && target.x > -8.52) target.set(-9.55, 0, 2.5);
+      // Step sideways to clear the front portal column, then walk straight through the main roller shutter door.
+      if (Math.abs(actor.current.position.x - -4.6) > .12 && actor.current.position.z > 6.8) target.set(-4.6, 0, 8.05);
+      else target.set(-4.6, 0, 4.2);
+      if (actor.current.position.z < 5.8) entered.current = true;
+    } else if (entered.current) target.set(-4.6, 0, 4.2);
+    // A closed roller shutter never permits walking through the front entrance.
+    if (!doorOpen && actor.current.position.z > 7.2 && target.z < 7.2) target.set(-4.6, 0, 7.85);
     offset.copy(target).sub(actor.current.position);
     const distance = offset.length();
     const moving = distance > .025;
@@ -241,8 +285,8 @@ function WarehouseEmployee({ phase, doorOpen, speedMultiplier = 1, onComplete, t
       actor.current.position.addScaledVector(offset.normalize(), step);
       stride.current += step;
       actor.current.rotation.y = dampAngle(actor.current.rotation.y, Math.atan2(offset.x, offset.z), 9, delta);
-    } else if (phase === 'SCANNING' || phase === 'VERIFYING') {
-      actor.current.rotation.y = dampAngle(actor.current.rotation.y, Math.PI / 2, 7, delta);
+    } else if (phase === 'SCANNING' || phase === 'VERIFYING' || phase === 'IDLE' || phase === 'WAITING_REAL') {
+      actor.current.rotation.y = dampAngle(actor.current.rotation.y, Math.PI, 7, delta);
     }
     // Gait phase follows travelled distance (≈0.7 m per step), so feet never slide.
     gait.current = stride.current / .7 * Math.PI;
@@ -261,15 +305,14 @@ function WarehouseEmployee({ phase, doorOpen, speedMultiplier = 1, onComplete, t
     const scanning = phase === 'SCANNING';
     if (arm.current) arm.current.rotation.x = THREE.MathUtils.damp(arm.current.rotation.x, scanning ? -1.35 : -swing * .85, scanning ? 7 : 12, delta);
     if (otherArm.current) otherArm.current.rotation.x = THREE.MathUtils.damp(otherArm.current.rotation.x, swing * .85, 12, delta);
-    // ENTERING completes as soon as the employee clears the door frame (x > -8.0).
-    // This keeps the open-too-long scenario synchronised with the backend 2.5 s alert timer.
-    const enteredDoor = actor.current ? actor.current.position.x > -8.0 : false;
+    // ENTERING completes as soon as the employee clears the front roller shutter (z < 6.0).
+    const enteredDoor = actor.current ? actor.current.position.z < 6.0 : false;
     if (enteredDoor && !entered.current) entered.current = true;
-    const done = phase === 'APPROACH' ? distance < .03 : phase === 'SCANNING' ? elapsed.current > 1.2 : phase === 'GRANTED' ? elapsed.current > .7 : phase === 'ENTERING' ? entered.current : false;
+    const done = phase === 'APPROACH' ? distance < .03 : phase === 'GRANTED' ? elapsed.current > .7 : phase === 'ENTERING' ? entered.current : false;
     if (done && !reported.current) { reported.current = true; onComplete?.(phase); }
   });
   const uniform = '#4fb8b0', trousers = '#2c4a57', skin = '#d2a07e';
-  return <group ref={actor} position={[-12.5,0,3.75]}>
+  return <group ref={actor} position={[-7.25, 0, 10.6]} rotation={[0, Math.PI, 0]}>
     <group ref={body}>
       {[-1,1].map(side => <group key={side} ref={side < 0 ? leftLeg : rightLeg} position={[side*.13,.92,0]}>
         <mesh position={[0,-.22,0]} castShadow><boxGeometry args={[.16,.44,.18]}/><meshStandardMaterial color={trousers} roughness={.85}/></mesh>
@@ -302,15 +345,52 @@ function WarehouseEmployee({ phase, doorOpen, speedMultiplier = 1, onComplete, t
         </group>
       </group>
     </group>
-    <Label position={[0,2.35,0]} size={.15} color="#16424a">NHÂN VIÊN · THẺ RFID</Label>
+    <Label position={[0,2.35,0]} size={.15} color="#16424a">{employeeName ? `${employeeName.toUpperCase()} · THẺ RFID` : 'NHÂN VIÊN · THẺ RFID'}</Label>
+  </group>;
+}
+function IndoorWarehouseWorker({ paused }: { paused: boolean }) {
+  const actor = useRef<THREE.Group>(null), leftLeg = useRef<THREE.Group>(null), rightLeg = useRef<THREE.Group>(null), arm = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => {
+    if (paused || !actor.current) return;
+    const t = clock.elapsedTime * 0.55;
+    const cycle = Math.sin(t);
+    const walking = Math.abs(Math.cos(t)) > 0.25;
+    actor.current.position.set(0.2, 0, -1.25 + cycle * 2.2);
+    actor.current.rotation.y = Math.cos(t) >= 0 ? 0 : Math.PI;
+    const swing = walking ? Math.sin(clock.elapsedTime * 4.6) * 0.36 : 0;
+    if (leftLeg.current) leftLeg.current.rotation.x = swing;
+    if (rightLeg.current) rightLeg.current.rotation.x = -swing;
+    if (arm.current) arm.current.rotation.x = -0.55 + Math.sin(clock.elapsedTime * 2.4) * 0.08;
+  });
+  const uniform = '#2563eb', trousers = '#1e293b', skin = '#d2a07e';
+  return <group ref={actor} position={[0.2, 0, -1.25]}>
+    {[-1, 1].map(side => <group key={side} ref={side < 0 ? leftLeg : rightLeg} position={[side * 0.13, 0.92, 0]}>
+      <mesh position={[0, -0.42, 0]} castShadow><boxGeometry args={[0.15, 0.84, 0.17]}/><meshStandardMaterial color={trousers} roughness={0.85}/></mesh>
+    </group>)}
+    <group position={[0, 1.22, 0]}>
+      <mesh castShadow><boxGeometry args={[0.48, 0.64, 0.27]}/><meshStandardMaterial color={uniform} roughness={0.75}/></mesh>
+      {[0.11, -0.11].map(y => <mesh key={y} position={[0, y, 0.14]}><boxGeometry args={[0.46, 0.045, 0.01]}/><meshStandardMaterial color="#fde047" emissive="#fde047" emissiveIntensity={0.22}/></mesh>)}
+      <group ref={arm} position={[0.31, 0.24, 0]}>
+        <mesh position={[0, -0.26, 0]} castShadow><boxGeometry args={[0.12, 0.52, 0.13]}/><meshStandardMaterial color={uniform}/></mesh>
+        <mesh position={[0, -0.54, 0.1]} rotation={[-0.4, 0, 0]}><boxGeometry args={[0.18, 0.22, 0.02]}/><meshStandardMaterial color="#f8fafc" emissive="#38bdf8" emissiveIntensity={0.2}/></mesh>
+      </group>
+      <group position={[-0.31, 0.24, 0]}>
+        <mesh position={[0, -0.26, 0]} castShadow><boxGeometry args={[0.12, 0.52, 0.13]}/><meshStandardMaterial color={uniform}/></mesh>
+      </group>
+      <group position={[0, 0.48, 0]}>
+        <mesh position={[0, 0.1, 0]} castShadow><sphereGeometry args={[0.16, 12, 10]}/><meshStandardMaterial color={skin}/></mesh>
+        <mesh position={[0, 0.17, 0]} castShadow><sphereGeometry args={[0.18, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2]}/><meshStandardMaterial color="#38bdf8" roughness={0.35}/></mesh>
+      </group>
+    </group>
+    <Label position={[0, 2.28, 0]} size={0.135} color="#1e3a8a">NV KHO · KIỂM KỆ</Label>
   </group>;
 }
 const TRUCK_STATES = new Set<DemoState>(['TRUCK_APPROACHING', 'TRUCK_DOCKING', 'DOCKED', 'TRUCK_UNLOADING', 'IN_TRANSIT', 'DESTINATION_ARRIVAL']);
 const DEST_FORK_STATES = new Set<DemoState>(['DESTINATION_PALLET_PICKUP', 'IOT_CAMERA_IN_SIMULATED', 'WAITING_RECEIVE_CONFIRM', 'RECEIVED', 'MOVE_TO_STORAGE', 'STORED']);
 const CAMERA_GATE_STATES = new Set<DemoState>(['IOT_CAMERA_SIMULATED', 'WAITING_CONFIRMATION', 'GOODS_RECEIVED', 'IOT_CAMERA_OUT_SIMULATED', 'IOT_CAMERA_IN_SIMULATED', 'WAITING_RECEIVE_CONFIRM']);
+const ACTIVE_ACCESS_PHASES = new Set<AccessPhase>(['APPROACH', 'SCANNING', 'VERIFYING', 'GRANTED', 'OPENING', 'ENTERING', 'CLOSING']);
 
 function SceneCameraDirector({
-  focus,
   phase,
   demoState,
   transferMode,
@@ -325,15 +405,32 @@ function SceneCameraDirector({
   targetsRef: React.MutableRefObject<SceneTargets>;
 }) {
   const camera = useThree(state => state.camera);
+  const gl = useThree(state => state.gl);
   const controls = useThree(state => state.controls) as { target: THREE.Vector3; update: () => void } | null;
   const returningToOverview = useRef(false);
   const wasTracking = useRef(false);
+  const userInteractingUntil = useRef(0);
   const desiredTarget = useMemo(() => new THREE.Vector3(), []);
   const desiredPos = useMemo(() => new THREE.Vector3(), []);
 
-  const accessActive = focus || (phase !== 'IDLE' && phase !== 'COMPLETE');
+  // Only follow automatically when a demo animation is actively moving. Never lock the camera while idle!
+  const accessActive = ACTIVE_ACCESS_PHASES.has(phase);
   const demoActive = demoState !== 'IDLE' && demoState !== 'COMPLETE';
   const tracking = accessActive || demoActive;
+
+  useEffect(() => {
+    const dom = gl.domElement;
+    const onUserInteract = () => {
+      returningToOverview.current = false;
+      userInteractingUntil.current = performance.now() + 2200;
+    };
+    dom.addEventListener('pointerdown', onUserInteract, { passive: true });
+    dom.addEventListener('wheel', onUserInteract, { passive: true });
+    return () => {
+      dom.removeEventListener('pointerdown', onUserInteract);
+      dom.removeEventListener('wheel', onUserInteract);
+    };
+  }, [gl]);
 
   useEffect(() => {
     if (wasTracking.current && !tracking) {
@@ -347,14 +444,15 @@ function SceneCameraDirector({
 
   useFrame((_, delta) => {
     if (!tracking && !returningToOverview.current) return;
+    if (performance.now() < userInteractingUntil.current) return;
 
     if (accessActive) {
       const emp = targetsRef.current.employee?.position;
-      const ex = emp ? emp.x : -9.5;
-      const ez = emp ? emp.z : 3.0;
+      const ex = emp ? emp.x : -6.5;
+      const ez = emp ? emp.z : 8.2;
       const checkpoint = ['SCANNING', 'VERIFYING', 'GRANTED', 'OPENING'].includes(phase);
-      desiredTarget.set((ex + -8.3) * 0.5, 1.45, (ez + 2.5) * 0.5);
-      desiredPos.set(ex - (checkpoint ? 7.2 : 8.8), checkpoint ? 5.6 : 6.8, ez + (checkpoint ? 8.2 : 9.6));
+      desiredTarget.set((ex + -2.5) * 0.5, 1.85, (ez + 6.8) * 0.5);
+      desiredPos.set(ex - (checkpoint ? 5.8 : 7.5), checkpoint ? 6.2 : 7.8, ez + (checkpoint ? 9.2 : 11.5));
     } else if (demoActive) {
       if (TRUCK_STATES.has(demoState) && targetsRef.current.truck) {
         const tp = targetsRef.current.truck.position;
@@ -394,16 +492,18 @@ function SceneCameraDirector({
   });
   return null;
 }
-function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, selectedZone, activeSite, demoState, paused, accessDoorState, accessAlert, onSelectDoor, accessEmployeePhase, onAccessMotionComplete, speedMultiplier, targetsRef }: { site: Site; index: number; onSelectItem: (item: Inventory)=>void; selectedItemId?: string; onSelectZone: (zone:string)=>void; selectedZone:string; activeSite:boolean; demoState:DemoState; paused:boolean; accessDoorState?: 'OPEN' | 'CLOSED' | 'UNKNOWN'; accessAlert?: boolean; onSelectDoor?: () => void; accessEmployeePhase?: AccessPhase; onAccessMotionComplete?: (phase: AccessPhase) => void; speedMultiplier?: number; targetsRef?: React.MutableRefObject<SceneTargets> }) {
+function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, selectedZone, activeSite, demoState, paused, accessDoorState, accessAlert, onSelectDoor, accessEmployeePhase, accessEmployeeName, onAccessMotionComplete, speedMultiplier, targetsRef }: { site: Site; index: number; onSelectItem: (item: Inventory)=>void; selectedItemId?: string; onSelectZone: (zone:string)=>void; selectedZone:string; activeSite:boolean; demoState:DemoState; paused:boolean; accessDoorState?: 'OPEN' | 'CLOSED' | 'UNKNOWN'; accessAlert?: boolean; onSelectDoor?: () => void; accessEmployeePhase?: AccessPhase; accessEmployeeName?: string; onAccessMotionComplete?: (phase: AccessPhase) => void; speedMultiplier?: number; targetsRef?: React.MutableRefObject<SceneTargets> }) {
   const z = -index*24;
   const stocks = site.items;
   const wallMat = <meshStandardMaterial color="#e8eef0" roughness={.78} metalness={.08} />;
   const plinthMat = <meshStandardMaterial color="#37515f" roughness={.65} metalness={.15} />;
   const fasciaMat = <meshStandardMaterial color="#0d7a73" roughness={.5} metalness={.2} />;
+  const effectiveDoorState: 'OPEN' | 'CLOSED' | 'UNKNOWN' = index > 0 || (demoState !== 'IDLE' && demoState !== 'COMPLETE') || ['OPENING', 'ENTERING', 'WAITING_ALERT'].includes(accessEmployeePhase ?? 'IDLE') ? 'OPEN' : accessEmployeePhase === 'CLOSING' ? 'CLOSED' : (accessDoorState ?? 'CLOSED');
   return <group position={[0,0,z]}>
     <WarehouseDetails paused={paused}/>
-    <AccessDoor state={accessDoorState ?? 'UNKNOWN'} alert={!!accessAlert} phase={accessEmployeePhase ?? 'IDLE'} speedMultiplier={speedMultiplier} onSelect={onSelectDoor} onComplete={onAccessMotionComplete}/>
-    {index===0 && <WarehouseEmployee phase={accessEmployeePhase ?? 'IDLE'} doorOpen={accessDoorState === 'OPEN'} speedMultiplier={speedMultiplier} onComplete={onAccessMotionComplete} targetsRef={targetsRef}/>}
+    <AccessDoor state={effectiveDoorState} alert={!!accessAlert} phase={accessEmployeePhase ?? 'IDLE'} speedMultiplier={speedMultiplier} onSelect={onSelectDoor} onComplete={onAccessMotionComplete}/>
+    {index===0 && <WarehouseEmployee phase={accessEmployeePhase ?? 'IDLE'} doorOpen={effectiveDoorState === 'OPEN'} employeeName={accessEmployeeName} speedMultiplier={speedMultiplier} onComplete={onAccessMotionComplete} targetsRef={targetsRef}/>}
+    <IndoorWarehouseWorker paused={paused}/>
     {/* Polished industrial concrete slab with subtle border apron */}
     <mesh position={[0,-.24,0]} receiveShadow><boxGeometry args={[17.4,.34,14.4]}/><meshStandardMaterial color="#9eb0b8" roughness={.85}/></mesh>
     <mesh position={[0,-.22,0]} receiveShadow><boxGeometry args={[16.8,.35,13.8]}/><meshStandardMaterial color="#dce4e7" roughness={.62} metalness={.06}/></mesh>
@@ -414,11 +514,8 @@ function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, se
     <mesh position={[8.3,2.2,0]} castShadow><boxGeometry args={[.35,4.8,13.6]}/>{wallMat}</mesh>
     <mesh position={[8.3,.35,0]}><boxGeometry args={[.39,.72,13.68]}/>{plinthMat}</mesh>
     <mesh position={[8.3,4.52,0]}><boxGeometry args={[.41,.26,13.72]}/>{fasciaMat}</mesh>
-    <mesh position={[-8.3,2.2,-2.55]} castShadow><boxGeometry args={[.35,4.8,8.5]}/>{wallMat}</mesh>
-    <mesh position={[-8.3,.35,-2.55]}><boxGeometry args={[.39,.72,8.54]}/>{plinthMat}</mesh>
-    <mesh position={[-8.3,2.2,5.05]} castShadow><boxGeometry args={[.35,4.8,3.5]}/>{wallMat}</mesh>
-    <mesh position={[-8.3,.35,5.05]}><boxGeometry args={[.39,.72,3.54]}/>{plinthMat}</mesh>
-    <mesh position={[-8.3,3.9,2.5]} castShadow><boxGeometry args={[.35,1.4,1.7]}/>{wallMat}</mesh>
+    <mesh position={[-8.3,2.2,0]} castShadow><boxGeometry args={[.35,4.8,13.6]}/>{wallMat}</mesh>
+    <mesh position={[-8.3,.35,0]}><boxGeometry args={[.39,.72,13.68]}/>{plinthMat}</mesh>
     <mesh position={[-8.3,4.52,0]}><boxGeometry args={[.41,.26,13.72]}/>{fasciaMat}</mesh>
     {/* Overhead open steel roof trusses so the warehouse reads as a complete building while keeping full interior visibility */}
     {[-3.6, 0, 3.6].map(tz => <group key={`truss-${tz}`} position={[0,4.56,tz]}>
@@ -642,7 +739,7 @@ function Campus({ props }: { props: Props }) {
       </group>
       <Label position={[7.1,2,11.5]} size={.2} color="#a56608">{props.demoState==='TRUCK_UNLOADING'?'ĐIỂM HẠ PALLET':props.demoState==='PALLET_UNLOADING'?'XE NÂNG ĐANG NHẤC PALLET':'PALLET ĐÃ HẠ · CHỜ XE NÂNG'}</Label>
     </>}
-    {props.campusWarehouses.map((site,i)=><Warehouse key={site.id} site={site} index={i} onSelectItem={props.onSelectItem} selectedItemId={selectedId} onSelectZone={props.onSelectZone} selectedZone={props.selectedZone} activeSite={i===0||(props.transferMode&&props.campusWarehouses[i]?.id===props.destinationWarehouseId&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED','COMPLETE'].includes(props.demoState))} demoState={props.demoState} paused={props.demoPaused} accessDoorState={i===0?props.accessDoorState:undefined} accessAlert={i===0?props.accessAlert:false} onSelectDoor={i===0?props.onSelectDoor:undefined} accessEmployeePhase={i===0?props.accessEmployeePhase:'IDLE'} onAccessMotionComplete={i===0?props.onAccessMotionComplete:undefined} speedMultiplier={props.speedMultiplier} targetsRef={i===0?targetsRef:undefined}/>)}
+    {props.campusWarehouses.map((site,i)=><Warehouse key={site.id} site={site} index={i} onSelectItem={props.onSelectItem} selectedItemId={selectedId} onSelectZone={props.onSelectZone} selectedZone={props.selectedZone} activeSite={i===0||(props.transferMode&&props.campusWarehouses[i]?.id===props.destinationWarehouseId&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED','COMPLETE'].includes(props.demoState))} demoState={props.demoState} paused={props.demoPaused} accessDoorState={i===0?props.accessDoorState:undefined} accessAlert={i===0?props.accessAlert:false} onSelectDoor={i===0?props.onSelectDoor:undefined} accessEmployeePhase={i===0?props.accessEmployeePhase:'IDLE'} accessEmployeeName={i===0?props.accessEmployeeName:undefined} onAccessMotionComplete={i===0?props.onAccessMotionComplete:undefined} speedMultiplier={props.speedMultiplier} targetsRef={i===0?targetsRef:undefined}/>)}
     <LogisticsYard/>{idle&&!props.demoPaused&&<YardTraffic enabled/>}
     <ActiveVehicles state={props.demoState} paused={props.demoPaused} runId={props.demoRunId} callback={props.onMotionComplete} product={props.demoProduct} inventory={props.demoInventory} transferMode={props.transferMode} destinationZ={props.transferMode?-Math.max(0,props.campusWarehouses.findIndex(site=>site.id===props.destinationWarehouseId))*24:0} speedMultiplier={props.speedMultiplier} targetsRef={targetsRef}/>
     <MapControls makeDefault enableRotate enableDamping dampingFactor={.08} minDistance={7} maxDistance={90} maxPolarAngle={Math.PI/2.12} target={[0,0,props.campusWarehouses.length > 1 ? -12*(props.campusWarehouses.length-1) : 2]}/>
