@@ -46,7 +46,7 @@ adminRoutes.use('/roles', (request, _response, next) => {
   next();
 });
 adminRoutes.post('/roles', requirePermission('roles.manage'), async (_request, _response) => {
-  throw new AppError(409, 'SYSTEM_ROLE_PRESETS_ONLY', 'H? th?ng ch? s? d?ng ba vai tr? chu?n: Ch? h? th?ng, Qu?n l? chi nh�nh v� Nh�n vi�n.');
+  throw new AppError(409, 'SYSTEM_ROLE_PRESETS_ONLY', 'Hệ thống chỉ sử dụng ba vai trò chuẩn: Chủ hệ thống, Quản lý chi nhánh và Nhân viên.');
 });
 adminRoutes.put('/roles/:id', requirePermission('roles.manage'), async (request, response) => {
   const id = uuid.parse(request.params.id);

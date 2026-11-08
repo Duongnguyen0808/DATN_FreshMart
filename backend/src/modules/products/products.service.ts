@@ -66,10 +66,10 @@ export async function changeCategoryStatus(user: CurrentUser, id: string, active
 export async function listProducts(input: z.infer<typeof listInput>, user: CurrentUser) {
   const warehouseScope = user.globalAccess ? {} : { warehouse: { storeId: { in: user.stores.map(store => store.id) } } };
   const inventoryStock = input.stockStatus === 'IN_STOCK' ? { some: { onHand: { gt: 0 }, ...warehouseScope } } : input.stockStatus === 'OUT_OF_STOCK' ? { none: { onHand: { gt: 0 }, ...warehouseScope } } : undefined;
-  const where = { ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(inventoryStock ? { skus: { some: { inventories: inventoryStock } } } : {}), ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { name: { contains: input.q, mode: 'insensitive' as const } }, { skus: { some: { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { barcode: { contains: input.q } }] } } }] } : {}) };
+  const where = { archivedAt: null, ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(inventoryStock ? { skus: { some: { inventories: inventoryStock } } } : {}), ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { name: { contains: input.q, mode: 'insensitive' as const } }, { skus: { some: { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { barcode: { contains: input.q } }] } } }] } : {}) };
   const [items, total, activeCount, inactiveCount] = await prisma.$transaction([
-    prisma.product.findMany({ where, include: includeList, orderBy: [{ updatedAt: 'desc' }, { code: 'asc' }], skip: (input.page - 1) * input.pageSize, take: input.pageSize }),
-    prisma.product.count({ where }), prisma.product.count({ where: { active: true } }), prisma.product.count({ where: { active: false } }),
+    prisma.product.findMany({ where, include: includeList, orderBy: [{ lastReceivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { code: 'asc' }], skip: (input.page - 1) * input.pageSize, take: input.pageSize }),
+    prisma.product.count({ where }), prisma.product.count({ where: { active: true, archivedAt: null } }), prisma.product.count({ where: { active: false, archivedAt: null } }),
   ]);
   const skuIds = items.flatMap(product => product.skus.map(sku => sku.id));
   const inventory = skuIds.length ? await prisma.inventory.groupBy({
@@ -129,8 +129,9 @@ export async function createProduct(user: CurrentUser, input: z.infer<typeof pro
 
 export async function updateProduct(user: CurrentUser, id: string, input: z.infer<typeof productUpdate>) {
   await requireActiveCategory(input.categoryId);
-  const currentProduct = await prisma.product.findUnique({ where: { id }, select: { imagePublicId: true } });
+  const currentProduct = await prisma.product.findUnique({ where: { id }, select: { imagePublicId: true, unit: true } });
   if (!currentProduct) throw new AppError(404, 'NOT_FOUND', 'Không tìm thấy sản phẩm.');
+  if (currentProduct.unit !== input.unit && (await prisma.inventoryTransaction.count({ where: { sku: { productId: id } } }) || await prisma.inventory.count({ where: { sku: { productId: id }, onHand: { gt: 0 } } }))) throw new AppError(409, 'UNIT_HAS_HISTORY', 'Sản phẩm đã có tồn hoặc lịch sử tồn kho. Giữ đơn vị tồn/bán và cấu hình quy cách nhập tại Lô & hạn dùng.');
   const currentSku = await prisma.sku.findFirst({ where: { id: input.sku.id, productId: id } });
   if (!currentSku) throw new AppError(404, 'SKU_NOT_FOUND', 'Không tìm thấy SKU thuộc sản phẩm này.');
   const uploaded = input.imageDataUrl ? await uploadProductImage(input.imageDataUrl) : null;
@@ -194,6 +195,7 @@ export async function changeSkuStatus(user: CurrentUser, productId: string, skuI
 export async function changeProductStatus(user: CurrentUser, id: string, active: boolean) {
   const current = await prisma.product.findUnique({ where: { id }, include: { category: true, skus: { where: { active: true }, select: { id: true } } } });
   if (!current) throw new AppError(404, 'NOT_FOUND', 'Không tìm thấy sản phẩm.');
+  if (current.archivedAt) throw new AppError(409, 'PRODUCT_ARCHIVED', 'S?n ph?m ?? x?a kh?i danh m?c.');
   if (active && !current.category.active) throw new AppError(409, 'CATEGORY_INACTIVE', 'Phải kích hoạt danh mục trước.');
   if (active && !current.skus.length) throw new AppError(409, 'NO_ACTIVE_SKU', 'Sản phẩm phải có ít nhất một SKU hoạt động.');
   return prisma.$transaction(async tx => { const row = await tx.product.update({ where: { id }, data: { active }, include: includeList }); await tx.auditLog.create({ data: { actorId: user.id, action: active ? 'product.activate' : 'product.deactivate', targetId: id } }); return presentProduct(row); });

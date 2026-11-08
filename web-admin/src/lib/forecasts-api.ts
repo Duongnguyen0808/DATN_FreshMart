@@ -5,9 +5,11 @@ export type DemandForecast = {
   run: { id: string; model: string; generatedAt: string; horizonDays: number; historyDays: number; forecastFrom: string; forecastTo: string } | null;
   items: {
     skuId: string; skuCode: string; productId: string; productCode: string; imageUrl: string | null; productName: string; unit: string;
+    purchaseUnit?: string | null; purchasePackSize?: number; leadTimeDays?: number | null;
     predictedQuantity: number; observedQuantity: number;
     dataQuality: 'SUFFICIENT' | 'SPARSE' | 'NO_SALES';
     availableAtRun: number; safetyStockAtRun: number;
+    safetyStockEvidence?: { source: string; sampleCount: number; serviceLevel: number; horizonDays: number; basis: string; configuredQuantity: number } | null;
   }[];
 };
 
@@ -34,8 +36,10 @@ export function getForecastHistory(storeId: string, page = 1) {
   return api<ForecastHistory>(`forecasts/demand/runs?${query}`);
 }
 
-export function runDemandForecast(storeId: string, horizonDays: number) {
-  return api<DemandForecast>('forecasts/demand', 'POST', { storeId, horizonDays }, 45000);
+export async function runDemandForecast(storeId: string, horizonDays: number) {
+  const result = await api<DemandForecast>('forecasts/demand', 'POST', { storeId, horizonDays }, 120000);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('freshmart-forecast-updated'));
+  return result;
 }
 
 export type ForecastInventoryAdvice = DemandForecast['items'][number] & {
@@ -43,6 +47,7 @@ export type ForecastInventoryAdvice = DemandForecast['items'][number] & {
   severity: 'HIGH' | 'MEDIUM' | 'LOW' | null;
   available: number; safetyStock: number; inTransfer: number; incomingPurchase: number;
   surplusQuantity: number;
+  timing?: { leadTimeDays: number | null; leadTimeCovered: boolean; firstShortageDay: number | null; urgent: boolean; orderNow: boolean | null; leadTimeNeed: number | null; suggestedPacks: number; roundedPurchaseQuantity: number; basis: string };
 };
 export type ShortageAlertReport = {
   store: DemandForecast['store'];

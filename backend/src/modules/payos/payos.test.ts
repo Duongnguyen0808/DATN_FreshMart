@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-  prisma: { payosCheckout: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, workShift: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, warehouse: { findFirst: vi.fn() }, customer: { findUnique: vi.fn() }, sku: { findMany: vi.fn() }, inventory: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() }, invoice: { create: vi.fn() }, inventoryTransaction: { create: vi.fn() }, auditLog: { create: vi.fn() }, $transaction: vi.fn() },
+  prisma: { inventoryLot: { findMany: vi.fn() }, payosCheckout: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, workShift: { findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, warehouse: { findFirst: vi.fn() }, customer: { findUnique: vi.fn() }, sku: { findMany: vi.fn() }, inventory: { findUnique: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() }, invoice: { create: vi.fn() }, inventoryTransaction: { create: vi.fn() }, auditLog: { create: vi.fn() }, $transaction: vi.fn() },
   client: { paymentRequests: { create: vi.fn(), get: vi.fn(), cancel: vi.fn() }, webhooks: { verify: vi.fn() } },
 }));
 vi.mock('../../common/database.js', () => ({ prisma: mocks.prisma }));
@@ -37,6 +37,7 @@ beforeEach(() => {
   mocks.prisma.workShift.updateMany.mockImplementation(({ data }) => { revenue += Number(data.digitalRevenue?.increment ?? 0); return { count: 1 }; });
   mocks.prisma.warehouse.findFirst.mockResolvedValue({ id });
   mocks.prisma.sku.findMany.mockResolvedValue([{ id, code: 'SKU01', sellingPrice: 10000, costPrice: 6000, product: { code: 'SP01', name: 'Sữa tươi', unit: 'Hộp' } }]);
+  mocks.prisma.inventoryLot.findMany.mockResolvedValue([]);
   mocks.prisma.inventory.findUnique.mockImplementation(() => ({ id, reserved, onHand }));
   mocks.prisma.inventory.findUniqueOrThrow.mockImplementation(() => ({ id, reserved, onHand }));
   mocks.prisma.inventory.update.mockImplementation(({ data }) => { reserved += (data.reserved?.increment ?? 0) - (data.reserved?.decrement ?? 0); onHand -= data.onHand?.decrement ?? 0; return {}; });

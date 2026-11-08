@@ -1,3 +1,5 @@
+import { expired } from '../inventory/lot-stock.js';
+import { supplyTiming } from './supply-timing.js';
 import { z } from 'zod';
 import { prisma } from '../../common/database.js';
 import { AppError } from '../../common/app-error.js';
@@ -7,7 +9,8 @@ import type { forecastHistoryInput, forecastInput } from './forecasts.schemas.js
 import { assessShortage } from './shortage-rule.js';
 
 // Dùng lịch sử vận hành đủ dài để kiểm tra mô hình trên chuỗi thời gian thực.
-const HISTORY_DAYS = 180;
+// Up to one year lets 30-day forecasts accumulate >= 8 disjoint calibration blocks.
+const HISTORY_DAYS = 366;
 export const vietnamDay = (date: Date) => {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
   const value = (type: string) => Number(parts.find(part => part.type === type)!.value);
@@ -18,6 +21,7 @@ const aiResponse = z.object({
   items: z.array(z.object({
     skuId: z.string().uuid(),
     predictedQuantity: z.number().int().min(0),
+    safetyStock: z.object({ quantity: z.number().int().nonnegative().nullable(), source: z.enum(['BACKTEST_P95', 'TEMPORARY_CONFIG']), sampleCount: z.number().int().nonnegative(), serviceLevel: z.literal(0.95), horizonDays: z.number().int().positive(), basis: z.string() }),
     dataQuality: z.enum(['SUFFICIENT', 'SPARSE', 'NO_SALES']),
   })),
 });
@@ -37,16 +41,16 @@ export async function getLatestForecast(user: CurrentUser, input: Input) {
   const run = await prisma.forecastRun.findFirst({
     where: { storeId: input.storeId, horizonDays: input.horizonDays },
     orderBy: { generatedAt: 'desc' },
-    include: { forecasts: { include: { sku: { select: { code: true, product: { select: { id: true, code: true, name: true, unit: true, imageUrl: true } } } } }, orderBy: { predictedQuantity: 'desc' } } },
+    include: { forecasts: { include: { sku: { select: { code: true, product: { select: { id: true, code: true, name: true, unit: true, imageUrl: true, purchaseUnit: true, purchasePackSize: true, leadTimeDays: true } } } } }, orderBy: { predictedQuantity: 'desc' } } },
   });
   if (!run) return { store, run: null, items: [] };
   return {
     store,
     run: { id: run.id, model: run.model, generatedAt: run.generatedAt, horizonDays: run.horizonDays, historyDays: run.historyDays, forecastFrom: run.forecastFrom, forecastTo: run.forecastTo },
     items: run.forecasts.map(row => ({
-      skuId: row.skuId, skuCode: row.sku.code, productId: row.sku.product.id, productCode: row.sku.product.code, imageUrl: row.sku.product.imageUrl, productName: row.sku.product.name, unit: row.sku.product.unit,
+      skuId: row.skuId, skuCode: row.sku.code, productId: row.sku.product.id, productCode: row.sku.product.code, imageUrl: row.sku.product.imageUrl, productName: row.sku.product.name, unit: row.sku.product.unit, purchaseUnit: row.sku.product.purchaseUnit, purchasePackSize: row.sku.product.purchasePackSize, leadTimeDays: row.sku.product.leadTimeDays,
       predictedQuantity: row.predictedQuantity, observedQuantity: row.observedQuantity,
-      dataQuality: row.dataQuality, availableAtRun: row.availableAtRun, safetyStockAtRun: row.safetyStockAtRun,
+      dataQuality: row.dataQuality, availableAtRun: row.availableAtRun, safetyStockAtRun: row.safetyStockAtRun, safetyStockEvidence: row.safetyStockEvidence,
     })),
   };
 }
@@ -54,7 +58,7 @@ export async function getLatestForecast(user: CurrentUser, input: Input) {
 export async function getForecastById(user: CurrentUser, id: string) {
   const run = await prisma.forecastRun.findUnique({
     where: { id },
-    include: { forecasts: { include: { sku: { select: { code: true, product: { select: { id: true, code: true, name: true, unit: true, imageUrl: true } } } } }, orderBy: { predictedQuantity: 'desc' } } },
+    include: { forecasts: { include: { sku: { select: { code: true, product: { select: { id: true, code: true, name: true, unit: true, imageUrl: true, purchaseUnit: true, purchasePackSize: true, leadTimeDays: true } } } } }, orderBy: { predictedQuantity: 'desc' } } },
   });
   if (!run) throw new AppError(404, 'FORECAST_NOT_FOUND', 'Không tìm thấy lần dự báo.');
   const store = await assertStore(user, run.storeId);
@@ -62,9 +66,9 @@ export async function getForecastById(user: CurrentUser, id: string) {
     store,
     run: { id: run.id, model: run.model, generatedAt: run.generatedAt, horizonDays: run.horizonDays, historyDays: run.historyDays, forecastFrom: run.forecastFrom, forecastTo: run.forecastTo },
     items: run.forecasts.map(row => ({
-      skuId: row.skuId, skuCode: row.sku.code, productId: row.sku.product.id, productCode: row.sku.product.code, imageUrl: row.sku.product.imageUrl, productName: row.sku.product.name, unit: row.sku.product.unit,
+      skuId: row.skuId, skuCode: row.sku.code, productId: row.sku.product.id, productCode: row.sku.product.code, imageUrl: row.sku.product.imageUrl, productName: row.sku.product.name, unit: row.sku.product.unit, purchaseUnit: row.sku.product.purchaseUnit, purchasePackSize: row.sku.product.purchasePackSize, leadTimeDays: row.sku.product.leadTimeDays,
       predictedQuantity: row.predictedQuantity, observedQuantity: row.observedQuantity,
-      dataQuality: row.dataQuality, availableAtRun: row.availableAtRun, safetyStockAtRun: row.safetyStockAtRun,
+      dataQuality: row.dataQuality, availableAtRun: row.availableAtRun, safetyStockAtRun: row.safetyStockAtRun, safetyStockEvidence: row.safetyStockEvidence,
     })),
   };
 }
@@ -86,12 +90,12 @@ export async function createForecast(user: CurrentUser, input: Input) {
   await assertStore(user, input.storeId);
   const stocks = await prisma.inventory.findMany({
     where: { warehouse: { storeId: input.storeId, active: true }, sku: { active: true, product: { active: true } } },
-    select: { skuId: true, onHand: true, reserved: true, safetyStock: true },
+    select: { lots: true, skuId: true, onHand: true, reserved: true, safetyStock: true },
   });
   const stockBySku = new Map<string, { available: number; safetyStock: number }>();
   for (const stock of stocks) {
     const previous = stockBySku.get(stock.skuId) ?? { available: 0, safetyStock: 0 };
-    previous.available += stock.onHand - stock.reserved;
+    previous.available += Math.max(0, stock.onHand - stock.reserved - stock.lots.filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0));
     previous.safetyStock += stock.safetyStock;
     stockBySku.set(stock.skuId, previous);
   }
@@ -136,7 +140,8 @@ export async function createForecast(user: CurrentUser, input: Input) {
       forecasts: { create: prediction.items.map(item => ({
         skuId: item.skuId, predictedQuantity: item.predictedQuantity, dataQuality: item.dataQuality,
         observedQuantity: series.get(item.skuId)!.reduce((sum, value) => sum + value, 0),
-        availableAtRun: stockBySku.get(item.skuId)!.available, safetyStockAtRun: stockBySku.get(item.skuId)!.safetyStock,
+        availableAtRun: stockBySku.get(item.skuId)!.available, safetyStockAtRun: item.safetyStock.quantity ?? stockBySku.get(item.skuId)!.safetyStock,
+        safetyStockEvidence: { ...item.safetyStock, configuredQuantity: stockBySku.get(item.skuId)!.safetyStock },
       })) },
     } });
     await tx.inventoryRecommendation.updateMany({ where: { targetStoreId: input.storeId, status: 'PENDING' }, data: { status: 'SUPERSEDED' } });
@@ -149,16 +154,16 @@ export async function getShortageAlerts(user: CurrentUser, input: Input) {
   if (!forecast.run) return { store: forecast.store, run: null, summary: { total: 0, high: 0, medium: 0, low: 0, shortageQuantity: 0 }, items: [], analysisItems: [] };
   const skuIds = forecast.items.map(item => item.skuId);
   const [inventories, purchaseItems] = await Promise.all([
-    prisma.inventory.findMany({ where: { skuId: { in: skuIds }, warehouse: { storeId: input.storeId, active: true } }, select: { skuId: true, onHand: true, reserved: true, safetyStock: true, incoming: true } }),
+    prisma.inventory.findMany({ where: { skuId: { in: skuIds }, warehouse: { storeId: input.storeId, active: true } }, select: { lots: true, skuId: true, onHand: true, reserved: true, safetyStock: true, incoming: true } }),
     prisma.purchaseOrderItem.findMany({
-      where: { skuId: { in: skuIds }, purchaseOrder: { warehouse: { storeId: input.storeId }, status: { in: ['OPEN', 'PARTIALLY_RECEIVED'] }, expectedAt: { lte: new Date(forecast.run.forecastTo.getTime() + 17 * 3_600_000 - 1) } } },
-      select: { skuId: true, orderedQuantity: true, receivedQuantity: true },
+      where: { skuId: { in: skuIds }, purchaseOrder: { warehouse: { storeId: input.storeId }, status: 'OPEN', expectedAt: { gte: new Date(vietnamDay(new Date()).getTime() - 7 * 3_600_000), lte: new Date(forecast.run.forecastTo.getTime() + 17 * 3_600_000 - 1) } } },
+      select: { skuId: true, orderedQuantity: true, receivedQuantity: true, purchaseOrder: { select: { expectedAt: true } } },
     }),
   ]);
   const stock = new Map<string, { available: number; safetyStock: number; inTransfer: number }>();
   for (const row of inventories) {
     const total = stock.get(row.skuId) ?? { available: 0, safetyStock: 0, inTransfer: 0 };
-    total.available += row.onHand - row.reserved;
+    total.available += Math.max(0, row.onHand - row.reserved - row.lots.filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0));
     total.safetyStock += row.safetyStock;
     total.inTransfer += row.incoming;
     stock.set(row.skuId, total);
@@ -168,9 +173,14 @@ export async function getShortageAlerts(user: CurrentUser, input: Input) {
   const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 };
   const analysisItems = forecast.items.map(row => {
     const current = stock.get(row.skuId) ?? { available: 0, safetyStock: 0, inTransfer: 0 };
+    // Forecast-specific buffer, with legacy runs falling back to current configuration.
+    current.safetyStock = row.safetyStockEvidence ? row.safetyStockAtRun : current.safetyStock;
     const purchase = incomingPurchase.get(row.skuId) ?? 0;
     const result = assessShortage({ predictedQuantity: row.predictedQuantity, available: current.available, safetyStock: current.safetyStock, inTransfer: current.inTransfer, incomingPurchase: purchase });
-    return { ...row, ...result, severity: result.severity, available: current.available, safetyStock: current.safetyStock, inTransfer: current.inTransfer, incomingPurchase: purchase,
+    const today = vietnamDay(new Date());
+    const timing = supplyTiming({ predictedQuantity: row.predictedQuantity, horizonDays: forecast.run!.horizonDays, available: current.available, safetyStock: current.safetyStock, leadTimeDays: row.leadTimeDays, packSize: row.purchasePackSize, shortage: result.shortageQuantity,
+      receipts: purchaseItems.filter(item => item.skuId === row.skuId && item.purchaseOrder.expectedAt).map(item => ({ day: Math.round((vietnamDay(item.purchaseOrder.expectedAt!).getTime() - today.getTime()) / 86400000), quantity: Math.max(0, item.orderedQuantity - item.receivedQuantity) })) });
+    return { ...row, ...result, timing, severity: timing.urgent ? 'HIGH' as const : result.severity, available: current.available, safetyStock: current.safetyStock, inTransfer: current.inTransfer, incomingPurchase: purchase,
       surplusQuantity: Math.max(0, current.available + current.inTransfer + purchase - row.predictedQuantity - current.safetyStock) };
   });
   const items = analysisItems.filter(row => row.severity !== null)

@@ -138,7 +138,8 @@ async function seed() {
         const safetyStock = 18 + ((productIndex * 7 + warehouseIndex * 5) % 25);
         const lowStock = (productIndex + warehouseIndex) % 9 === 0;
         const onHand = lowStock ? (productIndex + warehouseIndex) % 6 : 35 + ((productIndex * 17 + warehouseIndex * 13) % 125);
-        const reserved = onHand > safetyStock ? (productIndex + warehouseIndex) % 5 : 0;
+        // Reservations are created by pending payment checkouts, not sample stock.
+        const reserved = 0;
         await tx.inventory.create({ data: {
           warehouseId, skuId, onHand, reserved, safetyStock,
           ...(onHand > 0 ? { transactions: { create: { warehouseId, skuId, type: 'INITIAL', quantity: onHand, beforeQuantity: 0, afterQuantity: onHand, referenceType: 'SEED', referenceId: `SEED-${warehouseCode}-${item.sku}`, reason: 'Tồn đầu kỳ dữ liệu demo' } } } : {}),
@@ -233,7 +234,7 @@ async function seed() {
         customerId: customerIds.get(customerCode), customerName: customer.name, customerPhone: customer.phone,
         subtotal, total: subtotal, status: 'COMPLETED', completedAt, note: 'Hóa đơn dữ liệu demo.',
         items: { create: lines.map(line => ({ skuId: line.skuId, productCode: line.item.code, skuCode: line.item.sku, productName: line.item.name, unit: line.item.unit, quantity: line.quantity, unitPrice: line.item.price, costPrice: line.item.cost, lineTotal: line.lineTotal })) },
-        payments: { create: digitalAmount > 0 ? [{ method: 'CASH', amount: cashAmount }, { method: index % 2 ? 'QR' : 'CARD', amount: digitalAmount, reference: `PAY-DEMO-${index + 1}` }] : [{ method: 'CASH', amount: cashAmount }] },
+        payments: { create: digitalAmount > 0 ? [{ method: 'CASH', amount: cashAmount }, { method: 'QR', amount: digitalAmount, reference: `PAY-DEMO-${index + 1}` }] : [{ method: 'CASH', amount: cashAmount }] },
       } });
       for (const line of lines) {
         const current = await tx.inventory.findUniqueOrThrow({ where: { warehouseId_skuId: { warehouseId, skuId: line.skuId } } });
@@ -331,7 +332,7 @@ async function seed() {
       const totalAmount = orderedQuantity * unitCost;
       const po = await tx.purchaseOrder.create({ data: {
         code: poCode, purchaseRequestId: requestIds.get('PR-DEMO-003')!, supplierId: supplierIds.get('SUP-0045')!, warehouseId: warehouses.get('KHO003')!, createdById: owner.id,
-        status: 'PARTIALLY_RECEIVED', expectedAt: daysAgo(-3), paymentDueAt: daysAgo(-25), note: 'Đơn mua hàng demo nhận nhiều lần.', totalAmount, createdAt: daysAgo(4),
+        status: 'OPEN', expectedAt: daysAgo(-3), paymentDueAt: daysAgo(-25), note: 'Đơn mua hàng demo nhận nhiều lần.', totalAmount, createdAt: daysAgo(4),
         items: { create: { skuId, orderedQuantity, receivedQuantity, unitCost, lineTotal: totalAmount } },
       }, include: { items: true } });
       const receipt = await tx.goodsReceipt.create({ data: {
@@ -339,7 +340,7 @@ async function seed() {
         items: { create: { purchaseOrderItemId: po.items[0]!.id, skuId, quantity: receivedQuantity, unitCost } },
       } });
       const inventory = await tx.inventory.findUniqueOrThrow({ where: { warehouseId_skuId: { warehouseId: warehouses.get('KHO003')!, skuId } } });
-      await tx.inventory.update({ where: { id: inventory.id }, data: { onHand: { increment: receivedQuantity }, transactions: { create: { warehouseId: warehouses.get('KHO003')!, skuId, type: 'PURCHASE_RECEIPT', quantity: receivedQuantity, beforeQuantity: inventory.onHand, afterQuantity: inventory.onHand + receivedQuantity, referenceType: 'GOODS_RECEIPT', referenceId: receipt.id, reason: 'Nhận hàng PO demo', actorId: owner.id } } } });
+      await tx.inventory.update({ where: { id: inventory.id }, data: { onHand: { increment: receivedQuantity }, transactions: { create: { warehouseId: warehouses.get('KHO003')!, skuId, type: 'PURCHASE_RECEIPT', quantity: receivedQuantity, beforeQuantity: inventory.onHand, afterQuantity: inventory.onHand + receivedQuantity, referenceType: 'GOODS_RECEIPT', referenceId: receipt.id, reason: 'Nhận hàng theo đơn mua hàng demo', actorId: owner.id } } } });
       const receivedAmount = receivedQuantity * unitCost;
       const paidAmount = 400000;
       const payable = await tx.payable.create({ data: { code: 'CN-DEMO-001', supplierId: supplierIds.get('SUP-0045')!, purchaseOrderId: po.id, totalAmount: receivedAmount, paidAmount, dueDate: daysAgo(-25), status: 'PARTIALLY_PAID' } });

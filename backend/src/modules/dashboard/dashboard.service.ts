@@ -27,7 +27,7 @@ export async function getDashboard(user: CurrentUser, input: z.infer<typeof dash
     prisma.inventory.findMany({ where: inventoryWhere, select: { onHand: true, reserved: true, safetyStock: true, sku: { select: { costPrice: true } } } }),
     prisma.payable.findMany({ where: payableWhere, select: { totalAmount: true, paidAmount: true, dueDate: true, status: true } }),
     prisma.receivable.findMany({ where: receivableWhere, select: { totalAmount: true, paidAmount: true, dueDate: true } }),
-    prisma.stockTransfer.count({ where: { AND: [transferWhere, { status: 'PENDING_APPROVAL' }] } }),
+    prisma.stockTransfer.count({ where: { AND: [transferWhere, { status: 'READY' }] } }),
   ]);
   const revenue = periodInvoices.reduce((sum, invoice) => sum + Number(invoice.total) - Number(invoice.refundedAmount), 0);
   const seriesMap = new Map<string, { revenue: number; invoices: number }>();

@@ -1,3 +1,4 @@
+import { takeLots, blockedLotQuantity } from '../inventory/lot-stock.js';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { Prisma, type PayosCheckout } from '../../generated/prisma/client.js';
@@ -58,7 +59,7 @@ async function reserveCheckout(user: CurrentUser, input: CheckoutInput) {
     if (!Number.isSafeInteger(amount) || amount <= 0 || amount > 999_999_999_999) throw new AppError(400, 'PAYOS_AMOUNT_INVALID', 'payOS yêu cầu tổng tiền là số nguyên VND lớn hơn 0; kiểm tra giảm giá.');
     for (const item of items) {
       const stock = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: warehouse.id, skuId: item.skuId } } });
-      if (!stock || stock.onHand - stock.reserved < item.quantity) throw new AppError(409, 'INSUFFICIENT_STOCK', `${item.productName} không đủ tồn khả dụng.`);
+      if (!stock || stock.onHand - stock.reserved - await blockedLotQuantity(tx, stock.id) < item.quantity) throw new AppError(409, 'INSUFFICIENT_STOCK', `${item.productName} không đủ tồn khả dụng.`);
       await tx.inventory.update({ where: { id: stock.id }, data: { reserved: { increment: item.quantity } } });
     }
     // Serialize checkout creation with shift closing; pending checkouts block closing.
@@ -114,6 +115,7 @@ export async function applyProviderLink(row: PayosCheckout, link: ProviderLink) 
     for (const item of draft.items) {
       const stock = await tx.inventory.findUniqueOrThrow({ where: { warehouseId_skuId: { warehouseId: row.warehouseId, skuId: item.skuId } } });
       if (stock.reserved < item.quantity || (paid && stock.onHand < item.quantity)) throw new AppError(409, 'CHECKOUT_STOCK_CONFLICT', 'Tồn giữ chỗ đã thay đổi. Cần đối soát đơn thanh toán.');
+      if (paid) await takeLots(tx, stock.id, item.quantity, 'SALE', invoiceCode, row.actorId, undefined, item.quantity);
       await tx.inventory.update({ where: { id: stock.id }, data: { reserved: { decrement: item.quantity }, ...(paid ? { onHand: { decrement: item.quantity } } : {}) } });
       if (paid) await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId: row.warehouseId, skuId: item.skuId, type: 'SALE', quantity: -item.quantity, beforeQuantity: stock.onHand, afterQuantity: stock.onHand - item.quantity, referenceType: 'INVOICE', referenceId: invoiceCode, reason: `Thanh toán payOS ${row.orderCode}`, actorId: row.actorId } });
     }

@@ -1,0 +1,151 @@
+/* Content layouts for daily retail work, separate from the application shell. */
+@media screen {
+  body.retail-ui .commerce-shell .main-content:has(.pos-workspace) { max-width: none; padding: 20px 24px 32px; }
+  .retail-ui .pos-workspace .suite-heading { margin-bottom: 18px; padding: 0; }
+  .retail-ui .pos-workspace .suite-heading h1 { font-size: 23px; }
+  .retail-ui .pos-workspace .suite-heading p { font-size: 12px; }
+  .retail-ui .pos-workspace .sale-layout { display: grid; grid-template-columns: minmax(0,1fr) 380px; align-items: start; gap: 18px; }
+  .retail-ui .pos-sessionbar { grid-column: 1 / -1; border: 1px solid #dfe5e1; border-radius: 8px; background: #fff; }
+  .retail-ui .pos-sessionbar .sale-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; padding: 14px 18px; }
+  .retail-ui .pos-sessionbar label { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 8px 12px; align-items: center; font-size: 12px; color: #738177; }
+  .retail-ui .pos-sessionbar select { width: 100%; min-width: 0; height: 36px; border: 1px solid #dce3de; border-radius: 5px; background: #fafcfb; padding: 6px 10px; }
+  .retail-ui .pos-sessionbar .sale-shift-cashier { grid-column: 2; font-size: 10px; }
+  .retail-ui .pos-workspace .sale-products { min-width: 0; border: 0; box-shadow: none; background: transparent; overflow: visible; }
+  .retail-ui .pos-search { display: flex; align-items: center; gap: 12px; height: 48px; background: #fff; padding: 0 16px; border: 1px solid #dce4df; border-radius: 8px; color: #849288; }
+  .retail-ui .pos-search:focus-within { border-color: #44826b; box-shadow: 0 0 0 3px #44826b12; }
+  .retail-ui .pos-search input { width: 100%; padding: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 14px; }
+  .retail-ui .pos-search button { width: 28px; height: 28px; font-size: 22px; }
+  .retail-ui .pos-categories { display: flex; gap: 7px; padding: 15px 0; flex-wrap: wrap; }
+  .retail-ui .pos-categories button { padding: 7px 12px; font-size: 12px; border: 1px solid #dfe6e1; border-radius: 5px; color: #78867d; background: #fff; }
+  .retail-ui .pos-categories button[aria-pressed=true] { background: #e5eee8; color: #2b6548; border-color: #c9ddcf; }
+  .retail-ui .pos-categories button span { margin-left: 6px; opacity: .6; }
+  .retail-ui .pos-product-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 12px; }
+  .retail-ui .pos-product { display: flex; flex-direction: column; text-align: left; padding: 12px; background: #fff; border: 1px solid #e0e6e2; border-radius: 8px; min-width: 0; transition: border-color .15s, box-shadow .15s; }
+  .retail-ui .pos-product:hover:not(:disabled) { border-color: #8bad96; box-shadow: 0 3px 12px #1d3a2510; }
+  .retail-ui .pos-product:disabled { opacity: .55; }
+  .retail-ui .pos-product-image { position: relative; display: grid; place-items: center; background: #f8faf8; border-radius: 5px; height: 120px; margin-bottom: 12px; }
+  .retail-ui .pos-product-image .product-image { width: 100%; height: 100%; border: 0; border-radius: 5px; background: transparent; font-size: 28px; color: #a1b5a6; }
+  .retail-ui .pos-product-image img { width: 100%; height: 100%; padding: 8px; object-fit: contain; }
+  .retail-ui .pos-added { position: absolute; top: 5px; right: 5px; padding: 4px 6px; background: #e2efe6; color: #366548; border-radius: 4px; font-size: 10px; }
+  .retail-ui .pos-product-name { font-size: 13px; line-height: 1.5; color: #344f3e; font-weight: 500; min-height: 40px; }
+  .retail-ui .pos-product > small { display: block; color: #94a096; font-size: 11px; margin: 6px 0 10px; }
+  .retail-ui .pos-product-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: auto; gap: 8px; }
+  .retail-ui .pos-product-bottom strong { font-size: 15px; color: #365b45; }
+  .retail-ui .pos-product-bottom small { padding-left: 3px; font-weight: 400; }
+  .retail-ui .pos-product-bottom > span { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid #e0e9e2; border-radius: 5px; color: #568168; font-size: 18px; }
+  .retail-ui .pos-catalog-foot { font-size: 11px; color: #97a198; padding: 15px 0; }
+  .retail-ui .pos-empty { min-height: 360px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 14px; padding: 32px; color: #9aae9f; }
+  .retail-ui .pos-empty h3 { font-size: 17px; color: #516b59; font-weight: 500; }
+  .retail-ui .pos-empty p { font-size: 13px; line-height: 1.8; color: #91a093; }
+  .retail-ui .pos-empty :is(a,button) { font-size: 12px; color: #426e52; }
+  .retail-ui .pos-product-skeleton { height: 230px; background: #edf1ed; border: 1px solid #e4e9e5; border-radius: 8px; }
+  .retail-ui .pos-ticket { position: sticky; top: 82px; border-radius: 9px; border-color: #dbe3dd; box-shadow: 0 3px 14px #203c2505; overflow: hidden; }
+  .retail-ui .pos-ticket > .panel-heading { padding: 18px; }
+  .retail-ui .pos-ticket-count { color: #91a096; font-size: 11px; }
+  .retail-ui .pos-ticket .sale-checkout-body { padding: 16px; gap: 16px; }
+  .retail-ui .pos-ticket label { display: grid; gap: 7px; font-size: 12px; color: #718078; }
+  .retail-ui .pos-ticket :is(input,select) { height: 38px; padding: 8px 10px; border: 1px solid #dce4de; border-radius: 5px; font-size: 13px; }
+  .retail-ui .pos-ticket .sale-cart { margin: 0; border: 0; background: #fff; }
+  .retail-ui .pos-ticket .sale-cart-heading { padding: 10px 0; background: #fff; border-bottom: 1px solid #e6ece7; font-size: 12px; }
+  .retail-ui .pos-ticket .sale-cart-items { max-height: 350px; overflow-y: auto; }
+  .retail-ui .pos-ticket .sale-cart-items article { padding: 14px 0; border-bottom: 1px solid #edf1ed; }
+  .retail-ui .pos-ticket .sale-cart-product .product-identity strong { font-size: 12px; }
+  .retail-ui .pos-ticket .sale-cart-edit { display: flex; gap: 10px; align-items: center; margin-top: 10px; }
+  .retail-ui .pos-ticket .sale-cart-edit > strong { margin-left: auto; font-size: 13px; color: #36533f; }
+  .retail-ui .pos-quantity { display: flex; height: 30px; border: 1px solid #dfe7e0; border-radius: 5px; overflow: hidden; }
+  .retail-ui .pos-quantity button { width: 28px; flex-shrink: 0; background: #f7faf7; color: #5a7963; font-size: 16px; }
+  .retail-ui .pos-quantity input { width: 40px; height: 28px; border: 0; border-radius: 0; text-align: center; padding: 0; appearance: textfield; -moz-appearance: textfield; }
+  .retail-ui .pos-quantity input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .retail-ui .pos-ticket .sale-cart-empty { min-height: 165px; display: flex; flex-direction: column; gap: 10px; justify-content: center; align-items: center; background: #fff; color: #b0bdb2; padding: 24px 12px; }
+  .retail-ui .pos-ticket .sale-cart-empty strong { font-size: 14px; font-weight: 500; color: #778a7c; }
+  .retail-ui .pos-ticket .sale-cart-empty span { font-size: 11px; }
+  .retail-ui .pos-discount { border-top: 1px solid #e7ece8; padding: 12px 0; }
+  .retail-ui .pos-discount summary { cursor: pointer; font-size: 12px; color: #6f8376; }
+  .retail-ui .pos-discount summary span { float: right; color: #3e6049; }
+  .retail-ui .pos-discount[open] summary { margin-bottom: 14px; }
+  .retail-ui .pos-ticket .sale-bill-summary { width: 100%; max-width: none; margin: 0; padding: 12px 0; background: #fff; border-top: 1px solid #e8ede9; display: grid; gap: 10px; }
+  .retail-ui .pos-ticket .sale-bill-summary > div { display: flex; justify-content: space-between; gap: 12px; color: #7e8e82; font-size: 12px; }
+  .retail-ui .pos-ticket .sale-bill-total { border-top: 1px dashed #dfe7e0; margin-top: 5px; padding-top: 14px; align-items: center; }
+  .retail-ui .pos-ticket .sale-bill-total strong { font-size: 24px; letter-spacing: -.6px; color: #254d34; }
+  .retail-ui .pos-ticket .sale-method-picker > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+  .retail-ui .pos-ticket .sale-method-picker button { flex-direction: column; justify-content: center; min-height: 60px; border: 1px solid #e0e7e1; padding: 8px 4px; border-radius: 6px; font-size: 10px; line-height: 1.5; color: #7a8b7e; }
+  .retail-ui .pos-ticket .sale-method-picker button.selected { background: #edf5ef; border-color: #94b59d; color: #386448; }
+  .retail-ui .pos-ticket .sale-checkout-hint { font-size: 11px; line-height: 1.6; color: #96a298; }
+  .retail-ui .pos-ticket .sale-checkout-body > button[type=submit] { display: flex; justify-content: center; width: 100%; min-height: 46px; background: #294c37; color: #fff; font-size: 14px; border: 0; border-radius: 6px; }
+  .retail-ui .pos-stock-advice { margin-top: 20px; border-top: 1px solid #dfe6e1; padding: 16px 0; }
+  .retail-ui .pos-stock-advice > summary { cursor: pointer; font-size: 12px; color: #7b8b7e; }
+  .retail-ui .pos-stock-advice .sale-ai-shortages { margin-top: 15px; }
+  /* Lists use a compact summary strip, leaving space for actual records. */
+  body.retail-ui .record-summary { display: flex; flex-wrap: wrap; gap: 0; background: #fff; border: 1px solid #e0e6e2; border-radius: 8px; margin-bottom: 20px; padding: 4px 0; overflow: hidden; }
+  body.retail-ui .suite-page .record-summary > .metric-card,
+  body.retail-ui .record-summary > .metric-card { flex: 1 1 160px; min-height: 88px; border: 0 !important; border-right: 1px solid #e8ede9 !important; border-radius: 0 !important; padding: 14px 20px; box-shadow: none; background: #fff !important; }
+  body.retail-ui .record-summary > .metric-card:last-child { border-right: 0 !important; }
+  body.retail-ui .record-summary .metric-card-value { font-size: 23px; margin: 4px 0 0; }
+  body.retail-ui .record-summary .metric-card-label { font-size: 11px; }
+  body.retail-ui .record-summary .metric-card-caption { font-size: 11px; }
+  .retail-ui .record-table-state { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 210px; padding: 28px 16px; gap: 12px; color: #a4b2a8; text-align: center; white-space: normal; }
+  .retail-ui .record-table-state strong { font-size: 14px; color: #6c8072; font-weight: 500; }
+  .retail-ui .record-table-state > span { font-size: 12px; color: #9aa79e; }
+  .retail-ui .record-loading-line { display: block; width: 150px; height: 6px; background: #e1eae3; border-radius: 4px; }
+  .retail-ui .record-form-grid { gap: 20px; padding: 24px; }
+  .retail-ui .record-form-title { grid-column: 1 / -1; margin: 0; padding-bottom: 12px; border-bottom: 1px solid #e8ede9; font-size: 13px; font-weight: 600; color: #4d6956; }
+  .retail-ui .ui-modal-card { max-height: calc(100dvh - 48px); overflow-y: auto; }
+  .retail-ui .ui-modal-card > header { position: sticky; top: 0; background: #fff; z-index: 3; }
+  .retail-ui .ui-modal-card > footer { position: sticky; bottom: 0; z-index: 3; padding: 16px 24px; background: #f9fbfa; }
+  .retail-ui .ui-modal-card :is(fieldset, .receive-lines) { margin: 0 24px 20px; border: 1px solid #e2e9e3; padding: 16px; border-radius: 6px; }
+  .retail-ui .ui-modal-card legend { padding: 0 8px; color: #5c7764; font-size: 12px; font-weight: 500; }
+  .retail-ui .ui-modal-card textarea { resize: vertical; min-height: 76px; border: 1px solid #dce4de; border-radius: 5px; padding: 10px; }
+  .retail-ui :is(.detail-grid,.detail-main) { gap: 24px; }
+  .retail-ui :is(.detail-card,.detail-table,.detail-info,.po-info) { border-color: #e0e7e2; border-radius: 8px; box-shadow: none; }
+  .retail-ui :is(.detail-card,.detail-info) h2 { font-size: 15px; color: #3c5947; margin-bottom: 16px; }
+  .retail-ui :is(.detail-info,.po-info) { line-height: 1.8; }
+  .retail-ui .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .retail-ui .simple-forecast-page .forecast-explainer { margin: 16px 0; padding: 16px 20px; }
+  .retail-ui .forecast-method-toggle > summary { font-size: 13px; font-weight: 500; color: #57745f; padding: 14px 0; cursor: pointer; }
+  .retail-ui .simple-forecast-reason details { min-width: 180px; max-width: 320px; font-size: 12px; }
+  .retail-ui .simple-forecast-reason summary { color: #50755d; cursor: pointer; font-weight: 500; }
+  .retail-ui .simple-forecast-reason details[open] { line-height: 1.8; }
+  .retail-ui .rfid-history { border: 1px solid #dfe6e1; border-radius: 8px; background: #fff; margin-top: 18px; }
+  .retail-ui .rfid-history > summary { padding: 18px 20px; color: #526d5c; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .retail-ui .rfid-history > summary span { float: right; color: #96a399; font-size: 11px; font-weight: 400; }
+  .retail-ui .rfid-history .li-card { border: 0; border-top: 1px solid #e7ece8; margin: 0; }
+  .retail-ui .lots-screen { max-width: none; padding: 0; }
+  .retail-ui .lots-screen > header { margin-bottom: 24px; }
+  .retail-ui .lots-screen > header h1 { font-size: 25px; color: #314e3b; }
+  .retail-ui .lots-screen .lots-overview { gap: 0; border: 1px solid #dfe6e1; border-radius: 8px; overflow: hidden; margin-bottom: 20px; background: #fff; }
+  .retail-ui .lots-screen .lots-overview article { border: 0; border-right: 1px solid #e6ece7; border-radius: 0; box-shadow: none; background: #fff; padding: 16px 20px; }
+  .retail-ui .lots-settings > summary { cursor: pointer; font-size: 13px; color: #557261; font-weight: 500; }
+  .retail-ui .lots-settings > p { margin: 14px 0; }
+  .retail-ui .lots-screen .lots-toolbar { border-color: #e1e7e2; gap: 16px; }
+  .retail-ui .lots-screen .panel { border-color: #e0e7e2; box-shadow: none; border-radius: 8px; }
+  .retail-ui :is(.report-filter-panel,.filter-grid,.debt-filter-grid,.branch-filter-grid,.payment-filter-grid) label { display: grid; gap: 7px; color: #738479; font-size: 12px; }
+  .retail-ui :is(.report-filter-panel,.filter-grid,.debt-filter-grid,.branch-filter-grid,.payment-filter-grid) :is(input,select) { min-width: 0; width: 100%; min-height: 38px; background: #fff; border: 1px solid #dce4de; border-radius: 5px; padding: 8px 10px; }
+  .retail-ui :is(.report-note,.form-note,.inventory-safety-help) { border-radius: 6px; background: #f4f8f5; border-color: #e0e9e2; color: #718578; font-size: 12px; line-height: 1.7; }
+  .retail-ui .admin-page .editor { background: #fff; border: 1px solid #dfe7e1; border-radius: 8px; padding: 24px; margin-bottom: 24px; }
+  .retail-ui .admin-page .editor h2 { font-size: 17px; color: #3e5e49; padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid #e6ece8; }
+  .retail-ui .admin-page .editor label { font-size: 13px; color: #61796a; }
+  .retail-ui .admin-page .editor :is(input,select) { min-height: 38px; padding: 8px 10px; border: 1px solid #dce5df; border-radius: 5px; }
+  .retail-ui :is(.supplier-profile,.customer-profile-grid,.detail-kpis,.detail-data,.detail-info) small { font-size: 12px; color: #8b9a90; }
+  .retail-ui .suite-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-top: 1px solid #e5ebe6; color: #829287; font-size: 12px; }
+  /* Retire older page-specific blue table and filter treatments. */
+  body.retail-ui .commerce-shell .suite-page > .suite-panel { min-height: 0; border-color: #dfe6e1; box-shadow: none; overflow: hidden; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel > :is(.ui-tabbar,.suite-filters) { background: #fff; border-color: #e4eae5; padding-inline: 18px; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel .ui-tabbar > .ui-tab { border-radius: 0; background: transparent; box-shadow: none; min-height: 48px; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel table th { background: #f6f8f6; color: #738378; border-color: #e4eae5; font-size: 11px; font-weight: 500; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel table td { border-color: #edf1ed; font-size: 13px; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel table tbody tr:not(.product-row-selected):hover { background: #f6faf7; }
+  body.retail-ui :is(.suite-heading,.ui-modal-card > footer) .action-approve { background: #2d503b; border-color: #2d503b; color: #fff; padding: 9px 15px; min-height: 36px; font-size: 13px; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) { padding: 0; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) > header { top: 0; margin: 0; padding: 20px 24px; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) > footer { bottom: 0; margin: 0; padding: 16px 24px; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) > header h2 { margin: 0; font-size: 19px; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) > header p { margin: 6px 0 0; font-size: 12px; color: #738378; }
+  body.retail-ui :is(.receive-create-modal,.po-create-modal,.customer-form-modal,.transfer-modal) > header > button { flex-shrink: 0; width: 32px; height: 32px; border-radius: 5px; background: #f3f6f4; }
+  body.retail-ui .ui-modal-card .form-grid.record-form-grid { margin: 0; padding: 20px 24px; gap: 16px; }
+  .retail-ui .receive-create-modal .receive-line { border: 0; border-bottom: 1px solid #e7ede8; border-radius: 0; padding: 12px 0; }
+  .retail-ui .receive-create-modal .receive-note { margin: 0 24px 20px; }
+  .retail-ui .receive-total strong,.retail-ui .po-form-total strong { color: #2b5b3d; font-size: 18px; }
+  @media (min-width: 1700px) { .retail-ui .pos-workspace .sale-layout { grid-template-columns: minmax(0,1fr) 430px; } .retail-ui .pos-product-grid { grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); } }
+  @media (max-width: 1100px) { .retail-ui .pos-workspace .sale-layout { grid-template-columns: minmax(0,1fr) 330px; } .retail-ui .pos-product-grid { grid-template-columns: repeat(auto-fill,minmax(135px,1fr)); } .retail-ui .pos-sessionbar label { grid-template-columns: 1fr; } .retail-ui .pos-sessionbar .sale-shift-cashier { grid-column: 1; } }
+  @media (max-width: 760px) { .retail-ui .commerce-shell .main-content:has(.pos-workspace) { padding: 18px 12px; } .retail-ui .pos-workspace .sale-layout { grid-template-columns: 1fr; } .retail-ui .pos-ticket { position: static; } .retail-ui .pos-sessionbar .sale-fields { grid-template-columns: 1fr; gap: 12px; } .retail-ui .pos-product-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .retail-ui .pos-product-image { height: 110px; } .retail-ui .record-summary > .metric-card { flex-basis: 45%; } .retail-ui .ui-modal-card { max-height: calc(100dvh - 24px); } }
+}

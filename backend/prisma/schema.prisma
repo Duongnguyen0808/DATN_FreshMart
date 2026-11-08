@@ -28,6 +28,8 @@ model User {
   payosCheckouts PayosCheckout[]
   createdIotTagMappings IotTagMapping[]
   processedIotEvents IotEvent[] @relation("IotEventProcessor")
+  warehouseAccessCards WarehouseAccessCard[]
+  warehouseAccessEvents WarehouseAccessEvent[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
   approvedStocktakes Stocktake[] @relation("StocktakeApprover")
   createdTransfers StockTransfer[] @relation("TransferCreator")
@@ -131,6 +133,11 @@ model Warehouse {
   supplierReturns SupplierReturn[]
   iotEvents IotEvent[]
   iotTagMappings IotTagMapping[]
+  accessDevices WarehouseAccessDevice[]
+  accessDoors WarehouseAccessDoor[]
+  accessCards WarehouseAccessCard[]
+  accessEvents WarehouseAccessEvent[]
+  securityAlerts WarehouseSecurityAlert[]
   @@index([storeId])
   @@map("warehouses")
 }
@@ -161,6 +168,7 @@ model AuditLog {
   actorId String? @db.Uuid
   action String
   targetId String?
+  metadata Json?
   createdAt DateTime @default(now())
   @@index([actorId, createdAt])
   @@map("audit_logs")
@@ -170,6 +178,10 @@ model IotEvent {
   id             String    @id @default(uuid()) @db.Uuid
   eventId        String
   deviceId       String
+  inboundParcelId String? @db.Uuid
+  automationStatus String?
+  automationMessage String?
+  goodsReceiptId String? @db.Uuid
   eventType      String
   tagId          String
   warehouseId    String    @db.Uuid
@@ -218,6 +230,97 @@ model IotTagMapping {
   @@map("iot_tag_mappings")
 }
 
+// Physical warehouse access is independent of parcel receiving and inventory.
+model WarehouseAccessDevice {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+  warehouseId String @db.Uuid
+  active Boolean @default(true)
+  lastSeenAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  doors WarehouseAccessDoor[]
+  events WarehouseAccessEvent[]
+  @@index([warehouseId, active])
+  @@map("warehouse_access_devices")
+}
+
+model WarehouseAccessDoor {
+  id String @id @default(uuid()) @db.Uuid
+  code String @unique
+  name String
+  warehouseId String @db.Uuid
+  deviceId String @db.Uuid
+  state String @default("CLOSED")
+  lastStateChangedAt DateTime?
+  openSince DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  device WarehouseAccessDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  events WarehouseAccessEvent[]
+  alerts WarehouseSecurityAlert[]
+  @@index([warehouseId, state])
+  @@map("warehouse_access_doors")
+}
+
+model WarehouseAccessCard {
+  id String @id @default(uuid()) @db.Uuid
+  uid String @unique
+  employeeId String @db.Uuid
+  warehouseId String @db.Uuid
+  status String @default("ACTIVE")
+  assignedAt DateTime @default(now())
+  revokedAt DateTime?
+  employee User @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  @@index([warehouseId, status])
+  @@map("warehouse_access_cards")
+}
+
+model WarehouseAccessEvent {
+  id String @id @default(uuid()) @db.Uuid
+  eventId String
+  deviceId String @db.Uuid
+  warehouseId String @db.Uuid
+  doorId String? @db.Uuid
+  employeeId String? @db.Uuid
+  eventType String
+  source String
+  occurredAt DateTime @default(now())
+  reportedAt DateTime?
+  consumedAt DateTime?
+  payload Json
+  createdAt DateTime @default(now())
+  device WarehouseAccessDevice @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  door WarehouseAccessDoor? @relation(fields: [doorId], references: [id], onDelete: SetNull)
+  employee User? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  @@unique([deviceId, eventId])
+  @@index([warehouseId, occurredAt])
+  @@index([deviceId, eventType, occurredAt])
+  @@map("warehouse_access_events")
+}
+
+model WarehouseSecurityAlert {
+  id String @id @default(uuid()) @db.Uuid
+  warehouseId String @db.Uuid
+  doorId String @db.Uuid
+  employeeId String? @db.Uuid
+  type String
+  severity String @default("WARNING")
+  message String
+  status String @default("OPEN")
+  createdAt DateTime @default(now())
+  resolvedAt DateTime?
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  door WarehouseAccessDoor @relation(fields: [doorId], references: [id], onDelete: Restrict)
+  @@index([warehouseId, status, createdAt])
+  @@map("warehouse_security_alerts")
+}
+
 model Category {
   id          String    @id @default(uuid()) @db.Uuid
   code        String    @unique
@@ -232,6 +335,11 @@ model Category {
 }
 
 model Product {
+  lastReceivedAt DateTime?
+  purchaseUnit String?
+  purchasePackSize Int @default(1)
+  leadTimeDays Int?
+  archivedAt DateTime?
   id         String   @id @default(uuid()) @db.Uuid
   code       String   @unique
   name       String
@@ -328,6 +436,7 @@ model DemandForecast {
   dataQuality       String
   availableAtRun    Int
   safetyStockAtRun  Int
+  safetyStockEvidence Json?
   run               ForecastRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   sku               Sku         @relation(fields: [skuId], references: [id], onDelete: Restrict)
 
@@ -610,6 +719,9 @@ model ReceivablePayment {
 }
 
 model Inventory {
+  lastReceivedAt DateTime?
+  lastReceivedQuantity Int?
+  lots InventoryLot[]
   id           String   @id @default(uuid()) @db.Uuid
   warehouseId  String   @db.Uuid
   skuId        String   @db.Uuid
@@ -710,7 +822,7 @@ model StockTransfer {
   receivedById           String?   @db.Uuid
   cancelledById          String?   @db.Uuid
   discrepancyResolvedById String?  @db.Uuid
-  status                 String    @default("PENDING_APPROVAL")
+  status                 String    @default("READY")
   reason                 String
   decisionNote           String?
   dispatchNote           String?
@@ -743,6 +855,9 @@ model StockTransfer {
 }
 
 model StockTransferItem {
+  rfidTagId String?
+  rfidEventId String? @db.Uuid
+  rfidDeviceId String?
   id                 String        @id @default(uuid()) @db.Uuid
   transferId         String        @db.Uuid
   skuId              String        @db.Uuid
@@ -758,6 +873,7 @@ model StockTransferItem {
   sku                 Sku           @relation(fields: [skuId], references: [id], onDelete: Restrict)
 
   @@unique([transferId, skuId])
+  @@index([rfidTagId])
   @@index([skuId])
   @@map("stock_transfer_items")
 }
@@ -789,7 +905,7 @@ model PurchaseRequest {
   storeId      String    @db.Uuid
   createdById  String    @db.Uuid
   approvedById String?   @db.Uuid
-  status       String    @default("PENDING_APPROVAL")
+  status       String    @default("READY")
   reason       String
   decisionNote String?
   approvedAt   DateTime?
@@ -837,6 +953,8 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
+  purchaseUnit String?
+  purchasePackSize Int @default(1)
   id               String   @id @default(uuid()) @db.Uuid
   purchaseOrderId  String   @db.Uuid
   skuId            String   @db.Uuid
@@ -973,4 +1091,73 @@ model PurchaseRequestItem {
   @@unique([purchaseRequestId, skuId])
   @@index([skuId])
   @@map("purchase_request_items")
+}
+
+
+model InventoryLot {
+  id String @id @default(uuid()) @db.Uuid
+  inventoryId String @db.Uuid
+  code String
+  expiresAt DateTime? @db.Date
+  quantity Int
+  status String @default("AVAILABLE")
+  purchaseOrderItemId String? @db.Uuid
+  createdAt DateTime @default(now())
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  movements LotMovement[]
+  disposals LotDisposal[]
+  @@index([inventoryId, status, expiresAt])
+  @@map("inventory_lots")
+}
+
+model LotMovement {
+  id String @id @default(uuid()) @db.Uuid
+  lotId String @db.Uuid
+  quantity Int
+  referenceType String
+  referenceId String
+  actorId String @db.Uuid
+  createdAt DateTime @default(now())
+  lot InventoryLot @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  @@index([referenceType, referenceId])
+  @@map("lot_movements")
+}
+
+model LotDisposal {
+  id String @id @default(uuid()) @db.Uuid
+  lotId String @db.Uuid
+  quantity Int
+  reason String
+  status String @default("READY")
+  createdById String @db.Uuid
+  approvedById String? @db.Uuid
+  completedById String? @db.Uuid
+  evidence String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  lot InventoryLot @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  @@map("lot_disposals")
+}
+
+model IotInboundParcel {
+  id String @id @default(uuid()) @db.Uuid
+  tagId String @unique
+  palletCode String @unique
+  deviceId String
+  warehouseId String @db.Uuid
+  purchaseOrderId String @db.Uuid
+  purchaseOrderItemId String @db.Uuid
+  skuId String @db.Uuid
+  quantity Int
+  lotCode String
+  expiresAt DateTime? @db.Date
+  noExpiry Boolean @default(false)
+  evidenceUrls Json?
+  status String @default("READY")
+  registeredById String @db.Uuid
+  createdAt DateTime @default(now())
+  receivedAt DateTime?
+  goodsReceiptId String? @unique @db.Uuid
+  @@index([warehouseId, status])
+  @@map("iot_inbound_parcels")
 }

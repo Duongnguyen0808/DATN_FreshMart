@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from .forecast import ForecastInput, predict_operational_batch
+from .safety_stock import estimate_safety_stock
 
 app = FastAPI(title="Smart Store AI Service", version="0.1.0")
 logger = logging.getLogger("ai-service")
@@ -76,6 +77,7 @@ def health() -> dict:
 def forecast_demand(payload: ForecastInput) -> dict:
     model_name, predictions, validation_mae = predict_operational_batch(
         payload.items, payload.last_day, payload.horizon_days)
+    buffers = estimate_safety_stock(payload.items, payload.last_day, payload.horizon_days)
     return {
         "model": f"Live-{model_name}",
         "validationMae": validation_mae.get(model_name),
@@ -84,6 +86,7 @@ def forecast_demand(payload: ForecastInput) -> dict:
                 "skuId": item.sku_id,
                 "predictedQuantity": prediction,
                 "dataQuality": quality,
+                "safetyStock": buffers[item.sku_id],
             }
             for item, (prediction, quality) in zip(payload.items, predictions)
         ],
@@ -99,6 +102,20 @@ def research_forecast(payload: ResearchForecastInput) -> dict:
     if result["store_id"] != payload.store_id:
         return JSONResponse(status_code=404, content={"detail": "store_id is not in the prepared M5 sample"})
     return result
+
+
+@app.get("/ai/experiment")
+def experiment_report() -> dict:
+    from train_ai import OUTPUT_DIR
+    import json
+    report = OUTPUT_DIR / "experiment_report.html"
+    summary = OUTPUT_DIR / "experiment_summary.json"
+    if not report.is_file() or not summary.is_file():
+        raise HTTPException(status_code=404, detail="Chưa có báo cáo. Chạy python train_ai.py trước.")
+    metadata = json.loads(summary.read_text(encoding="utf-8"))
+    if metadata.get("schema_version") != 2:
+        raise HTTPException(status_code=404, detail="Báo cáo cũ cần được huấn luyện lại bằng python train_ai.py.")
+    return {"summary": metadata, "html": report.read_text(encoding="utf-8")}
 
 
 @app.post("/ai/analyze-inventory")

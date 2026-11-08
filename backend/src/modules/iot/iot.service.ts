@@ -1,3 +1,4 @@
+import { processInboundEvent } from './iot-inbound.service.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
@@ -6,12 +7,20 @@ import type { CurrentUser } from '../auth/auth.repository.js';
 import type { z } from 'zod';
 import type { iotEventInput, iotEventListInput, iotSimulationInput, iotTagMappingInput } from './iot.schemas.js';
 import { publishIotEvent } from './iot.realtime.js';
+import { getCameraDemo } from './camera-demo-session.service.js';
 
 type EventInput = z.infer<typeof iotEventInput>;
 
 export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULATED', actorId: string | null, allowedStoreIds?: string[]) {
   const previous = await prisma.iotEvent.findUnique({ where: { deviceId_eventId: { deviceId: input.deviceId, eventId: input.eventId } } });
-  if (previous) return { event: previous, duplicate: true };
+  if (previous) { const event = await processInboundEvent(previous.id); publishIotEvent(event); return { event, duplicate: true }; }
+
+  // The token-authenticated device still has to decode the physical QR.
+  // Resolve an explicit demo binding in this request instead of a second LAN trip.
+  if (source === 'DEVICE' && input.eventType === 'CAMERA_CODE_DETECTED' && input.payload.resolveDemoSession === true) {
+    const context = await getCameraDemo(input.deviceId, input.tagId);
+    if (context) input = { ...input, warehouseId: context.warehouseId, payload: { ...input.payload, reportedWarehouseId: input.warehouseId, demoSessionId: context.sessionId } };
+  }
 
   const warehouse = await prisma.warehouse.findUnique({ where: { id: input.warehouseId }, select: { id: true, active: true, storeId: true } });
   if (!warehouse?.active) throw new AppError(404, 'IOT_WAREHOUSE_NOT_FOUND', 'Không tìm thấy kho đang hoạt động cho thiết bị IoT.');
@@ -39,11 +48,15 @@ export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULAT
           await tx.auditLog.create({ data: { actorId, action: 'iot.tag_mapping.simulated', targetId: mapping.id } });
         }
       }
+      const parcel = source === 'DEVICE' ? await tx.iotInboundParcel.findUnique({ where: { tagId: input.tagId } }) : null;
       const created = await tx.iotEvent.create({ data: {
         ...input,
         payload: input.payload as Prisma.InputJsonValue,
-        ...(mapping?.active ? { tagMappingId: mapping.id, mappedSkuId: mapping.skuId, palletCode: mapping.palletCode } : {}),
+        ...(mapping?.active && mapping.warehouseId === input.warehouseId ? { tagMappingId: mapping.id, mappedSkuId: mapping.skuId, palletCode: mapping.palletCode } : {}),
         source,
+        inboundParcelId: parcel?.id,
+        automationStatus: source === 'DEVICE' ? parcel ? 'PENDING' : 'UNREGISTERED' : null,
+        automationMessage: source === 'DEVICE' && !parcel ? 'Mã chưa đăng ký kiện. Đăng ký sản phẩm, số lượng và hạn sử dụng rồi quét lại; tồn kho chưa thay đổi.' : null,
         processed: false,
       }, include: { mappedSku: { select: { id: true, code: true, product: { select: { name: true, unit: true } } } } } });
       await tx.auditLog.create({ data: {
@@ -53,12 +66,13 @@ export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULAT
       } });
       return created;
     });
-    publishIotEvent(event);
-    return { event, duplicate: false };
+    const processed = await processInboundEvent(event.id);
+    publishIotEvent(processed);
+    return { event: processed, duplicate: false };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const existing = await prisma.iotEvent.findUnique({ where: { deviceId_eventId: { deviceId: input.deviceId, eventId: input.eventId } } });
-      if (existing) return { event: existing, duplicate: true };
+      if (existing) { const event = await processInboundEvent(existing.id); publishIotEvent(event); return { event, duplicate: true }; }
     }
     throw error;
   }
@@ -71,6 +85,8 @@ export async function upsertTagMapping(user: CurrentUser, input: z.infer<typeof 
   const sku = await prisma.sku.findUnique({ where: { id: input.skuId }, select: { id: true, active: true } });
   if (!sku?.active) throw new AppError(404, 'IOT_SKU_NOT_FOUND', 'Không tìm thấy SKU đang hoạt động.');
   const mapping = await prisma.$transaction(async tx => {
+    const parcel = await tx.iotInboundParcel.findUnique({ where: { tagId: input.tagId } });
+    if (parcel) throw new AppError(409, 'IOT_TAG_REGISTERED', 'Thẻ đã đăng ký kiện tự nhập, không được đổi liên kết.');
     const row = await tx.iotTagMapping.upsert({
       where: { tagId: input.tagId },
       create: { ...input, source: 'HARDWARE', createdById: user.id },
@@ -113,7 +129,7 @@ export async function confirmIotEvents(
       || (typeof payload.workflow === 'string' && payload.workflow !== options.workflow);
   });
   if (events.length !== eventIds.length
-    || events.some(event => event.eventType !== 'RFID_DETECTED' || event.warehouseId !== options.warehouseId || !event.mappedSkuId || !expectedSkuIds.has(event.mappedSkuId))
+    || events.some(event => !['RFID_DETECTED', 'CAMERA_CODE_DETECTED'].includes(event.eventType) || event.warehouseId !== options.warehouseId || !event.mappedSkuId || !expectedSkuIds.has(event.mappedSkuId))
     || mismatchedPayload
     || [...expectedSkuIds].some(skuId => !matchedSkuIds.has(skuId))) {
     throw new AppError(409, 'IOT_CONFIRMATION_MISMATCH', 'Sự kiện RFID chưa khớp kho/SKU của phiếu, đã xử lý hoặc còn thiếu thẻ. Hãy quét lại và đối chiếu trước khi xác nhận.');
@@ -131,6 +147,7 @@ export async function simulateEvent(user: CurrentUser, input: z.infer<typeof iot
 
 export async function listEvents(user: CurrentUser, input: z.infer<typeof iotEventListInput>) {
   const where = {
+    ...(input.tagId ? { tagId: input.tagId } : {}),
     ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}),
     ...(user.globalAccess ? {} : { warehouse: { storeId: { in: user.stores.map(store => store.id) } } }),
   };

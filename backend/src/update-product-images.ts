@@ -1,12 +1,15 @@
 import 'dotenv/config';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { prisma } from './common/database.js';
 import { readableProductCodes } from './readable-product-codes.js';
 
 const originalCodeByReadable = new Map(Object.entries(readableProductCodes).map(([original, readable]) => [readable, original]));
 
-const products = await prisma.product.findMany({ select: { id: true, code: true } });
+const products = await prisma.product.findMany({ where: { archivedAt: null }, select: { id: true, code: true, imageUrl: true } });
 let updated = 0;
 for (const product of products) {
+  if (product.imageUrl?.startsWith('/products/') && existsSync(fileURLToPath(new URL('../../web-admin/public' + product.imageUrl, import.meta.url)))) continue;
   let originalCode = originalCodeByReadable.get(product.code) ?? product.code;
   // Older demo databases use numeric codes 100008..100040 for PRD-DEMO-007..040.
   const numericCode = /^1000(\d{2})$/.exec(product.code);
@@ -22,6 +25,7 @@ for (const product of products) {
   };
   if (legacyCustom[product.code]) originalCode = legacyCustom[product.code];
   const imageUrl = `/products/${originalCode.toLowerCase()}.png`;
+  if (!existsSync(fileURLToPath(new URL('../../web-admin/public' + imageUrl, import.meta.url)))) { console.warn(`Missing image for ${product.code}; unchanged`); continue; }
   await prisma.product.update({ where: { id: product.id }, data: { imageUrl, imagePublicId: null } });
   updated += 1;
 }

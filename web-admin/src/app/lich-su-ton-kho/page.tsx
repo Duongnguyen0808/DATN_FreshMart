@@ -1,4 +1,5 @@
 'use client';
+import { TableState } from '../../components/ui/table-state';
 import { ProductIdentity } from '../../components/ui/product-image';
 
 import Link from 'next/link';
@@ -24,6 +25,8 @@ const types: { value: Filter; label: string; tone: StatusTone }[] = [
   { value: 'TRANSFER_OUT', label: 'Xuất điều chuyển', tone: 'violet' },
   { value: 'TRANSFER_IN', label: 'Nhập điều chuyển', tone: 'violet' },
   { value: 'PURCHASE_RECEIPT', label: 'Nhập hàng mua', tone: 'cyan' },
+  { value: 'DISPOSAL', label: 'Tiêu hủy hàng', tone: 'red' },
+  { value: 'SUPPLIER_RETURN', label: 'Trả nhà cung cấp', tone: 'amber' },
 ];
 const byType = Object.fromEntries(types.map(type => [type.value, type])) as Record<Filter, (typeof types)[number]>;
 const number = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
@@ -70,7 +73,7 @@ export default function InventoryLedgerPage() {
       </div>
       {error && <div className="ui-error" role="alert">{error} <button type="button" onClick={load}>Thử lại</button></div>}
       <div className="table-scroll"><table><thead><tr><th>Thời gian</th><th>Sản phẩm / Mã sản phẩm</th><th>Chi nhánh / Kho</th><th>Nghiệp vụ</th><th>Chứng từ</th><th>Nguyên nhân</th><th>Người thực hiện</th><th className="numeric">Trước</th><th className="numeric">Thay đổi</th><th className="numeric">Sau</th><th>Thao tác</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan={11}>Đang tải lịch sử tồn kho…</td></tr> : result.items.length === 0 ? <tr><td colSpan={11}>Không có biến động phù hợp bộ lọc.</td></tr> : result.items.map(row => <tr key={row.id}>
+        {loading ? <tr><td colSpan={11}><TableState message="Đang tải lịch sử tồn kho…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có biến động phù hợp bộ lọc."/></td></tr> : result.items.map(row => <tr key={row.id}>
           <td>{dateTime(row.occurredAt)}</td><td><ProductIdentity name={row.sku.product.name} code={row.sku.product.code} imageUrl={row.sku.product.imageUrl}/></td><td><strong>{row.warehouse.store.name}</strong><small>{row.warehouse.code} · {row.warehouse.name}</small></td>
           <td><StatusBadge tone={byType[row.type as Filter]?.tone ?? 'blue'}>{byType[row.type as Filter]?.label ?? row.type}</StatusBadge></td><td><code>{row.referenceId}</code></td><td className="inventory-ledger-reason">{row.reason}</td><td>{row.actor?.name ?? 'Hệ thống'}</td>
           <td className="numeric">{number(row.beforeQuantity)}</td><td className={`numeric ${row.quantity > 0 ? 'positive' : 'negative'}`}><strong>{row.quantity > 0 ? '+' : ''}{number(row.quantity)}</strong></td><td className="numeric"><strong>{number(row.afterQuantity)}</strong></td>

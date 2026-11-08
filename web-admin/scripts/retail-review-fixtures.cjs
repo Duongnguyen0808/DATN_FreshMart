@@ -1,0 +1,43 @@
+// Browser-only fixtures: these never seed or mutate a database.
+module.exports = function fixtures({ store, warehouse, product, stock }) {
+  const stamp = '2026-10-28T03:00:00Z';
+  const actor = { id: 'review', name: 'Người kiểm thử', email: 'review@example.test' };
+  const supplier = { id: 'review', code: 'NCC-TEST', name: 'Nhà cung cấp kiểm thử', contactName: actor.name, phone: '0900000000', email: 'supplier@example.test', address: 'Địa chỉ kiểm thử', currentDebt: 0, active: true, createdAt: stamp, updatedAt: stamp };
+  const customer = { ...supplier, code: 'KH-TEST', name: 'Khách hàng kiểm thử', orderCount: 0, totalSpent: 0, lastPurchaseAt: null, summary: { orderCount: 0, totalSpent: 0, lastPurchaseAt: null }, invoices: [] };
+  const sku = { ...product.skus[0], product };
+  const item = { id: 'item-review', skuId: sku.id, sku, orderedQuantity: 24, receivedQuantity: 0, remainingQuantity: 24, unitCost: 12000, lineTotal: 288000, purchasePackSize: 1, purchaseUnit: null };
+  const order = { id: 'review', code: 'DH-TEST', status: 'OPEN', expectedAt: null, paymentDueAt: stamp, note: 'Chứng từ kiểm thử giao diện', totalAmount: 288000, createdAt: stamp, totalOrdered: 24, totalReceived: 0, totalRemaining: 24, progressPercent: 0, purchaseRequest: null, supplier, warehouse, createdBy: actor, items: [item], receipts: [] };
+  const invoice = { id: 'review', code: 'HD-TEST', shiftId: 'shift-review', storeId: store.id, cashierId: actor.id, status: 'COMPLETED', customerName: customer.name, customerPhone: customer.phone, subtotal: 36000, discount: 0, total: 36000, refundedAmount: 0, creditAmount: 0, completedAt: stamp, store, cashier: actor, shift: { id: 'shift-review', code: 'CA-TEST', posCode: 'POS-01', name: 'Ca sáng', status: 'OPEN' }, items: [{ id: 'item-review', skuId: sku.id, sku, productCode: product.code, productName: product.name, unit: product.unit, quantity: 2, unitPrice: 18000, lineTotal: 36000 }], payments: [{ id: 'payment-review', method: 'CASH', amount: 36000 }], salesReturns: [] };
+  const debt = { id: 'review', code: 'CN-TEST', totalAmount: 288000, paidAmount: 0, outstandingAmount: 288000, dueDate: stamp, status: 'OPEN', timing: 'CURRENT', createdAt: stamp, supplier, customer, purchaseOrder: order, invoice, store, payments: [] };
+  const transfer = { id: 'review', code: 'DC-TEST', status: 'READY', createdAt: stamp, updatedAt: stamp, sourceWarehouse: warehouse, destinationWarehouse: { ...warehouse, name: 'Kho nhận kiểm thử' }, createdBy: actor, reason: 'Bổ sung hàng cho kho nhận', mismatchCount: 0, items: [{ ...item, requestedQuantity: 24, approvedQuantity: 24, dispatchedQuantity: null, receivedQuantity: null, discrepancy: null }], dispatchEvidenceUrls: [], receiptEvidenceUrls: [] };
+  const count = { id: 'review', code: 'KK-TEST', status: 'COUNTING', type: 'PERIODIC', area: 'Toàn kho', createdAt: stamp, updatedAt: stamp, warehouse, createdBy: actor, mismatchCount: 0, totalDifferenceValue: 0, items: [{ ...item, inventoryId: stock.id, inventory: stock, systemQuantity: 24, actualQuantity: null, difference: null, costPrice: 12000, differenceValue: null }] };
+  const pagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+  const summary = Object.fromEntries(('total active inactive currentDebt ready approved rejected inTransit completed cancelled open totalAmount totalQuantity revenue counting pending totalPayable paid dueSoon overdue totalReceivable collected matched discrepancy affectedAmount payables receivables refundAmount restockedQuantity nonRestockedQuantity amount grossSales discount netRevenue invoiceCount quantity averageOrderValue costOfGoods grossProfit grossMargin inventoryEntries uniqueSkus onHand available stockValue normal low out high shortageQuantity coveredShortages uncoveredShortages paidAmount outstandingAmount currentAmount dueSoonAmount overdueAmount currentCount dueSoonCount overdueCount paidCount activeSkus soldSkus noSales slowMoving highStock inventoryValue branchCount lowStock outOfStock outstandingDebt overdueDebt totalSku unread').split(' ').map(key => [key, 0]));
+  summary.methods = { CASH: { count: 0, amount: 0 }, QR: { count: 0, amount: 0 }, CARD: { count: 0, amount: 0 } };
+  const empty = { items: [], pagination, summary };
+  const report = { ...empty, filters: { from: '2026-10-01', to: '2026-10-28' }, revenueSeries: [], branches: [], categories: [], categoryProducts: [], topProducts: [], warehouses: [], recentTransactions: [], suppliers: [], stores: [], recentPayments: [], receivablesEnabled: true, receivableSummary: { totalAmount: 0, collectedAmount: 0, outstandingAmount: 0, dueSoonAmount: 0, overdueAmount: 0, count: 0 }, rules: { topSelling: 'Xếp hạng theo số lượng bán', slowMoving: 'Ít bán trong kỳ', highStock: 'Tồn vượt nhu cầu' } };
+  const role = { id: 'role-review', code: 'MANAGER', name: 'Quản lý chi nhánh', system: true, permissions: [{ permissionCode: 'inventory.read' }], _count: { users: 1 } };
+  return resource => {
+    if (resource === 'customers') return { items: [customer], pagination: { ...pagination, total: 1 }, summary: { total: 1, active: 1, inactive: 0 } };
+    if (resource === 'suppliers') return { items: [supplier], pagination: { ...pagination, total: 1 }, summary: { total: 1, active: 1, inactive: 0, currentDebt: 0 } };
+    if (resource === 'users') return [{ ...actor, active: true, globalAccess: true, roles: [role], stores: [store] }];
+    if (resource === 'roles') return [role];
+    if (resource === 'permissions') return [{ code: 'inventory.read' }, { code: 'products.read' }];
+    if (resource.startsWith('reports/')) return report;
+    if (resource === 'reconciliations/debt') return { ...empty, checkedAt: stamp };
+    if (resource === 'inventory-lots' || resource === 'lot-disposals') return [];
+    if (resource === 'products/review' || resource === `products/${product.id}`) return { ...product, updatedAt: stamp, priceHistory: [], skus: product.skus.map(row => ({ ...row, priceHistory: [], createdAt: stamp, updatedAt: stamp })) };
+    if (resource === 'inventory/review') return { ...stock, updatedAt: stamp };
+    if (resource === 'suppliers/review') return supplier;
+    if (resource === 'customers/review') return customer;
+    if (resource === 'purchase-orders/review') return order;
+    if (resource === 'invoices/review') return invoice;
+    if (resource === 'transfers/review') return transfer;
+    if (resource === 'stocktakes/review') return count;
+    if (resource === 'purchase-requests/review') return { ...transfer, code: 'DN-TEST', store, items: transfer.items };
+    if (resource === 'payables/review' || resource === 'receivables/review') return debt;
+    if (resource === 'forecasts/demand') return { run: null, items: [], summary: { productCount: 0, totalPredicted: 0 }, store };
+    if (resource === 'forecasts/shortages') return { run: null, items: [], analysisItems: [], summary: {}, store };
+    return empty;
+  };
+};

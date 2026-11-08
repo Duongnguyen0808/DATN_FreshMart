@@ -11,18 +11,18 @@ export const receivableListInput = z.object({
 }).strict();
 export const createReceivablePaymentInput = z.object({
   amount: z.coerce.number().positive().max(999_999_999_999),
-  method: z.enum(['CASH', 'QR', 'CARD']),
+  method: z.enum(['CASH', 'QR']),
   reference: z.string().trim().max(100).optional().nullable().transform(value => value || null),
   note: z.string().trim().max(500).optional().nullable().transform(value => value || null),
 }).strict().superRefine((value, context) => {
-  if (value.method !== 'CASH' && !value.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'Thu tiền QR/thẻ cần mã tham chiếu.' });
+  if (value.method === 'QR' && !value.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'Thu tiền QR/thẻ cần mã tham chiếu.' });
 });
 export const customerReceivablePaymentInput = z.object({
-  method: z.enum(['CASH', 'QR', 'CARD']),
+  method: z.enum(['CASH', 'QR']),
   reference: z.string().trim().max(100).optional().nullable().transform(value => value || null),
   note: z.string().trim().max(500).optional().nullable().transform(value => value || null),
   allocations: z.array(z.object({ receivableId: z.string().uuid(), amount: z.coerce.number().positive().max(999_999_999_999) }).strict()).min(1).max(100),
 }).strict().superRefine((value, context) => {
-  if (value.method !== 'CASH' && !value.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'Thu tiền QR/thẻ cần mã tham chiếu.' });
+  if (value.method === 'QR' && !value.reference) context.addIssue({ code: 'custom', path: ['reference'], message: 'Thu tiền QR/thẻ cần mã tham chiếu.' });
   if (new Set(value.allocations.map(row => row.receivableId)).size !== value.allocations.length) context.addIssue({ code: 'custom', path: ['allocations'], message: 'Hóa đơn phân bổ bị trùng.' });
 });

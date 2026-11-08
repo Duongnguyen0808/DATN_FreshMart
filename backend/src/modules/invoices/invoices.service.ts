@@ -1,3 +1,4 @@
+import { takeLots, receiveLot, restoreCancelledLots } from '../inventory/lot-stock.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
 import { AppError } from '../../common/app-error.js';
@@ -60,6 +61,7 @@ export async function listInvoicePayments(user: CurrentUser, input: z.infer<type
     ...(from || to ? { completedAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
   };
   const baseWhere: Prisma.InvoicePaymentWhereInput = {
+    method: { not: 'CARD' },
     invoice: invoiceWhere,
     ...(input.q ? { OR: [
       { reference: { contains: input.q, mode: 'insensitive' } },
@@ -91,6 +93,7 @@ export async function listSalesReturns(user: CurrentUser, input: z.infer<typeof 
   const from = input.from ? new Date(`${input.from}T00:00:00`) : undefined;
   const to = input.to ? new Date(`${input.to}T23:59:59.999`) : undefined;
   const where: Prisma.SalesReturnWhereInput = {
+    refundMethod: { not: 'CARD' },
     invoice: { ...visibleWhere(user), ...(input.storeId ? { storeId: input.storeId } : {}) },
     ...(input.refundMethod === 'all' ? {} : { refundMethod: input.refundMethod }),
     ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
@@ -146,6 +149,7 @@ export async function createInvoice(user: CurrentUser, input: z.infer<typeof cre
       for (const sku of skus) {
         const stock = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId, skuId: sku.id } } }); const sold = quantity.get(sku.id)!;
         if (!stock || stock.onHand - stock.reserved < sold) throw new AppError(409, 'INSUFFICIENT_STOCK', `SKU ${sku.code} không đủ tồn khả dụng.`);
+        await takeLots(tx, stock.id, sold, 'SALE', code, user.id);
         await tx.inventory.update({ where: { id: stock.id }, data: { onHand: { decrement: sold } } });
         await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId, skuId: sku.id, type: 'SALE', quantity: -sold, beforeQuantity: stock.onHand, afterQuantity: stock.onHand - sold, referenceType: 'INVOICE', referenceId: code, reason: `Bán hàng theo hóa đơn ${code}`, actorId: user.id } });
       }
@@ -178,6 +182,7 @@ export async function cancelInvoice(user: CurrentUser, id: string, input: z.infe
     if (current.warehouseId) for (const item of current.items) {
       const stock = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: current.warehouseId, skuId: item.skuId } } });
       if (!stock) throw new AppError(409, 'INVENTORY_NOT_FOUND', `Không tìm thấy tồn kho cho SKU ${item.skuCode}.`);
+      await restoreCancelledLots(tx, stock.id, item.quantity, current.code, user.id);
       await tx.inventory.update({ where: { id: stock.id }, data: { onHand: { increment: item.quantity } } });
       await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId: current.warehouseId, skuId: item.skuId, type: 'SALE_CANCEL', quantity: item.quantity, beforeQuantity: stock.onHand, afterQuantity: stock.onHand + item.quantity, referenceType: 'INVOICE', referenceId: current.code, reason: `Hoàn tồn do hủy hóa đơn: ${input.reason}`, actorId: user.id } });
     }
@@ -231,6 +236,7 @@ export async function createSalesReturn(user: CurrentUser, invoiceId: string, in
       for (const item of returnItems.filter(value => value.restock)) {
         const stock = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: invoice.warehouseId, skuId: item.skuId } } });
         if (!stock) throw new AppError(409, 'INVENTORY_NOT_FOUND', 'Không tìm thấy tồn kho của mặt hàng được nhập lại.');
+        await receiveLot(tx, stock.id, item.quantity, user.id, 'SALE_RETURN', salesReturn.id);
         await tx.inventory.update({ where: { id: stock.id }, data: { onHand: { increment: item.quantity } } });
         await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId: invoice.warehouseId, skuId: item.skuId, type: 'SALE_RETURN', quantity: item.quantity, beforeQuantity: stock.onHand, afterQuantity: stock.onHand + item.quantity, referenceType: 'SALES_RETURN', referenceId: salesReturn.id, reason: `Nhập lại hàng theo phiếu trả ${code}: ${input.reason}`, actorId: user.id } });
       }

@@ -1,0 +1,11 @@
+/* Shared screen treatment. Printed receipts keep their existing print styles. */
+@media screen {
+  body.retail-ui { font-weight: 400; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  body.retail-ui :is(p,td,dd,input,select,textarea,small) { font-weight: 400 !important; }
+  body.retail-ui :is(dt,label,legend,summary,.commerce-subnav>a,.metric-card-caption,.panel-meta,.breadcrumb,.suite-pagination,.ui-table-footer) { font-weight: 500 !important; }
+  body.retail-ui :is(button,th,.ui-tab,.metric-card-label,.kpi-label,.category-chip,.ui-status-badge,.commerce-nav-group>a) { font-weight: 600 !important; }
+  body.retail-ui :is(strong,b,h1,h2,h3,h4,.commerce-nav-group>a.selected) { font-weight: 700 !important; }
+  body.retail-ui :is(th,thead td) { color: #2a524d !important; background: #f2f9f7 !important; border-bottom-color: #d6e8e4 !important; font-weight: 600 !important; }
+  body.retail-ui :is(.product-identity strong,.product-name-cell strong,td>a,.contact-identity strong) { font-weight: 600 !important; }
+}
+

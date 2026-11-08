@@ -1,5 +1,13 @@
 import type { CSSProperties } from 'react';
 const paths: Record<string, string> = {
+  cookie: 'M21 12a9 9 0 1 1-9-9 5 5 0 0 0 9 9 M7 8h.01 M8 15h.01 M14 17h.01 M12 11h.01',
+  sparkles: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z M20 2v4 M18 4h4',
+  bottle: 'M9 2h6v4l2 3v12H7V9l2-3z M7 12h10 M9 5h6',
+  home: 'M3 10l9-7 9 7v11H3z M9 21v-8h6v8',
+  leaf: 'M20 3C8 1 2 7 5 15c5 9 17 3 15-12z M4 21L16 8',
+  bowl: 'M3 12h18a9 9 0 0 1-18 0 M8 21h8 M8 3v5 M12 2v6 M16 3v5',
+  snowflake: 'M12 2v20 M3.3 7l17.4 10 M3.3 17L20.7 7 M9 4l3 3 3-3 M9 20l3-3 3 3',
+  coffee: 'M3 8h13v7a6.5 6.5 0 0 1-13 0z M16 9h2a3 3 0 0 1 0 6h-2 M2 22h17 M6 2v3 M11 2v3',
   grid: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
   store: 'M3 10v11h18V10 M2 10l2-7h16l2 7 M2 10c0 4 5 4 5 0 0 4 5 4 5 0 0 4 5 4 5 0 0 4 5 4 5 0 M9 21v-7h6v7',
   box: 'M3 7l9-5 9 5v10l-9 5-9-5z M3 7l9 5 9-5 M12 12v10 M7 4l10 6',

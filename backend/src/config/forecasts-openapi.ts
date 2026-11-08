@@ -39,7 +39,7 @@ export const forecastPaths = {
   },
   '/api/v1/forecasts/shortages': {
     get: {
-      tags: ['Dự báo nhu cầu'], summary: 'Cảnh báo thiếu hàng theo dự báo, tồn khả dụng, hàng chuyển đến và PO dự kiến về trong kỳ', security,
+      tags: ['Dự báo nhu cầu'], summary: 'Cảnh báo thiếu hàng theo dự báo, tồn khả dụng, hàng chuyển đến và đơn mua hàng dự kiến về trong kỳ', security,
       parameters: [
         { name: 'storeId', in: 'query', required: true, schema: { type: 'string', format: 'uuid' } },
         { name: 'horizonDays', in: 'query', required: true, schema: { type: 'integer', enum: [7, 14, 30] } },

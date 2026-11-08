@@ -2,7 +2,7 @@ import { api } from './auth-api';
 import type { DemandForecast } from './forecasts-api';
 
 export type InventoryRecommendation = {
-  id: string; type: 'TRANSFER' | 'PURCHASE'; status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SUPERSEDED';
+  id: string; type: 'TRANSFER' | 'PURCHASE'; status: 'PENDING' | 'APPLIED' | 'REJECTED' | 'SUPERSEDED';
   priority: 'HIGH' | 'MEDIUM' | 'LOW' | null;
   skuId: string; skuCode: string; productCode: string; imageUrl: string | null; productName: string; unit: string;
   suggestedQuantity: number; finalQuantity: number | null; decisionNote: string | null;
@@ -23,6 +23,6 @@ export function getRecommendations(storeId: string, horizonDays: number) {
 export function generateRecommendations(storeId: string, horizonDays: number) {
   return api<RecommendationList>('recommendations/generate', 'POST', { storeId, horizonDays });
 }
-export function decideRecommendation(id: string, action: 'APPROVE' | 'REJECT', note: string, quantity?: number) {
+export function decideRecommendation(id: string, action: 'APPLY' | 'DISMISS', note: string, quantity?: number) {
   return api<InventoryRecommendation>(`recommendations/${id}/decision`, 'POST', { action, note, ...(quantity === undefined ? {} : { quantity }) });
 }

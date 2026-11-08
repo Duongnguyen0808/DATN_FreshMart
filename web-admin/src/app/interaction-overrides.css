@@ -1,4 +1,5 @@
 .scope-label{gap:9px;font-weight:550}
+.scope-brand-name{font-size:24px;font-weight:750;letter-spacing:-.6px;line-height:1.2;color:#12304a;white-space:nowrap}
 .scope-label img{width:46px;height:46px;display:block;flex:0 0 46px;object-fit:contain;border-radius:50%;background:#fff}
 .scope-brand-copy{display:flex;flex-direction:column;gap:2px;line-height:1.2}
 .scope-brand-copy strong{font-size:14px;font-weight:700;color:#1e354d}

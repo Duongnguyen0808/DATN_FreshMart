@@ -72,7 +72,8 @@ suite('RBAC and branch scope on PostgreSQL', () => {
     expect(result.body.data.map((s: { id: string }) => s.id)).toEqual([stores[0]]);
     expect((await get(`stores/${stores[0]}`, cashierToken)).status).toBe(200);
     expect((await get(`stores/${stores[1]}`, cashierToken)).body.code).toBe('STORE_FORBIDDEN');
-    expect((await get(`stores?storeId=${stores[1]}&globalAccess=true`, cashierToken)).body.data.map((s: { id: string }) => s.id)).toEqual([stores[0]]);
+    // Unknown scope overrides are rejected by the strict query schema.
+    expect((await get(`stores?storeId=${stores[1]}&globalAccess=true`, cashierToken)).status).toBe(400);
   });
   it('does not give an unassigned employee any branch access', async () => {
     expect((await get('stores', unassignedToken)).body.data).toEqual([]);
@@ -84,6 +85,8 @@ suite('RBAC and branch scope on PostgreSQL', () => {
     expect(result.body.data.map((u: { name: string }) => u.name).sort()).toEqual(['cashier', 'reader']);
     expect(result.text).not.toContain('passwordHash');
     expect(result.text).not.toContain('refreshHash');
+    expect((await get('forecasts/demand', readerToken)).status).toBe(403);
+    expect((await get('recommendations', readerToken)).status).toBe(403);
   });
   it('applies permission changes immediately without reissuing the access token', async () => {
     await db.rolePermission.delete({ where: { roleId_permissionCode: { roleId: cashierRole, permissionCode: 'stores.read' } } });
@@ -103,7 +106,10 @@ suite('RBAC and branch scope on PostgreSQL', () => {
     try {
       expect((await get('stores', cashierToken)).body.data).toEqual([]);
       expect((await get(`stores/${stores[0]}`, cashierToken)).status).toBe(403);
-      expect((await get(`stores/${stores[0]}`, ownerToken)).status).toBe(404);
+      // Global administrators can inspect inactive branches to reactivate them.
+      const inactive = await get(`stores/${stores[0]}`, ownerToken);
+      expect(inactive.status).toBe(200);
+      expect(inactive.body.data.active).toBe(false);
     } finally { await db.store.update({ where: { id: stores[0] }, data: { active: true } }); }
     await db.user.update({ where: { id: cashierId }, data: { active: false } });
     try { expect((await get('stores', cashierToken)).status).toBe(401); }

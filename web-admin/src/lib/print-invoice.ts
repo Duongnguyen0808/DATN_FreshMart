@@ -2,7 +2,7 @@ import type { Invoice, PaymentMethod } from './invoices-api';
 
 const money = (value: number) => new Intl.NumberFormat('vi-VN').format(Math.round(value)) + ' đ';
 const dateTime = (value: string) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
-const paymentName: Record<PaymentMethod, string> = { CASH: 'Tiền mặt', QR: 'QR / chuyển khoản', CARD: 'Thẻ' };
+const paymentName: Record<PaymentMethod, string> = { CASH: 'Tiền mặt', QR: 'QR / chuyển khoản', CARD: 'Giao dịch cũ' };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
 export function printInvoice(invoice: Invoice) {

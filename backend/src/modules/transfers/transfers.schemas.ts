@@ -3,7 +3,7 @@
 export const transferIdInput = z.string().uuid();
 export const transferListInput = z.object({
   q: z.string().trim().max(100).optional(),
-  status: z.enum(['all', 'PENDING_APPROVAL', 'APPROVED', 'IN_TRANSIT', 'COMPLETED', 'REJECTED', 'CANCELLED']).default('all'),
+  status: z.enum(['all', 'READY', 'IN_TRANSIT', 'COMPLETED', 'REJECTED', 'CANCELLED']).default('all'),
   warehouseId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
@@ -11,7 +11,7 @@ export const transferListInput = z.object({
 const itemQuantity = z.object({ skuId: z.string().uuid(), quantity: z.coerce.number().int().min(1).max(100_000_000) }).strict();
 export const createTransferInput = z.object({
   sourceWarehouseId: z.string().uuid(), destinationWarehouseId: z.string().uuid(),
-  reason: z.string().trim().min(3).max(500), items: z.array(itemQuantity).min(1).max(500),
+  reason: z.string().trim().min(3).max(500), items: z.array(itemQuantity.extend({ rfidEventId: z.string().uuid().optional() })).min(1).max(500),
 }).strict().refine(v => v.sourceWarehouseId !== v.destinationWarehouseId, { message: 'Kho nguá»“n vĂ  kho Ä‘Ă­ch pháº£i khĂ¡c nhau.', path: ['destinationWarehouseId'] })
   .refine(v => new Set(v.items.map(i => i.skuId)).size === v.items.length, { message: 'SKU khĂ´ng Ä‘Æ°á»£c trĂ¹ng.', path: ['items'] });
 export const approveTransferInput = z.object({

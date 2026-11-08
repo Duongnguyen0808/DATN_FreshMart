@@ -3,7 +3,7 @@
 export const purchaseOrderIdInput = z.string().uuid();
 export const purchaseOrderListInput = z.object({
   q: z.string().trim().max(100).optional(),
-  status: z.enum(['all', 'OPEN', 'PARTIALLY_RECEIVED', 'COMPLETED', 'OVERDUE']).default('all'),
+  status: z.enum(['all', 'OPEN', 'COMPLETED']).default('all'),
   supplierId: z.string().uuid().optional(),
   warehouseId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).default(1),
@@ -11,6 +11,7 @@ export const purchaseOrderListInput = z.object({
 }).strict();
 
 const createLine = z.object({
+  purchasePacks: z.boolean().optional(),
   skuId: z.string().uuid(),
   quantity: z.coerce.number().int().min(1).max(100_000_000),
   unitCost: z.coerce.number().positive().max(999_999_999_999),
@@ -29,6 +30,9 @@ export const createPurchaseOrderInput = z.object({
 });
 
 const receiptLine = z.object({
+  purchasePacks: z.boolean().optional(),
+  lotCode: z.string().trim().min(1).max(100).optional(),
+  expiresAt: z.string().date().optional(),
   purchaseOrderItemId: z.string().uuid(),
   quantity: z.coerce.number().int().min(1).max(100_000_000),
 }).strict();
@@ -59,7 +63,7 @@ export const goodsReceiptListInput = z.object({
 
 export const createSupplierReturnInput = z.object({
   reason: z.string().trim().min(3).max(500),
-  items: z.array(z.object({ purchaseOrderItemId: z.string().uuid(), quantity: z.coerce.number().int().min(1).max(100_000_000) }).strict()).min(1).max(500),
+  items: z.array(z.object({ lotId: z.string().uuid().optional(), purchaseOrderItemId: z.string().uuid(), quantity: z.coerce.number().int().min(1).max(100_000_000) }).strict()).min(1).max(500),
 }).strict().refine(value => new Set(value.items.map(item => item.purchaseOrderItemId)).size === value.items.length, {
   message: 'DĂ²ng hĂ ng tráº£ khĂ´ng Ä‘Æ°á»£c trĂ¹ng.', path: ['items'],
 });

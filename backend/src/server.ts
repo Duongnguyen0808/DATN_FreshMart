@@ -8,6 +8,7 @@ import { startForecastAutomation } from './modules/forecasts/automation.js';
 import { startPayosReconciliation } from './modules/payos/payos.service.js';
 import { authenticateToken } from './modules/auth/auth.service.js';
 import { attachIotRealtime } from './modules/iot/iot.realtime.js';
+import { sweepOpenDoors } from './modules/iot/warehouse-access.service.js';
 
 const httpServer = createServer(createApp(checkDatabase));
 const io = new SocketServer(httpServer, {
@@ -40,6 +41,8 @@ const server = httpServer.listen(env.PORT, env.HOST, () => {
 });
 const stopForecastAutomation = startForecastAutomation();
 const stopPayosReconciliation = startPayosReconciliation();
+const accessSweep = setInterval(() => { void sweepOpenDoors().catch(error => logger.error({ error }, 'Warehouse door sweep failed')); }, 2000);
+accessSweep.unref();
 server.on('error', () => {
   logger.error('Unable to start HTTP server');
   process.exit(1);
@@ -50,6 +53,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     server.close(() => {
       stopForecastAutomation();
       stopPayosReconciliation();
+      clearInterval(accessSweep);
       void prisma.$disconnect().finally(() => { clearTimeout(timeout); process.exit(0); });
     });
   });

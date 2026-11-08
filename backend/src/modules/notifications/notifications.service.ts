@@ -4,11 +4,11 @@ import type { CurrentUser } from '../auth/auth.repository.js';
 type Notice = { id: string; kind: 'stocktake' | 'transfer' | 'purchase_request' | 'shift'; title: string; description: string; href: string; createdAt: Date };
 
 export async function listOperationalNotifications(user: CurrentUser) {
-  const allowed = (resource: string) => user.permissions.includes(`${resource}.read`) && user.permissions.includes(`${resource}.approve`);
+  const allowed = (resource: string) => user.permissions.includes(`${resource}.read`) && (resource !== 'shifts' || user.permissions.includes('shifts.approve'));
   const storeIds = user.stores.map(store => store.id);
-  const stocktakeWhere = { status: 'PENDING_APPROVAL', ...(user.globalAccess ? {} : { warehouse: { storeId: { in: storeIds } } }) };
-  const transferWhere = { status: 'PENDING_APPROVAL', ...(user.globalAccess ? {} : { AND: [{ sourceWarehouse: { storeId: { in: storeIds } } }, { destinationWarehouse: { storeId: { in: storeIds } } }] }) };
-  const requestWhere = { status: 'PENDING_APPROVAL', ...(user.globalAccess ? {} : { storeId: { in: storeIds } }) };
+  const stocktakeWhere = { status: 'COUNTING', ...(user.globalAccess ? {} : { warehouse: { storeId: { in: storeIds } } }) };
+  const transferWhere = { status: 'READY', ...(user.globalAccess ? {} : { AND: [{ sourceWarehouse: { storeId: { in: storeIds } } }, { destinationWarehouse: { storeId: { in: storeIds } } }] }) };
+  const requestWhere = { status: 'READY', ...(user.globalAccess ? {} : { storeId: { in: storeIds } }) };
   const shiftWhere = { status: 'PENDING_REVIEW', ...(user.globalAccess ? {} : { storeId: { in: storeIds } }) };
   const [stocktakes, transfers, requests, shifts, stocktakeCount, transferCount, requestCount, shiftCount] = await Promise.all([
     allowed('stocktakes') ? prisma.stocktake.findMany({ where: stocktakeWhere, select: { id: true, code: true, createdAt: true, warehouse: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 10 }) : [],
@@ -21,9 +21,9 @@ export async function listOperationalNotifications(user: CurrentUser) {
     allowed('shifts') ? prisma.workShift.count({ where: shiftWhere }) : 0,
   ]);
   const items: Notice[] = [
-    ...stocktakes.map(row => ({ id: `stocktake:${row.id}`, kind: 'stocktake' as const, title: `Kiểm kho ${row.code} chờ duyệt`, description: row.warehouse.name, href: `/kiem-kho/${row.id}`, createdAt: row.createdAt })),
-    ...transfers.map(row => ({ id: `transfer:${row.id}`, kind: 'transfer' as const, title: `Điều chuyển ${row.code} chờ duyệt`, description: `${row.sourceWarehouse.name} → ${row.destinationWarehouse.name}`, href: `/dieu-chuyen/${row.id}`, createdAt: row.createdAt })),
-    ...requests.map(row => ({ id: `purchase_request:${row.id}`, kind: 'purchase_request' as const, title: `Đề nghị mua ${row.code} chờ duyệt`, description: row.store.name, href: `/de-nghi-mua/${row.id}`, createdAt: row.createdAt })),
+    ...stocktakes.map(row => ({ id: `stocktake:${row.id}`, kind: 'stocktake' as const, title: `Kiểm kho ${row.code} chưa hoàn tất`, description: row.warehouse.name, href: `/kiem-kho/${row.id}`, createdAt: row.createdAt })),
+    ...transfers.map(row => ({ id: `transfer:${row.id}`, kind: 'transfer' as const, title: `Điều chuyển ${row.code} sẵn sàng xuất`, description: `${row.sourceWarehouse.name} → ${row.destinationWarehouse.name}`, href: `/dieu-chuyen/${row.id}`, createdAt: row.createdAt })),
+    ...requests.map(row => ({ id: `purchase_request:${row.id}`, kind: 'purchase_request' as const, title: `Đề nghị mua ${row.code} sẵn sàng lập đơn mua hàng`, description: row.store.name, href: `/de-nghi-mua/${row.id}`, createdAt: row.createdAt })),
     ...shifts.map(row => ({ id: `shift:${row.id}`, kind: 'shift' as const, title: `Ca ${row.code} ch\u1edd duy\u1ec7t ch\u00eanh l\u1ec7ch`, description: `${row.store.name} · ${row.cashier.name}`, href: `/ca-lam-viec?shift=${row.id}`, createdAt: row.closedAt ?? row.createdAt })),
   ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, 10);
   return { total: stocktakeCount + transferCount + requestCount + shiftCount, items };

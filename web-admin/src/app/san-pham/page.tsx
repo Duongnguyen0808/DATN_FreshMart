@@ -1,13 +1,17 @@
 'use client';
+import { TableState } from '../../components/ui/table-state';
+import { CategoryBadge, ProductGallery, ProductImagePicker } from '../../components/products/category-badge';
+import { categoryTheme } from '../../lib/category-theme';
+import { useStockReceiptRefresh } from '../../lib/use-stock-receipt-refresh';
+import { ForecastAlertBadge, ForecastShortageBanner, useForecastShortages } from '../../components/forecast-shortage-alert';
 import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from '../../components/ui/icon';
 import { useAuth } from '../../components/auth-provider';
-import { ProductImagePicker } from '../../components/products/product-image-picker';
 import { CurrencyInput } from '../../components/ui/currency-input';
 import { ActionButton, ActionLink } from '../../components/ui/action-button';
 import { StatusBadge } from '../../components/ui/status-badge';
-import { TabBar, type TabTone } from '../../components/ui/tab-bar';
+import { TabBar } from '../../components/ui/tab-bar';
 import { useToast } from '../../components/ui/toast-provider';
 import { errorMessage } from '../../lib/auth-api';
 import * as productsApi from '../../lib/products-api';
@@ -16,10 +20,6 @@ import { downloadExcel } from '../../lib/excel-export';
 const money = (value: number) => new Intl.NumberFormat('vi-VN').format(value) + ' đ';
 type Modal = 'create' | 'edit' | null;
 type DetailTab = 'info' | 'description' | 'ledger' | 'stock';
-const knownCategoryTones: Record<string, number> = { DO_UONG_SUA: 0, GIA_VI_THUC_PHAM: 1, BANH_KEO_DO_KHO: 2, TRA_CA_PHE: 3 };
-const categoryTone = (code: string) => `category-tone-${knownCategoryTones[code] ?? [...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 6}`;
-const tabTones: TabTone[] = ['blue', 'green', 'amber', 'violet', 'red', 'cyan'];
-const categoryTabTone = (code: string) => tabTones[knownCategoryTones[code] ?? [...code].reduce((sum, char) => sum + char.charCodeAt(0), 0) % tabTones.length];
 const fileToDataUrl = async (file: File) => {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
@@ -44,18 +44,13 @@ function CompactDropdown({ label, value, placeholder, options, onChange }: { lab
   </div>;
 }
 
-function ProductDetails({ product, loading, tab, setTab, canManage, onEdit, onClose }: { product: productsApi.Product; loading: boolean; tab: DetailTab; setTab: (value: DetailTab) => void; canManage: boolean; onEdit: () => void; onClose: () => void }) {
-  const tabs: readonly [DetailTab, string][] = [['info','Thông tin'],['description','Mô tả, ghi chú'],['ledger','Thẻ kho'],['stock','Tồn kho']];
+function ProductDetails({ product, loading, canManage, onEdit, onClose }: { product: productsApi.Product; loading: boolean; canManage: boolean; onEdit: () => void; onClose: () => void }) {
   return <section className="product-inline-detail">
-    <nav aria-label="Thông tin sản phẩm">{tabs.map(([value,label]) => <button type="button" key={value} aria-current={tab===value?'page':undefined} onClick={()=>setTab(value)}>{label}</button>)}</nav>
     {loading ? <p className="muted">Đang tải thông tin…</p> : <>
-      <div className="product-view-summary">{product.imageUrl ? <img src={product.imageUrl} alt={product.name}/> : <div className="product-thumb">{product.name.slice(0,1)}</div>}<div><h3>{product.name}</h3><p>Nhóm hàng: {product.category.name}</p><StatusBadge tone={product.active?'green':'red'}>{product.active?'Đang kinh doanh':'Ngừng kinh doanh'}</StatusBadge></div></div>
-      {tab==='info' && <div className="product-detail-fields">{[['Mã sản phẩm',product.code],['Mã vạch',product.skus[0]?.barcode||'Chưa có'],['Giá vốn',money(product.skus[0]?.costPrice??0)],['Giá bán',money(product.skus[0]?.sellingPrice??0)],['Đơn vị',product.unit],['Danh mục',product.category.name]].map(([label,value])=><div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>}
-      {tab==='description' && <div className="product-detail-note"><strong>Mô tả, ghi chú</strong><p>Sản phẩm chưa có mô tả hoặc ghi chú.</p><button type="button" className="outline-button" onClick={onEdit}>Bổ sung trong form sửa</button></div>}
-      {tab==='ledger' && <div className="product-detail-note"><strong>Thẻ kho · {product.unit}</strong><p>{product.baseUnit&&product.unitsPerUnit>1?`1 ${product.unit} = ${product.unitsPerUnit} ${product.baseUnit}`:'Sản phẩm không thiết lập quy đổi đơn vị.'}</p><Link className="outline-button" href={`/lich-su-ton-kho?productId=${product.id}`}>Xem lịch sử thẻ kho</Link></div>}
-      {tab==='stock' && <div className="product-detail-note"><strong>Tồn kho theo chi nhánh</strong><p>Mở màn tồn kho để xem số lượng khả dụng và đang chuyển theo từng kho.</p><Link className="outline-button" href={`/ton-kho?q=${encodeURIComponent(product.code)}`}>Xem tồn kho</Link></div>}
+      <div className="product-view-summary">{product.imageUrl ? <img src={product.imageUrl} alt={product.name}/> : <div className="product-thumb">{product.name.slice(0,1)}</div>}<div><h3>{product.name}</h3><p><CategoryBadge category={product.category}/></p><StatusBadge tone={product.active?'green':'red'}>{product.active?'Đang kinh doanh':'Ngừng kinh doanh'}</StatusBadge></div></div>
+      <div className="product-detail-fields">{[['Mã sản phẩm',product.code],['Mã vạch',product.skus[0]?.barcode||'Chưa có'],['Giá vốn',money(product.skus[0]?.costPrice??0)],['Giá bán',money(product.skus[0]?.sellingPrice??0)],['Đơn vị',product.unit],['Danh mục',product.category.name]].map(([label,value])=><div key={label}><small>{label}</small><strong>{value}</strong></div>)}</div>
     </>}
-    <footer><button className="outline-button" type="button" onClick={onClose}>Đóng</button>{canManage&&<button className="primary-button" type="button" onClick={onEdit}>Chỉnh sửa</button>}</footer>
+    <footer><Link className="outline-button" href={`/ton-kho?q=${encodeURIComponent(product.code)}`}>Xem tồn kho</Link><button className="outline-button" type="button" onClick={onClose}>Đóng</button>{canManage&&<button className="primary-button" type="button" onClick={onEdit}>Chỉnh sửa</button>}</footer>
   </section>;
 }
 
@@ -84,16 +79,21 @@ function ProductUnitFields({ product }: { product: productsApi.Product | null })
 export default function Products() {
   const { showToast, confirmAction } = useToast();
   const { user } = useAuth();
+  const forecastAlerts = useForecastShortages();
+  const [forecastOnly, setForecastOnly] = useState(false);
+  const forecastKey = forecastAlerts.items.map(item => item.productId).sort().join(',');
   const canManage = !!user && (user.permissions.includes('products.manage') || user.permissions.includes('*'));
   const canManageCategories = !!user && (user.permissions.includes('categories.manage') || user.permissions.includes('*'));
   const [result, setResult] = useState<productsApi.ProductList>({ items: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 }, summary: { total: 0, active: 0, inactive: 0 } });
   const [categories, setCategories] = useState<productsApi.Category[]>([]);
   const [query, setQuery] = useState('');
+  useEffect(() => { setQuery(new URLSearchParams(window.location.search).get('q') ?? ''); }, []);
   const [categoryId, setCategoryId] = useState('');
   const [status, setStatus] = useState<'all' | 'true' | 'false'>('all');
   const [stockStatus, setStockStatus] = useState<'all' | 'IN_STOCK' | 'OUT_OF_STOCK'>('all');
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState<Modal>(null);
+  const [display, setDisplay] = useState<'table' | 'gallery'>('table');
   const [selected, setSelected] = useState<productsApi.Product | null>(null);
   const [nextCode, setNextCode] = useState('');
   const [viewing, setViewing] = useState<productsApi.Product | null>(null);
@@ -111,7 +111,17 @@ export default function Products() {
   const notify = (message: string) => showToast(message);
   const load = async () => {
     setLoading(true); setError('');
-    try { setResult(await productsApi.getProducts({ q: query.trim() || undefined, active: status, stockStatus, categoryId: categoryId || undefined, page, pageSize: 20 })); }
+    try {
+      const filters = { q: query.trim() || undefined, active: status, stockStatus, categoryId: categoryId || undefined };
+      if (!forecastOnly) setResult(await productsApi.getProducts({ ...filters, page, pageSize: 20 }));
+      else {
+        const first = await productsApi.getProducts({ ...filters, page: 1, pageSize: 100 });
+        const rest = await Promise.all(Array.from({ length: first.pagination.totalPages - 1 }, (_, index) => productsApi.getProducts({ ...filters, page: index + 2, pageSize: 100 })));
+        const ids = new Set(forecastKey.split(',').filter(Boolean));
+        const rows = [first, ...rest].flatMap(result => result.items).filter(item => ids.has(item.id));
+        setResult({ ...first, items: rows.slice((page - 1) * 20, page * 20), pagination: { page, pageSize: 20, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / 20)) } });
+      }
+    }
     catch (reason) { setError(errorMessage(reason)); }
     finally { setLoading(false); }
   };
@@ -120,8 +130,9 @@ export default function Products() {
     try { setCategories(await productsApi.getCategories('all')); }
     catch (reason) { setError(errorMessage(reason)); }
   };
+  useStockReceiptRefresh(() => { if (page !== 1) setPage(1); else void load(); });
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page]);
+  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page, forecastOnly, forecastKey]);
   useEffect(() => { setPage(1); }, [query, categoryId, status, stockStatus]);
 
   const open = (type: Exclude<Modal, null>, product: productsApi.Product | null = null) => {
@@ -240,30 +251,34 @@ export default function Products() {
 
   return <div className="suite-page products-page">
     <header className="suite-heading">
-      <div><div className="breadcrumb">Hàng hóa <span>›</span> Sản phẩm</div><h1>Danh sách hàng hóa</h1></div>
+      <div><div className="breadcrumb">Hàng hóa <span>›</span> Sản phẩm</div><h1>Danh sách hàng hóa</h1><p>Danh mục, hình ảnh và giá bán của cửa hàng.</p></div>
       {(canManage || canManageCategories) && <div className="product-heading-actions"><button className="outline-button" onClick={() => setExportOpen(true)}>Xuất file</button>{canManageCategories && <button className="outline-button" onClick={() => { setError(''); setEditingCategory(null); setCategoryModal(true); }}>Quản lý danh mục</button>}{canManage && <button className="primary-button" onClick={() => open('create')}>＋ Tạo mới</button>}</div>}
     </header>
+    <ForecastShortageBanner {...forecastAlerts} filtered={forecastOnly} onFilter={() => { setPage(1); setForecastOnly(value => !value); }}/>
     <section className="suite-panel panel">
       <aside className="products-filter-panel">
         <div><div className="product-filter-heading"><strong>Nhóm hàng</strong><button type="button" onClick={() => { setError(''); setEditingCategory(null); setCategoryModal(true); }}>Tạo mới</button></div><select aria-label="Lọc theo nhóm hàng" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Chọn nhóm hàng</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
         <div><strong>Tồn kho</strong><p>Trạng thái số lượng</p><select aria-label="Lọc còn hàng hoặc hết hàng" value={stockStatus} onChange={event => setStockStatus(event.target.value as typeof stockStatus)}><option value="all">Tất cả</option><option value="IN_STOCK">Còn hàng</option><option value="OUT_OF_STOCK">Hết hàng</option></select></div>
         <div><strong>Trạng thái hàng hóa</strong><div className="product-filter-pills">{([['all','Tất cả'],['true','Đang bán'],['false','Ngừng bán']] as const).map(([value,label])=><button type="button" key={value} aria-pressed={status===value} onClick={()=>setStatus(value)}>{label}</button>)}</div></div>
       </aside>
-      <TabBar className="products-category-tabs" value={categoryId || 'all'} onChange={value => setCategoryId(value === 'all' ? '' : value)} label="Lọc sản phẩm theo danh mục" items={[{ value: 'all', label: 'Tất cả sản phẩm', tone: 'blue' }, ...categories.filter(item => item.active).map(item => ({ value: item.id, label: item.name, tone: categoryTabTone(item.code) }))]}/>
-      <div className="suite-filters"><label><Icon name="search"/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm mã sản phẩm, barcode hoặc tên..."/></label><select value={status} onChange={event => setStatus(event.target.value as typeof status)}><option value="all">Tất cả trạng thái</option><option value="true">Đang kinh doanh</option><option value="false">Ngừng kinh doanh</option></select><button onClick={() => { setQuery(''); setCategoryId(''); setStatus('all'); setStockStatus('all'); }}>Xóa lọc</button></div>
+      <TabBar className="products-category-tabs" value={categoryId || 'all'} onChange={value => setCategoryId(value === 'all' ? '' : value)} label="Lọc sản phẩm theo danh mục" items={[{ value: 'all', label: <><Icon name="grid" size={16}/>Tất cả sản phẩm</>, style: categoryTheme().style, className: 'category-filter' }, ...categories.filter(item => item.active).map(item => ({ value: item.id, label: <><Icon name={categoryTheme(item).icon} size={16}/>{item.name}</>, style: categoryTheme(item).style, className: 'category-filter' }))]}/>
+      <div className="suite-filters"><label><Icon name="search"/><input aria-label="Tìm hàng hóa" value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm mã sản phẩm, barcode hoặc tên..."/></label>{(query || categoryId || status !== 'all' || stockStatus !== 'all') && <button type="button" onClick={() => { setQuery(''); setCategoryId(''); setStatus('all'); setStockStatus('all'); }}>Xóa lọc</button>}
+      {(query.trim() || categoryId || status !== 'all' || stockStatus !== 'all') && <div className="product-active-filters" aria-label="Điều kiện lọc đang áp dụng"><span>Đang lọc:</span>{query.trim() && <button type="button" onClick={() => setQuery('')} aria-label="Bỏ lọc từ khóa">Từ khóa: {query.trim()} <span aria-hidden="true">×</span></button>}{categoryId && <button type="button" onClick={() => setCategoryId('')} aria-label="Bỏ lọc nhóm hàng">{categories.find(item => item.id === categoryId)?.name ?? 'Nhóm hàng'} <span aria-hidden="true">×</span></button>}{stockStatus !== 'all' && <button type="button" onClick={() => setStockStatus('all')} aria-label="Bỏ lọc tồn kho">{stockStatus === 'IN_STOCK' ? 'Còn hàng' : 'Hết hàng'} <span aria-hidden="true">×</span></button>}{status !== 'all' && <button type="button" onClick={() => setStatus('all')} aria-label="Bỏ lọc trạng thái kinh doanh">{status === 'true' ? 'Đang kinh doanh' : 'Ngừng kinh doanh'} <span aria-hidden="true">×</span></button>}</div>}</div>
       {error && !modal && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}
-      <div className="table-scroll"><table><thead><tr><th>Mã sản phẩm</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Margin</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan={11}>Đang tải dữ liệu sản phẩm…</td></tr> : result.items.length === 0 ? <tr><td colSpan={11}>Không có sản phẩm phù hợp.</td></tr> : result.items.map(product => {
+      <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
+      {display === 'gallery' && (loading ? <TableState loading message="Đang tải sản phẩm…"/> : result.items.length ? <><ProductGallery items={result.items} onOpen={showProduct}/>{viewing && <section className="gallery-detail"><ProductDetails product={viewing} loading={viewLoading} canManage={canManage} onEdit={() => open('edit',viewing)} onClose={() => setViewing(null)}/></section>}</> : <TableState message="Không có sản phẩm phù hợp."/>)}
+      <div className="table-scroll" hidden={display !== 'table'}><table><thead><tr><th>Mã sản phẩm</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên lợi nhuận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+        {loading ? <tr><td colSpan={11}><TableState message="Đang tải dữ liệu sản phẩm…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có sản phẩm phù hợp."/></td></tr> : result.items.map(product => {
           const sku = product.skus[0];
           const margin = sku?.sellingPrice ? (sku.sellingPrice - sku.costPrice) / sku.sellingPrice * 100 : 0;
           return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm">
             <td><code>{product.code}</code></td><td>{sku?.barcode ?? '—'}</td>
-            <td><div className="product-name-cell"><div className="product-thumb">{product.imageUrl ? <img src={product.imageUrl} alt=""/> : <span>{product.name.charAt(0)}</span>}</div><strong>{product.name}</strong></div></td>
-            <td><span className={`suite-chip category-chip ${categoryTone(product.category.code)}`}>{product.category.name}</span></td><td><strong>{product.unit}</strong>{product.baseUnit && product.unitsPerUnit > 1 && <small>1 {product.unit} = {product.unitsPerUnit} {product.baseUnit}</small>}</td><td className="numeric"><strong>{product.availableStock ?? 0}</strong><small>{(product.availableStock ?? 0) > 0 ? 'Còn hàng' : 'Hết hàng'}</small></td>
+            <td><div className="product-name-cell"><div className="product-thumb">{product.imageUrl ? <img src={product.imageUrl} alt=""/> : <span>{product.name.charAt(0)}</span>}</div><strong>{product.name}</strong></div>{forecastAlerts.items.filter(item => item.productId === product.id).slice(0, 1).map(item => <ForecastAlertBadge key={`${item.storeId}-${item.skuId}`} item={item}/>)}</td>
+            <td><CategoryBadge category={product.category}/></td><td><strong>{product.unit}</strong>{product.baseUnit && product.unitsPerUnit > 1 && <small>1 {product.unit} = {product.unitsPerUnit} {product.baseUnit}</small>}</td><td className="numeric"><strong>{product.availableStock ?? 0}</strong><small>{(product.availableStock ?? 0) > 0 ? 'Còn hàng' : 'Hết hàng'}</small></td>
             <td className="numeric">{money(sku?.costPrice ?? 0)}</td><td className="numeric"><strong>{money(sku?.sellingPrice ?? 0)}</strong></td><td className="numeric"><strong className="positive">{margin.toFixed(1)}%</strong></td>
             <td><StatusBadge tone={product.active ? 'green' : 'red'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge></td>
             <td onClick={event => event.stopPropagation()}><div className="row-actions">{canManage && <><ActionButton tone="edit" onClick={() => open('edit', product)}>Sửa</ActionButton><ActionButton tone={product.active ? 'danger' : 'approve'} onClick={() => changeStatus(product)}>{product.active ? 'Ngừng' : 'Mở lại'}</ActionButton></>}</div></td>
-          </tr>{viewing?.id===product.id&&<tr className="product-detail-row"><td colSpan={11}><ProductDetails product={viewing} loading={viewLoading} tab={detailTab} setTab={setDetailTab} canManage={canManage} onEdit={()=>open('edit',viewing)} onClose={()=>setViewing(null)}/></td></tr>}</Fragment>;
+          </tr>{viewing?.id===product.id&&<tr className="product-detail-row"><td colSpan={11}><ProductDetails product={viewing} loading={viewLoading} canManage={canManage} onEdit={()=>open('edit',viewing)} onClose={()=>setViewing(null)}/></td></tr>}</Fragment>;
         })}
       </tbody></table></div>
       <footer><span>Hiển thị <b>{result.items.length}</b> trên {result.pagination.total} sản phẩm</span><div className="suite-pagination"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>‹ Trước</button><span>Trang {page}/{result.pagination.totalPages}</span><button disabled={page >= result.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau ›</button></div></footer>
@@ -294,7 +309,7 @@ export default function Products() {
           <label>Mô tả<textarea name="description" maxLength={500} rows={4} defaultValue={editingCategory?.description ?? ''} placeholder="Mô tả ngắn về nhóm sản phẩm" /></label>
           <div className="category-form-actions">{editingCategory && <button type="button" className="outline-button" onClick={() => setEditingCategory(null)}>Tạo mới</button>}<button className="primary-button" disabled={saving}>{saving ? 'Đang lưu…' : editingCategory ? 'Lưu thay đổi' : 'Thêm danh mục'}</button></div>
         </form>
-         <div className="category-manager-list"><table><thead><tr><th>Danh mục</th><th className="numeric">Sản phẩm</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{categories.length ? categories.map(category => <tr key={category.id}><td><strong>{category.name}</strong><small>{category.code}{category.description ? ` · ${category.description}` : ''}</small></td><td className="numeric">{category._count.products}</td><td><StatusBadge tone={category.active ? 'green' : 'red'}>{category.active ? 'Hoạt động' : 'Đã ngừng'}</StatusBadge></td><td><div className="row-actions"><ActionButton tone="edit" onClick={() => { setError(''); setEditingCategory(category); }}>Sửa</ActionButton><ActionButton tone={category.active ? 'danger' : 'approve'} onClick={() => changeCategoryStatus(category)}>{category.active ? 'Ngừng' : 'Mở lại'}</ActionButton></div></td></tr>) : <tr><td colSpan={4}>Chưa có danh mục.</td></tr>}</tbody></table></div>
+         <div className="category-manager-list"><table><thead><tr><th>Danh mục</th><th className="numeric">Sản phẩm</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{categories.length ? categories.map(category => <tr key={category.id}><td><strong>{category.name}</strong><small>{category.code}{category.description ? ` · ${category.description}` : ''}</small></td><td className="numeric">{category._count.products}</td><td><StatusBadge tone={category.active ? 'green' : 'red'}>{category.active ? 'Hoạt động' : 'Đã ngừng'}</StatusBadge></td><td><div className="row-actions"><ActionButton tone="edit" onClick={() => { setError(''); setEditingCategory(category); }}>Sửa</ActionButton><ActionButton tone={category.active ? 'danger' : 'approve'} onClick={() => changeCategoryStatus(category)}>{category.active ? 'Ngừng' : 'Mở lại'}</ActionButton></div></td></tr>) : <tr><td colSpan={4}><TableState message="Chưa có danh mục."/></td></tr>}</tbody></table></div>
       </div>
       <footer><button className="outline-button" type="button" onClick={() => setCategoryModal(false)}>Đóng</button></footer>
     </div></div>}

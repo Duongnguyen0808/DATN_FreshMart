@@ -1,4 +1,6 @@
 ﻿'use client';
+import { DistributionPanel } from '../../components/analytics-visuals';
+import { TableState } from '../../components/ui/table-state';
 import { downloadExcel } from '../../lib/excel-export';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -116,11 +118,12 @@ function BranchComparisonPage() {
     <div className="preview-note"><span className="status-dot" />Dữ liệu vận hành thực tế<span>{loading ? 'Đang tổng hợp…' : `${from} → ${to} · ${report.summary.branchCount} chi nhánh`}</span></div>
 
     <MetricGrid className="report-kpis" label="Chỉ số toàn chuỗi">
-      <MetricCard tone="blue" label="DOANH THU" icon={<Icon name="wallet" />} value={money(report.summary.revenue)} caption={`${number(report.summary.invoiceCount)} hóa đơn · ${number(report.summary.quantity)} sản phẩm`} />
+      <MetricCard tone="teal" label="DOANH THU" icon={<Icon name="wallet" />} value={money(report.summary.revenue)} caption={`${number(report.summary.invoiceCount)} hóa đơn · ${number(report.summary.quantity)} sản phẩm`} />
       <MetricCard tone={report.summary.grossProfit >= 0 ? 'green' : 'red'} label="LỢI NHUẬN GỘP ƯỚC TÍNH" icon={<Icon name="chart" />} value={money(report.summary.grossProfit)} caption={`Biên ${report.summary.grossMargin.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}% · theo giá vốn hiện tại`} />
-      <MetricCard tone="amber" label="GIÁ TRỊ TỒN KHO" icon={<Icon name="store" />} value={money(report.summary.inventoryValue)} caption={`${number(report.summary.lowStock)} sắp thiếu · ${number(report.summary.outOfStock)} hết hàng`} />
-      <MetricCard tone="violet" label="CÔNG NỢ PHẢI TRẢ" icon={<Icon name="warning" />} value={money(report.summary.outstandingDebt)} caption={`Quá hạn ${money(report.summary.overdueDebt)}`} />
+      <MetricCard tone="indigo" label="GIÁ TRỊ TỒN KHO" icon={<Icon name="store" />} value={money(report.summary.inventoryValue)} caption={`${number(report.summary.lowStock)} sắp thiếu · ${number(report.summary.outOfStock)} hết hàng`} />
+      <MetricCard tone="orange" label="CÔNG NỢ PHẢI TRẢ" icon={<Icon name="warning" />} value={money(report.summary.outstandingDebt)} caption={`Quá hạn ${money(report.summary.overdueDebt)}`} />
     </MetricGrid>
+    <DistributionPanel title="Doanh thu theo chi nhánh" description="Tỷ trọng đóng góp trong cùng kỳ báo cáo." rows={report.branches.map(row => ({ id: row.id, label: row.name, value: row.revenue }))}/>
 
     {(categoryId || productId) && <div className="demo-banner"><strong>Phạm vi bộ lọc sản phẩm:</strong> doanh thu và tồn kho được lọc theo sản phẩm hoặc danh mục; công nợ vẫn là tổng nghĩa vụ của cả chi nhánh vì khoản phải trả không phân bổ theo từng sản phẩm.</div>}
 
@@ -138,7 +141,7 @@ function BranchComparisonPage() {
     <section className="suite-panel panel">
       <div className="panel-heading"><h2>Bảng so sánh chi tiết</h2><span className="panel-meta">Lợi nhuận gộp dùng giá vốn sản phẩm hiện tại</span></div>
       <div className="table-scroll"><table><thead><tr><th>Hạng / Chi nhánh</th><th className="numeric">Doanh thu</th><th className="numeric">So kỳ trước</th><th className="numeric">Hóa đơn</th><th className="numeric">Giá trị đơn TB</th><th className="numeric">SL bán</th><th className="numeric">LN gộp</th><th className="numeric">Biên LN</th><th className="numeric">Giá trị tồn</th><th className="numeric">Cần bổ sung</th><th className="numeric">Công nợ</th><th className="numeric">Quá hạn</th></tr></thead>
-        <tbody>{report.branches.length ? report.branches.map((row) => <tr key={row.id}><td><strong><span className="branch-rank">#{row.rank}</span> {row.name}</strong></td><td className="numeric"><strong>{money(row.revenue)}</strong></td><td className={`numeric ${row.revenueGrowth !== null && row.revenueGrowth >= 0 ? 'positive' : 'negative'}`}>{row.revenueGrowth === null ? (row.revenue > 0 ? 'Mới' : '—') : `${row.revenueGrowth >= 0 ? '+' : ''}${row.revenueGrowth.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`}</td><td className="numeric">{number(row.invoiceCount)}</td><td className="numeric">{money(row.averageOrderValue)}</td><td className="numeric">{number(row.quantity)}</td><td className={`numeric ${row.grossProfit >= 0 ? 'positive' : 'negative'}`}>{money(row.grossProfit)}</td><td className="numeric">{row.grossMargin.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%</td><td className="numeric">{money(row.inventoryValue)}</td><td className="numeric"><StatusBadge tone={row.lowStock + row.outOfStock ? 'red' : 'green'}>{number(row.lowStock + row.outOfStock)}</StatusBadge></td><td className="numeric">{money(row.outstandingDebt)}</td><td className="numeric negative">{money(row.overdueDebt)}</td></tr>) : <tr><td colSpan={12}>Chưa có dữ liệu chi nhánh.</td></tr>}</tbody>
+        <tbody>{report.branches.length ? report.branches.map((row) => <tr key={row.id}><td><strong><span className="branch-rank">#{row.rank}</span> {row.name}</strong></td><td className="numeric"><strong>{money(row.revenue)}</strong></td><td className={`numeric ${row.revenueGrowth !== null && row.revenueGrowth >= 0 ? 'positive' : 'negative'}`}>{row.revenueGrowth === null ? (row.revenue > 0 ? 'Mới' : '—') : `${row.revenueGrowth >= 0 ? '+' : ''}${row.revenueGrowth.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%`}</td><td className="numeric">{number(row.invoiceCount)}</td><td className="numeric">{money(row.averageOrderValue)}</td><td className="numeric">{number(row.quantity)}</td><td className={`numeric ${row.grossProfit >= 0 ? 'positive' : 'negative'}`}>{money(row.grossProfit)}</td><td className="numeric">{row.grossMargin.toLocaleString('vi-VN', { maximumFractionDigits: 1 })}%</td><td className="numeric">{money(row.inventoryValue)}</td><td className="numeric"><StatusBadge tone={row.lowStock + row.outOfStock ? 'red' : 'green'}>{number(row.lowStock + row.outOfStock)}</StatusBadge></td><td className="numeric">{money(row.outstandingDebt)}</td><td className="numeric negative">{money(row.overdueDebt)}</td></tr>) : <tr><td colSpan={12}><TableState message="Chưa có dữ liệu chi nhánh."/></td></tr>}</tbody>
       </table></div>
     </section>
   </div>;

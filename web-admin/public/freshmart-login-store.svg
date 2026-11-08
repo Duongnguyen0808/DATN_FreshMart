@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 570" role="img" aria-labelledby="title description">
+  <title id="title">Cửa hàng FreshMart</title>
+  <desc id="description">Quầy bán hàng với kệ sản phẩm, túi mua sắm, hộp hàng và hóa đơn.</desc>
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#D6F5F0"/><stop offset="1" stop-color="#8BDED4"/></linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#B5E7DF"/><stop offset="1" stop-color="#70C9C0"/></linearGradient>
+    <linearGradient id="counter" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0D8D84"/><stop offset="1" stop-color="#075D5A"/></linearGradient>
+    <linearGradient id="bag" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFFDF8"/><stop offset="1" stop-color="#EAF5EF"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%"><feGaussianBlur stdDeviation="12"/></filter>
+  </defs>
+  <ellipse cx="379" cy="512" rx="313" ry="37" fill="#06766E" opacity=".14" filter="url(#shadow)"/>
+  <path d="M60 326 383 187l316 138-318 160Z" fill="url(#floor)" stroke="#38AFA5" stroke-width="2"/>
+  <path d="M60 326V160L382 32l317 128v165L383 188Z" fill="url(#wall)" stroke="#57C5B9" stroke-width="2"/>
+  <path d="M383 188V33" stroke="#78CEC3" stroke-width="2"/>
+  <path d="M62 174 382 46l317 127" fill="none" stroke="#F1FFFC" stroke-opacity=".7" stroke-width="3"/>
+  <path d="m149 372 238-104M243 420l238-105M340 462l237-105" stroke="#E3F9F4" stroke-opacity=".56" stroke-width="2"/>
+  <path d="m381 483 0-294" stroke="#E3F9F4" stroke-opacity=".42" stroke-width="2"/>
+  <!-- Back wall canopy and display -->
+  <path d="m187 160 197-76 190 76-190 75Z" fill="#F7FFFA" stroke="#0C817B" stroke-width="4"/>
+  <path d="m187 160 197 74v24l-197-75z" fill="#FFF9E9" stroke="#0C817B" stroke-width="3"/>
+  <path d="m384 234 190-74v23l-190 75z" fill="#D5F5EE" stroke="#0C817B" stroke-width="3"/>
+  <path d="m187 159 28 9 10 26-38-13zm46 18 37 14 8 24-36-13zm54 20 37 14 7 25-37-14zm54 20 35 13 8 24-35-13z" fill="#77D2C7"/>
+  <path d="m392 230 36-13-7 24-29 11zm48-18 37-14-7 24-36 14zm49-19 36-13-7 25-36 13zm47-18 38-15v22l-31 12z" fill="#77D2C7"/>
+  <!-- Left product shelf -->
+  <path d="m100 281 154-61 50 19-151 63z" fill="#E9FEFA" stroke="#087F78" stroke-width="4"/>
+  <path d="m100 281 53 21v88l-53-22z" fill="#0E756F" stroke="#075D59" stroke-width="4"/>
+  <path d="m153 302 151-63v86l-151 65z" fill="#C5EDE5" stroke="#075D59" stroke-width="4"/>
+  <path d="m153 331 151-62M153 361l151-62" stroke="#087F78" stroke-width="7"/>
+  <path d="m166 303 24-10 1 28-25 10z" fill="#F6A95B" stroke="#A9672F" stroke-width="2"/>
+  <path d="m201 288 21-9 1 30-22 9z" fill="#F9DB75" stroke="#B19338" stroke-width="2"/>
+  <path d="m232 276 22-9 1 30-23 10z" fill="#71BEB6" stroke="#287E77" stroke-width="2"/>
+  <path d="m263 264 20-8 1 30-21 9z" fill="#EE8F87" stroke="#B65F59" stroke-width="2"/>
+  <path d="m166 336 23-10 1 27-24 11z" fill="#83CDE1" stroke="#3889A0" stroke-width="2"/>
+  <path d="m201 321 21-9 1 29-22 9z" fill="#DBABDB" stroke="#996E9D" stroke-width="2"/>
+  <path d="m234 308 21-8 1 29-22 9z" fill="#F6C56F" stroke="#AA7838" stroke-width="2"/>
+  <path d="m266 296 19-8 1 29-20 8z" fill="#9ED6A2" stroke="#57975F" stroke-width="2"/>
+  <!-- Right product shelf -->
+  <path d="m503 230 115 48 44-17-115-47z" fill="#F4FFFB" stroke="#087F78" stroke-width="4"/>
+  <path d="m503 230 44-16v111l-44 18z" fill="#0B756F" stroke="#075D59" stroke-width="4"/>
+  <path d="m547 214 115 47v109l-115-45z" fill="#D9F4E9" stroke="#075D59" stroke-width="4"/>
+  <path d="m547 251 115 47m-115-10 115 47" stroke="#087F78" stroke-width="7"/>
+  <path d="m558 218 18 8v28l-18-7zm29 12 17 7v28l-17-7zm28 11 18 7v28l-18-7z" fill="#F8C36A" stroke="#B98738" stroke-width="2"/>
+  <path d="m558 259 18 7v27l-18-7zm29 12 17 7v27l-17-7zm28 11 18 7v27l-18-7z" fill="#83CAD7" stroke="#4B8B9A" stroke-width="2"/>
+  <!-- Cash register and counter -->
+  <path d="m304 313 174-70 111 42-175 74z" fill="#F3FFFC" stroke="#075D59" stroke-width="5"/>
+  <path d="m304 313 110 46v100l-110-46z" fill="url(#counter)" stroke="#075D59" stroke-width="5"/>
+  <path d="m414 359 175-74v101l-175 73z" fill="#087F78" stroke="#075D59" stroke-width="5"/>
+  <path d="m323 342 74 30v55l-74-31z" fill="#0A6A65" stroke="#9DDBD2" stroke-width="2"/>
+  <path d="m340 370 13 6m5 2 18 7" stroke="#9DE1D6" stroke-width="3" stroke-linecap="round"/>
+  <path d="m363 254 50-20 41 15-51 22z" fill="#31575A" stroke="#203F43" stroke-width="3"/>
+  <path d="m363 254 40 17v42l-40-17z" fill="#193E43" stroke="#203F43" stroke-width="3"/>
+  <path d="m403 271 51-22v42l-51 22z" fill="#12373C" stroke="#203F43" stroke-width="3"/>
+  <path d="m370 258 32 13v30l-32-13z" fill="#B9EFE5"/>
+  <path d="m411 319 65-28 27 11-65 28z" fill="#F7FFFF" stroke="#537B7B" stroke-width="3"/>
+  <path d="m419 318 8-3m5-2 8-3m5-2 8-3m5-2 8-3m-35 22 7-3m5-2 7-3m5-2 8-3" stroke="#7AA8A6" stroke-width="3" stroke-linecap="round"/>
+  <!-- Receipt rising naturally from printer -->
+  <path d="m492 188 56 20v104l-9-7-9 5-9-7-9 5-9-7-11 5z" fill="#FFFDF4" stroke="#B9C8B9" stroke-width="3"/>
+  <path d="m503 205 28 10m-28 6 34 12m-34 6 24 9m-24 7 30 11m-30 7 21 8" stroke="#9AB8AF" stroke-width="3" stroke-linecap="round"/>
+  <path d="m503 286 29 11" stroke="#087F78" stroke-width="4" stroke-linecap="round"/>
+  <!-- Product cartons and shopping bag in foreground -->
+  <path d="m111 418 72-29 69 27-71 31z" fill="#FCE1A9" stroke="#A56F37" stroke-width="3"/>
+  <path d="m111 418 70 29v57l-70-29z" fill="#E8B46D" stroke="#A56F37" stroke-width="3"/>
+  <path d="m181 447 71-31v58l-71 30z" fill="#DCA25D" stroke="#A56F37" stroke-width="3"/>
+  <path d="m148 404 70 28v58l-70-29z" fill="none" stroke="#FFF1D6" stroke-width="8"/>
+  <path d="m225 447 57-24 51 20-57 24z" fill="#F6DEA9" stroke="#A56F37" stroke-width="3"/>
+  <path d="m225 447 51 20v44l-51-19z" fill="#DDA764" stroke="#A56F37" stroke-width="3"/>
+  <path d="m276 467 57-24v44l-57 24z" fill="#CB9452" stroke="#A56F37" stroke-width="3"/>
+  <path d="m519 418 78-28 67 29-78 30z" fill="url(#bag)" stroke="#0C7770" stroke-width="4"/>
+  <path d="m519 418 67 31v78l-67-31z" fill="#FFFDF6" stroke="#0C7770" stroke-width="4"/>
+  <path d="m586 449 78-30v79l-78 29z" fill="#D7F2EA" stroke="#0C7770" stroke-width="4"/>
+  <path d="M545 412c-4-31 5-48 19-51 16-4 27 11 28 41" fill="none" stroke="#0C7770" stroke-width="8" stroke-linecap="round"/>
+  <path d="M603 407c-4-30 4-46 17-49 16-4 27 11 29 39" fill="none" stroke="#0C7770" stroke-width="8" stroke-linecap="round"/>
+  <path d="m548 457 20 8c4 12 12 14 20 9-4 17-18 22-31 11z" fill="#65CFC7"/>
+  <path d="m577 465 17-14" stroke="#087F78" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -1,3 +1,4 @@
+import { lotsRoutes } from './modules/inventory/lots.routes.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -39,7 +40,8 @@ export function createApp(checkDatabase: () => Promise<void>) {
   } } }));
   app.use(cors({ origin: env.CORS_ORIGINS.split(',').map(value => value.trim()), credentials: true }));
   app.use(pinoHttp({ logger }));
-  app.use(express.json({ limit: '8mb' }));
+  // A 20 MB image becomes ~27 MB when sent as a base64 JSON data URL.
+  app.use(express.json({ limit: '30mb' }));
   app.use(cookieParser());
   app.use('/api/v1/auth', authRoutes);
   app.get(['/health', '/api/v1/health'], (_request, response) => {
@@ -62,6 +64,7 @@ export function createApp(checkDatabase: () => Promise<void>) {
   app.use('/api/v1', productRoutes);
   app.use('/api/v1', shiftRoutes);
   app.use('/api/v1', invoiceRoutes);
+  app.use('/api/v1', lotsRoutes);
   app.use('/api/v1', inventoryRoutes);
   app.use('/api/v1', stocktakeRoutes);
   app.use('/api/v1', transferRoutes);

@@ -1,3 +1,5 @@
+import { receiveLot, takeLots } from '../inventory/lot-stock.js';
+import { markStockReceived } from '../inventory/receipt-visibility.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
 import { nextDailyCode } from '../../common/daily-code.js';
@@ -7,6 +9,7 @@ import type { z } from 'zod';
 import type { createPurchaseOrderInput, createSupplierReturnInput, goodsReceiptListInput, purchaseOrderListInput, receivePurchaseOrderInput, supplierReturnListInput } from './purchase-orders.schemas.js';
 import { uploadOperationalEvidence } from '../products/cloudinary.service.js';
 import { confirmIotEvents } from '../iot/iot.service.js';
+import { createOrderCameraParcels } from '../iot/iot-inbound.service.js';
 
 const storeIds = (user: CurrentUser) => user.stores.map(store => store.id);
 const person = { select: { id: true, name: true, email: true } } as const;
@@ -23,7 +26,7 @@ function assertScope(user: CurrentUser, storeId: string) {
   if (!user.globalAccess && !storeIds(user).includes(storeId)) throw new AppError(403, 'STORE_FORBIDDEN', 'Bạn không được thao tác đơn mua hàng của chi nhánh này.');
 }
 
-function present<T extends { status: string; expectedAt: Date | null; totalAmount: unknown; items: Array<{ orderedQuantity: number; receivedQuantity: number; unitCost: unknown; lineTotal: unknown }>; receipts?: Array<{ items: Array<{ unitCost: unknown }> }> }>(row: T) {
+function present<T extends { totalAmount: unknown; items: Array<{ orderedQuantity: number; receivedQuantity: number; unitCost: unknown; lineTotal: unknown }>; receipts?: Array<{ items: Array<{ unitCost: unknown }> }> }>(row: T) {
   const totalOrdered = row.items.reduce((sum, item) => sum + item.orderedQuantity, 0);
   const totalReceived = row.items.reduce((sum, item) => sum + item.receivedQuantity, 0);
   return {
@@ -35,8 +38,6 @@ function present<T extends { status: string; expectedAt: Date | null; totalAmoun
     totalReceived,
     totalRemaining: totalOrdered - totalReceived,
     progressPercent: totalOrdered ? Math.round(totalReceived * 100 / totalOrdered) : 0,
-    isOverdue: row.status !== 'COMPLETED' && row.expectedAt !== null && row.expectedAt.getTime() < Date.now(),
-    overdueDays: row.status !== 'COMPLETED' && row.expectedAt !== null && row.expectedAt.getTime() < Date.now() ? Math.floor((Date.now() - row.expectedAt.getTime()) / 86_400_000) : 0,
   };
 }
 
@@ -68,10 +69,9 @@ export async function listPurchaseOrders(user: CurrentUser, input: z.infer<typeo
     assertScope(user, warehouse.storeId);
   }
   const base: Prisma.PurchaseOrderWhereInput = user.globalAccess ? {} : { warehouse: { storeId: { in: storeIds(user) } } };
-  const overdueWhere: Prisma.PurchaseOrderWhereInput = { status: { in: ['OPEN', 'PARTIALLY_RECEIVED'] }, expectedAt: { lt: new Date() } };
   const where: Prisma.PurchaseOrderWhereInput = { AND: [
     base,
-    input.status === 'all' ? {} : input.status === 'OVERDUE' ? overdueWhere : { status: input.status },
+    input.status === 'all' ? {} : { status: input.status },
     input.supplierId ? { supplierId: input.supplierId } : {},
     input.warehouseId ? { warehouseId: input.warehouseId } : {},
     input.q ? { OR: [
@@ -82,18 +82,17 @@ export async function listPurchaseOrders(user: CurrentUser, input: z.infer<typeo
     ] } : {},
   ] };
   const skip = (input.page - 1) * input.pageSize;
-  const [rows, total, grouped, aggregate, overdue] = await Promise.all([
-    prisma.purchaseOrder.findMany({ where, include, orderBy: input.status === 'OVERDUE' ? { expectedAt: 'asc' } : { createdAt: 'desc' }, skip, take: input.pageSize }),
+  const [rows, total, grouped, aggregate] = await Promise.all([
+    prisma.purchaseOrder.findMany({ where, include, orderBy: { createdAt: 'desc' }, skip, take: input.pageSize }),
     prisma.purchaseOrder.count({ where }),
     prisma.purchaseOrder.groupBy({ by: ['status'], where: base, _count: { _all: true } }),
     prisma.purchaseOrder.aggregate({ where: base, _sum: { totalAmount: true } }),
-    prisma.purchaseOrder.count({ where: { AND: [base, overdueWhere] } }),
   ]);
   const count = (status: string) => grouped.find(item => item.status === status)?._count._all ?? 0;
   return {
     items: rows.map(present),
     pagination: { page: input.page, pageSize: input.pageSize, total, totalPages: Math.max(1, Math.ceil(total / input.pageSize)) },
-    summary: { total: grouped.reduce((sum, item) => sum + item._count._all, 0), open: count('OPEN'), partial: count('PARTIALLY_RECEIVED'), completed: count('COMPLETED'), overdue, totalAmount: Number(aggregate._sum.totalAmount ?? 0) },
+    summary: { total: grouped.reduce((sum, item) => sum + item._count._all, 0), open: count('OPEN'), completed: count('COMPLETED'), totalAmount: Number(aggregate._sum.totalAmount ?? 0) },
   };
 }
 
@@ -103,14 +102,25 @@ export async function getPurchaseOrder(user: CurrentUser, id: string) {
   return present(row);
 }
 
-export async function createPurchaseOrder(user: CurrentUser, input: z.infer<typeof createPurchaseOrderInput>) {
+export async function createPurchaseOrder(user: CurrentUser, input: z.infer<typeof createPurchaseOrderInput>, hooks?: { beforeCreate: (tx: Prisma.TransactionClient) => Promise<void>; afterCreate: (tx: Prisma.TransactionClient, id: string) => Promise<void> }) {
+  const packaging = await prisma.sku.findMany({ where: { id: { in: input.items.map(row => row.skuId) } }, include: { product: true } });
+  input = { ...input, items: input.items.map(row => {
+    const product = packaging.find(sku => sku.id === row.skuId)?.product;
+    if (!row.purchasePacks) return row;
+    if (!product?.purchaseUnit) throw new AppError(400, 'PACK_UNCONFIGURED', 'Ch?a c?u h?nh ??n v? nh?p cho s?n ph?m.');
+    const quantity = row.quantity * product.purchasePackSize;
+    if (!Number.isSafeInteger(quantity) || quantity > 100_000_000) throw new AppError(400, 'PACK_QUANTITY_INVALID', 'S? l??ng quy ??i v??t gi?i h?n.');
+    const unitCost = row.unitCost / product.purchasePackSize;
+    if (Math.abs(Math.round(unitCost * 100) / 100 * product.purchasePackSize - row.unitCost) > 0.001) throw new AppError(400, 'PACK_PRICE_PRECISION', 'Gi? quy c?ch kh?ng chia h?t t?i 2 ch? s? th?p ph?n. Nh?p theo ??n v? t?n v? gi? m?i ??n v? ?? tr?nh l?ch c?ng n?.');
+    return { ...row, quantity, unitCost };
+  }) };
   const request = input.purchaseRequestId ? await prisma.purchaseRequest.findUnique({ where: { id: input.purchaseRequestId }, include: { items: true } }) : null;
   if (input.purchaseRequestId && !request) throw new AppError(404, 'PURCHASE_REQUEST_NOT_FOUND', '\u004b\u0068\u00f4\u006e\u0067 \u0074\u00ec\u006d \u0074\u0068\u1ea5\u0079 \u0111\u1ec1 \u006e\u0067\u0068\u1ecb \u006d\u0075\u0061 \u0068\u00e0\u006e\u0067.');
   if (request) {
     assertScope(user, request.storeId);
-    if (request.status !== 'APPROVED') throw new AppError(409, 'PURCHASE_REQUEST_NOT_APPROVED', '\u0043\u0068\u1ec9 \u0063\u00f3 \u0074\u0068\u1ec3 \u0074\u1ea1\u006f \u0050\u004f \u0074\u1eeb \u0111\u1ec1 \u006e\u0067\u0068\u1ecb \u0111\u00e3 \u0064\u0075\u0079\u1ec7\u0074.');
+    if (request.status !== 'READY') throw new AppError(409, 'PURCHASE_REQUEST_NOT_READY', 'Đề nghị không còn sẵn sàng lập đơn mua hàng.');
     const approved = new Map(request.items.map(item => [item.skuId, item.approvedQuantity]));
-    if (input.items.length !== request.items.length || input.items.some(item => approved.get(item.skuId) !== item.quantity)) throw new AppError(400, 'ORDER_ITEMS_MISMATCH', '\u0050\u004f \u0074\u1ea1\u006f \u0074\u1eeb \u0111\u1ec1 \u006e\u0067\u0068\u1ecb \u0070\u0068\u1ea3\u0069 \u0111\u00fa\u006e\u0067 \u0073\u1ed1 \u006c\u01b0\u1ee3\u006e\u0067 \u0111\u00e3 \u0111\u01b0\u1ee3\u0063 \u0064\u0075\u0079\u1ec7\u0074.');
+    if (input.items.length !== request.items.length || input.items.some(item => approved.get(item.skuId) !== item.quantity)) throw new AppError(400, 'ORDER_ITEMS_MISMATCH', 'Số lượng đặt mua phải khớp đề nghị mua.');
   }
   const supplier = await prisma.supplier.findUnique({ where: { id: input.supplierId } });
   if (!supplier) throw new AppError(404, 'SUPPLIER_NOT_FOUND', '\u004b\u0068\u00f4\u006e\u0067 \u0074\u00ec\u006d \u0074\u0068\u1ea5\u0079 \u006e\u0068\u00e0 \u0063\u0075\u006e\u0067 \u0063\u1ea5\u0070.');
@@ -124,18 +134,21 @@ export async function createPurchaseOrder(user: CurrentUser, input: z.infer<type
   if (skus.length !== input.items.length) throw new AppError(400, 'ORDER_SKU_INVALID', '\u004d\u1ed9\u0074 \u0068\u006f\u1eb7\u0063 \u006e\u0068\u0069\u1ec1\u0075 \u0073\u1ea3\u006e \u0070\u0068\u1ea9\u006d \u0111\u00e3 \u006e\u0067\u1eeb\u006e\u0067 \u006b\u0069\u006e\u0068 \u0064\u006f\u0061\u006e\u0068 \u0068\u006f\u1eb7\u0063 \u006b\u0068\u00f4\u006e\u0067 \u0074\u1ed3\u006e \u0074\u1ea1\u0069.');
   const totalAmount = input.items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
   const row = await prisma.$transaction(async tx => {
+    await hooks?.beforeCreate(tx);
     const code = await nextDailyCode(tx, 'PO', dayPrefix => tx.purchaseOrder.findMany({ where: { code: { startsWith: `${dayPrefix}-` } }, select: { code: true } }));
     if (request) {
-      const changed = await tx.purchaseRequest.updateMany({ where: { id: request.id, status: 'APPROVED' }, data: { status: 'CONVERTED_TO_PO' } });
+      const changed = await tx.purchaseRequest.updateMany({ where: { id: request.id, status: 'READY' }, data: { status: 'CONVERTED_TO_PO' } });
       if (changed.count !== 1) throw new AppError(409, 'PURCHASE_REQUEST_ALREADY_CONVERTED', '\u0110\u1ec1 \u006e\u0067\u0068\u1ecb \u0076\u1eeba \u0111\u01b0\u1ee3\u0063 \u0074\u1ea1\u006f \u0050\u004f \u0062\u1edf\u0069 \u006e\u0067\u01b0\u1eddi \u006b\u0068\u00e1\u0063.');
     }
     const created = await tx.purchaseOrder.create({ data: {
       code, purchaseRequestId: request?.id, supplierId: input.supplierId, warehouseId: input.warehouseId,
-      createdById: user.id, expectedAt: input.expectedAt ? new Date(input.expectedAt) : null,
+      createdById: user.id, expectedAt: input.expectedAt ? new Date(input.expectedAt) : packaging.length && packaging.every(row => row.product.leadTimeDays !== null) ? new Date(Date.now() + Math.max(...packaging.map(row => row.product.leadTimeDays!)) * 86400000) : null,
       paymentDueAt: input.paymentDueAt ? new Date(input.paymentDueAt) : new Date(Date.now() + 30 * 86_400_000), note: input.note, totalAmount,
-      items: { create: input.items.map(item => ({ skuId: item.skuId, orderedQuantity: item.quantity, unitCost: item.unitCost, lineTotal: item.quantity * item.unitCost })) },
+      items: { create: input.items.map(item => ({ skuId: item.skuId, purchaseUnit: packaging.find(sku => sku.id === item.skuId)?.product.purchaseUnit, purchasePackSize: packaging.find(sku => sku.id === item.skuId)?.product.purchasePackSize ?? 1, orderedQuantity: item.quantity, unitCost: item.unitCost, lineTotal: item.quantity * item.unitCost })) },
     }, include });
+    await createOrderCameraParcels(tx, created.id, user.id);
     await tx.auditLog.create({ data: { actorId: user.id, action: 'purchase_order.create', targetId: created.id } });
+    await hooks?.afterCreate(tx, created.id);
     return created;
   }, { isolationLevel: 'Serializable' });
   return present(row);
@@ -144,22 +157,29 @@ export async function createPurchaseOrder(user: CurrentUser, input: z.infer<type
 export async function receivePurchaseOrder(user: CurrentUser, id: string, input: z.infer<typeof receivePurchaseOrderInput>) {
   const row = await current(id);
   assertScope(user, row.warehouse.store.id);
-  if (!['OPEN', 'PARTIALLY_RECEIVED'].includes(row.status)) throw new AppError(409, 'PURCHASE_ORDER_NOT_RECEIVABLE', 'Đơn mua hàng không còn ở trạng thái có thể nhận.');
+  if (row.status !== 'OPEN') throw new AppError(409, 'PURCHASE_ORDER_NOT_RECEIVABLE', 'Đơn mua hàng không còn ở trạng thái có thể nhận.');
+  input = { ...input, items: input.items.map(item => ({ ...item, quantity: item.quantity * (item.purchasePacks ? (row.items.find(line => line.id === item.purchaseOrderItemId)?.purchasePackSize ?? 1) : 1) })) };
   const lines = new Map(row.items.map(item => [item.id, item]));
   for (const inputItem of input.items) {
     const item = lines.get(inputItem.purchaseOrderItemId);
-    if (!item) throw new AppError(400, 'RECEIPT_ITEM_NOT_IN_ORDER', 'Dòng nhận hàng không thuộc PO.');
+    if (!item) throw new AppError(400, 'RECEIPT_ITEM_NOT_IN_ORDER', 'Dòng nhận hàng không thuộc đơn mua hàng.');
     if (inputItem.quantity > item.orderedQuantity - item.receivedQuantity) throw new AppError(400, 'RECEIPT_EXCEEDS_REMAINING', `Số nhận của SKU ${item.sku.code} vượt quá số còn lại.`);
   }
   const evidenceUrls = await Promise.all(input.evidence.map(uploadOperationalEvidence));
-  return prisma.$transaction(async tx => {
+  return prisma.$transaction(tx => receivePurchaseOrderInTransaction(tx, user, id, input, evidenceUrls), { isolationLevel: 'Serializable' });
+}
+
+// Shared receipt operation: callers must wrap this in a Serializable transaction.
+export async function receivePurchaseOrderInTransaction(tx: Prisma.TransactionClient, user: CurrentUser, id: string, input: z.infer<typeof receivePurchaseOrderInput>, evidenceUrls: string[] = []) {
     const code = await nextDailyCode(tx, 'GRN', dayPrefix => tx.goodsReceipt.findMany({ where: { code: { startsWith: `${dayPrefix}-` } }, select: { code: true } }));
     const locked = await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include: { items: true, warehouse: true } });
-    if (!['OPEN', 'PARTIALLY_RECEIVED'].includes(locked.status)) throw new AppError(409, 'PURCHASE_ORDER_NOT_RECEIVABLE', 'Đơn mua hàng vừa được hoàn tất bởi người khác.');
+    if (locked.status !== 'OPEN') throw new AppError(409, 'PURCHASE_ORDER_NOT_RECEIVABLE', 'Đơn mua hàng vừa được hoàn tất bởi người khác.');
+    assertScope(user, locked.warehouse.storeId);
+    if (!locked.warehouse.active) throw new AppError(409, 'WAREHOUSE_INACTIVE', 'Kho nh?n ?? ng?ng ho?t ??ng.');
     const lockedLines = new Map(locked.items.map(item => [item.id, item]));
     for (const inputItem of input.items) {
       const item = lockedLines.get(inputItem.purchaseOrderItemId);
-      if (!item || inputItem.quantity > item.orderedQuantity - item.receivedQuantity) throw new AppError(409, 'RECEIPT_QUANTITY_CHANGED', 'Số lượng còn lại vừa thay đổi, vui lòng tải lại PO.');
+      if (!item || inputItem.quantity > item.orderedQuantity - item.receivedQuantity) throw new AppError(409, 'RECEIPT_QUANTITY_CHANGED', 'Số lượng còn lại vừa thay đổi, vui lòng tải lại đơn mua hàng.');
     }
     await confirmIotEvents(tx, input.iotEventIds, { warehouseId: locked.warehouseId, skuIds: input.items.map(inputItem => lockedLines.get(inputItem.purchaseOrderItemId)!.skuId), actorId: user.id, action: 'iot.event.confirmed.purchase_receipt', referenceType: 'PURCHASE_ORDER', referenceId: id, referenceCode: locked.code, workflow: 'PURCHASE_RECEIPT' });
     const receipt = await tx.goodsReceipt.create({ data: {
@@ -174,7 +194,11 @@ export async function receivePurchaseOrder(user: CurrentUser, id: string, input:
     for (const inputItem of input.items) {
       const item = lockedLines.get(inputItem.purchaseOrderItemId)!;
       const inventory = await tx.inventory.upsert({ where: { warehouseId_skuId: { warehouseId: locked.warehouseId, skuId: item.skuId } }, create: { warehouseId: locked.warehouseId, skuId: item.skuId }, update: {} });
+      const tracked = await tx.inventoryLot.count({ where: { inventoryId: inventory.id } });
+      if ((tracked || inputItem.expiresAt) && !inputItem.lotCode) throw new AppError(400, 'LOT_REQUIRED', 'Nh?p m? l? cho h?ng qu?n l? l? ho?c c? h?n d?ng.');
+      await receiveLot(tx, inventory.id, inputItem.quantity, user.id, 'PURCHASE_RECEIPT', receipt.id, inputItem.lotCode ? { code: inputItem.lotCode, expiresAt: inputItem.expiresAt ? new Date(inputItem.expiresAt) : null, purchaseOrderItemId: item.id } : undefined);
       await tx.inventory.update({ where: { id: inventory.id }, data: { onHand: { increment: inputItem.quantity } } });
+      await markStockReceived(tx, inventory.id, item.skuId, inputItem.quantity);
       await tx.inventoryTransaction.create({ data: { inventoryId: inventory.id, warehouseId: locked.warehouseId, skuId: item.skuId, type: 'PURCHASE_RECEIPT', quantity: inputItem.quantity, beforeQuantity: inventory.onHand, afterQuantity: inventory.onHand + inputItem.quantity, referenceType: 'GOODS_RECEIPT', referenceId: receipt.id, reason: `Nhập hàng theo ${locked.code}`, actorId: user.id } });
       await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { receivedQuantity: { increment: inputItem.quantity } } });
     }
@@ -187,11 +211,11 @@ export async function receivePurchaseOrder(user: CurrentUser, id: string, input:
     await tx.supplier.update({ where: { id: locked.supplierId }, data: { currentDebt: { increment: receiptAmount } } });
     const updatedItems = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: id } });
     const completed = updatedItems.every(item => item.receivedQuantity >= item.orderedQuantity);
-    await tx.purchaseOrder.update({ where: { id }, data: { status: completed ? 'COMPLETED' : 'PARTIALLY_RECEIVED' } });
+    await tx.purchaseOrder.update({ where: { id }, data: { status: completed ? 'COMPLETED' : 'OPEN' } });
     await tx.auditLog.create({ data: { actorId: user.id, action: 'purchase_order.receive', targetId: receipt.id } });
     const result = await tx.purchaseOrder.findUniqueOrThrow({ where: { id }, include });
-    return present(result);
-  }, { isolationLevel: 'Serializable' });
+    return { ...present(result), createdReceiptId: receipt.id };
+
 }
 
 const supplierReturnInclude = {
@@ -222,7 +246,7 @@ export async function createSupplierReturn(user: CurrentUser, id: string, input:
   const lines = new Map(row.items.map(item => [item.id, item]));
   for (const request of input.items) {
     const line = lines.get(request.purchaseOrderItemId);
-    if (!line) throw new AppError(400, 'RETURN_ITEM_NOT_IN_ORDER', 'Dòng trả hàng không thuộc PO.');
+    if (!line) throw new AppError(400, 'RETURN_ITEM_NOT_IN_ORDER', 'Dòng trả hàng không thuộc đơn mua hàng.');
     if (request.quantity > line.receivedQuantity - (returnedMap.get(line.id) ?? 0)) throw new AppError(400, 'RETURN_EXCEEDS_RECEIVED', `Số trả của SKU ${line.sku.code} vượt quá số đã nhận còn lại.`);
   }
   const returnAmount = input.items.reduce((sum, request) => sum + request.quantity * Number(lines.get(request.purchaseOrderItemId)!.unitCost), 0);
@@ -235,6 +259,9 @@ export async function createSupplierReturn(user: CurrentUser, id: string, input:
       const line = lines.get(request.purchaseOrderItemId)!;
       const inventory = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: row.warehouseId, skuId: line.skuId } } });
       if (!inventory || inventory.onHand < request.quantity) throw new AppError(409, 'RETURN_STOCK_NOT_ENOUGH', `Tồn kho của SKU ${line.sku.code} không đủ để trả NCC.`);
+      if (await tx.inventoryLot.count({ where: { inventoryId: inventory.id } }) && !request.lotId) throw new AppError(400, 'RETURN_LOT_REQUIRED', 'Chọn đúng lô đã nhập từ đơn mua hàng này để trả nhà cung cấp.');
+      if (inventory.onHand - inventory.reserved < request.quantity) throw new AppError(409, 'STOCK_RESERVED', 'H?ng ?ang ???c gi? cho giao d?ch kh?c.');
+      await takeLots(tx, inventory.id, request.quantity, 'SUPPLIER_RETURN', created.id, user.id, request.lotId ? { lotId: request.lotId, purchaseOrderItemId: line.id } : undefined);
       await tx.inventory.update({ where: { id: inventory.id }, data: { onHand: { decrement: request.quantity } } });
       await tx.inventoryTransaction.create({ data: { inventoryId: inventory.id, warehouseId: row.warehouseId, skuId: line.skuId, type: 'SUPPLIER_RETURN', quantity: -request.quantity, beforeQuantity: inventory.onHand, afterQuantity: inventory.onHand - request.quantity, referenceType: 'SUPPLIER_RETURN', referenceId: created.id, reason: input.reason, actorId: user.id } });
     }

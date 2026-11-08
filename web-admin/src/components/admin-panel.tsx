@@ -6,8 +6,11 @@ import { useToast } from './ui/toast-provider';
 import { ActionButton } from './ui/action-button';
 import { StatusBadge } from './ui/status-badge';
 import { permissionLabel } from '../lib/permission-labels';
+import { Icon } from './ui/icon';
+import { TableState } from './ui/table-state';
 
 type Kind = 'users' | 'roles' | 'permissions';
+const displayUserName = (value: User) => value.email === 'employee.demo@freshmart.local' ? 'Nhân viên demo' : value.email === 'manager.demo@freshmart.local' ? 'Quản lý chi nhánh demo' : value.name;
 const titles = { users: 'Người dùng', roles: 'Vai trò', permissions: 'Danh sách quyền' };
 function Panel({ kind }: { kind: Kind }) {
   const { showToast, confirmAction } = useToast();
@@ -21,6 +24,8 @@ function Panel({ kind }: { kind: Kind }) {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
+  const [query, setQuery] = useState('');
+  const [userStatus, setUserStatus] = useState('all');
   const canManage = user?.permissions.includes(`${kind}.manage`) && (kind !== 'roles' || user.globalAccess);
   useEffect(() => {
     let active = true;
@@ -56,11 +61,16 @@ function Panel({ kind }: { kind: Kind }) {
   }
   const editedUser = editing && editing !== 'new' && kind === 'users' ? editing as User : null;
   const editedRole = editing && editing !== 'new' && kind === 'roles' ? editing as Role : null;
+  const matches = (text: string) => text.toLocaleLowerCase('vi').includes(query.trim().toLocaleLowerCase('vi'));
+  const visibleUsers = users.filter(value => matches(`${displayUserName(value)} ${value.email} ${value.roles.map(role => role.name).join(' ')} ${value.stores.map(store => store.name).join(' ')}`) && (userStatus === 'all' || value.active === (userStatus === 'active')));
+  const visibleRoles = roles.filter(value => matches(`${value.name} ${value.code}`));
+  const visiblePermissions = permissions.filter(value => matches(`${permissionLabel(value.code)} ${value.code}`));
+  const resultCount = kind === 'users' ? visibleUsers.length : kind === 'roles' ? visibleRoles.length : visiblePermissions.length;
   return <div className="suite-page admin-page"><header className="suite-heading"><div><div className="breadcrumb">Thiết lập hệ thống <span>›</span> {titles[kind]}</div><h1>{titles[kind]}</h1><p>{kind === 'users' ? 'Quản lý tài khoản, trạng thái và phạm vi chi nhánh.' : kind === 'roles' ? 'Hệ thống sử dụng ba vai trò chuẩn: Chủ hệ thống, Quản lý chi nhánh và Nhân viên.' : 'Tra cứu các quyền nghiệp vụ đang được hệ thống hỗ trợ.'}</p></div>{canManage && kind !== 'roles' && !editing && <ActionButton tone="approve" onClick={() => { setEditing('new'); setError(''); }}>＋ Thêm người dùng</ActionButton>}</header>
     {error && <p role="alert" className="error">{error} <button className="secondary" onClick={() => setRevision(v => v + 1)}>Tải lại</button></p>}
-    {editing && <article className="editor"><h2>{editing === 'new' ? 'Tạo mới' : 'Chỉnh sửa'}</h2><form onSubmit={save} key={editing === 'new' ? 'new' : editing.id}>
-      <fieldset disabled={busy}>
-        <label>Tên<input name="name" required maxLength={100} defaultValue={editedUser?.name ?? editedRole?.name ?? ''} /></label>
+    {editing && <article className="editor"><h2>{kind === 'users' ? editing === 'new' ? 'Thêm người dùng' : 'Chỉnh sửa người dùng' : 'Chỉnh sửa vai trò'}</h2><form onSubmit={save} key={editing === 'new' ? 'new' : editing.id}>
+      <fieldset disabled={busy} className="admin-editor-fields">
+        <label>Tên<input name="name" required maxLength={100} defaultValue={editedUser ? displayUserName(editedUser) : editedRole?.name ?? ''} /></label>
         {kind === 'users' ? <>
           <label>Email<input name="email" type="email" required maxLength={254} autoComplete="off" defaultValue={editedUser?.email ?? ''} /></label>
           <label>{editedUser ? 'Mật khẩu mới (để trống nếu giữ nguyên)' : 'Mật khẩu'}<input name="password" type="password" autoComplete="new-password" required={!editedUser} minLength={10} maxLength={128} /></label>
@@ -73,16 +83,16 @@ function Panel({ kind }: { kind: Kind }) {
           <fieldset><legend>Quyền được cấp</legend>{permissions.map(permission => <label className="check" key={permission.code}><input type="checkbox" name="permissionCodes" value={permission.code} defaultChecked={editedRole?.permissions.some(p => p.permissionCode === permission.code)} />{permissionLabel(permission.code)}</label>)}</fieldset>
           <p className="hint">Quản lý vai trò toàn hệ thống chỉ dành cho chủ doanh nghiệp. Quyền người dùng quản lý trong phạm vi chi nhánh được cấp.</p>
         </>}
-        <div className="actions"><ActionButton tone="approve" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</ActionButton><ActionButton tone="more" onClick={() => setEditing(null)}>Hủy</ActionButton></div>
+        <div className="actions admin-editor-actions"><ActionButton tone="approve" type="submit" disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu thay đổi'}</ActionButton><ActionButton tone="more" onClick={() => setEditing(null)}>Hủy</ActionButton></div>
       </fieldset>
     </form></article>}
-    {loading ? <p role="status">Đang tải dữ liệu…</p> : <div className="table-wrap"><table>
-      {kind === 'users' ? <><thead><tr><th>Người dùng</th><th>Vai trò</th><th>Chi nhánh</th><th>Trạng thái</th>{canManage && <th>Thao tác</th>}</tr></thead><tbody>{users.map(value => <tr key={value.id}><td><strong>{value.name}</strong><br />{value.email}</td><td>{value.roles.map(r => r.name).join(', ')}</td><td>{value.globalAccess ? 'Toàn hệ thống' : value.stores.map(s => s.name).join(', ')}</td><td><StatusBadge tone={value.active ? 'green' : 'red'}>{value.active ? 'Hoạt động' : 'Đã khóa'}</StatusBadge></td>{canManage && <td><div className="row-actions"><ActionButton tone="edit" onClick={() => setEditing(value)}>Chỉnh sửa</ActionButton></div></td>}</tr>)}</tbody></> : kind === 'roles' ? <><thead><tr><th>Vai trò</th><th>Quyền</th><th>Người dùng</th>{canManage && <th>Thao tác</th>}</tr></thead><tbody>{roles.map(value => <tr key={value.id}><td><strong>{value.name}</strong></td><td>{value.permissions.length ? <div className="permission-summary">{value.permissions.slice(0, 5).map(p => <span key={p.permissionCode}>{permissionLabel(p.permissionCode)}</span>)}{value.permissions.length > 5 && <span>+{value.permissions.length - 5}</span>}</div> : 'Chưa cấp quyền'}</td><td>{value._count.users}</td>{canManage && <td><div className="row-actions">{value.code !== 'OWNER' && <ActionButton tone="edit" onClick={() => setEditing(value)}>Sửa quyền</ActionButton>}{!value.system && value._count.users === 0 && <ActionButton tone="danger" disabled={busy} onClick={async () => {
+    <section className="panel admin-records"><div className="admin-toolbar"><label className="admin-search"><Icon name="search"/><input type="search" aria-label="Tìm trong danh sách" placeholder={kind === 'users' ? 'Tìm tên, email hoặc chi nhánh…' : 'Tìm tên hoặc mã…'} value={query} onChange={event => setQuery(event.target.value)}/></label>{kind === 'users' && <select aria-label="Trạng thái tài khoản" value={userStatus} onChange={event => setUserStatus(event.target.value)}><option value="all">Tất cả trạng thái</option><option value="active">Đang hoạt động</option><option value="inactive">Đã khóa</option></select>}<span>{resultCount} {kind === 'users' ? 'người dùng' : kind === 'roles' ? 'vai trò' : 'quyền'}</span></div>{loading ? <TableState message="Đang tải dữ liệu…" loading/> : !resultCount ? <TableState message="Không có kết quả phù hợp."/> : <div className="table-scroll"><table>
+      {kind === 'users' ? <><thead><tr><th>Người dùng</th><th>Vai trò</th><th>Chi nhánh</th><th>Trạng thái</th>{canManage && <th>Thao tác</th>}</tr></thead><tbody>{visibleUsers.map(value => <tr key={value.id}><td><strong>{displayUserName(value)}</strong><small>{value.email}</small></td><td>{value.roles.map(r => r.name).join(', ')}</td><td>{value.globalAccess ? 'Toàn hệ thống' : value.stores.map(s => s.name).join(', ')}</td><td><StatusBadge tone={value.active ? 'green' : 'red'}>{value.active ? 'Hoạt động' : 'Đã khóa'}</StatusBadge></td>{canManage && <td><div className="row-actions"><ActionButton tone="edit" onClick={() => setEditing(value)}>Chỉnh sửa</ActionButton></div></td>}</tr>)}</tbody></> : kind === 'roles' ? <><thead><tr><th>Vai trò</th><th>Quyền</th><th>Người dùng</th>{canManage && <th>Thao tác</th>}</tr></thead><tbody>{visibleRoles.map(value => <tr key={value.id}><td><strong>{value.name}</strong></td><td>{value.permissions.length ? <div className="permission-summary">{value.permissions.slice(0, 5).map(p => <span key={p.permissionCode}>{permissionLabel(p.permissionCode)}</span>)}{value.permissions.length > 5 && <span>+{value.permissions.length - 5}</span>}</div> : 'Chưa cấp quyền'}</td><td>{value._count.users}</td>{canManage && <td><div className="row-actions">{value.code !== 'OWNER' && <ActionButton tone="edit" onClick={() => setEditing(value)}>Sửa quyền</ActionButton>}{!value.system && value._count.users === 0 && <ActionButton tone="danger" disabled={busy} onClick={async () => {
         if (!await confirmAction(`Xóa vai trò ${value.name}?`)) return;
         setBusy(true); setError('');
         try { await api(`roles/${value.id}`, 'DELETE'); showToast('Đã xóa vai trò.'); setRevision(v => v + 1); } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
-      }}>Xóa</ActionButton>}</div></td>}</tr>)}</tbody></> : <><thead><tr><th>{'Ch\u1ee9c n\u0103ng \u0111\u01b0\u1ee3c ph\u00e2n quy\u1ec1n'}</th></tr></thead><tbody>{permissions.map(value => <tr key={value.code}><td>{permissionLabel(value.code)}</td></tr>)}</tbody></>}
-    </table></div>}
+      }}>Xóa</ActionButton>}</div></td>}</tr>)}</tbody></> : <><thead><tr><th>{'Ch\u1ee9c n\u0103ng \u0111\u01b0\u1ee3c ph\u00e2n quy\u1ec1n'}</th></tr></thead><tbody>{visiblePermissions.map(value => <tr key={value.code}><td>{permissionLabel(value.code)}</td></tr>)}</tbody></>}
+    </table></div>}</section>
     {kind === 'permissions' && <p className="hint">Danh mục quyền tương ứng với chức năng Backend đã triển khai. Gán hoặc thu hồi quyền tại trang Vai trò.</p>}
   </div>;
 }

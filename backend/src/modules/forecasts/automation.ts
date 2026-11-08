@@ -1,16 +1,31 @@
 import { prisma } from '../../common/database.js';
 import { logger } from '../../common/logger.js';
+import { env } from '../../config/env.js';
 import { findUser, publicUser } from '../auth/auth.repository.js';
 import { createForecast, getLatestForecast, vietnamDay } from './forecasts.service.js';
 import { generateRecommendations } from './recommendations.service.js';
 
-const HORIZON_DAYS = 14;
+const FORECAST_HORIZONS = [7, 14] as const;
+const RECOMMENDATION_HORIZON_DAYS = 14;
 const CHECK_EVERY_MS = 30 * 60 * 1000;
 let running = false;
+
+async function isAiServiceReady(): Promise<boolean> {
+  try {
+    const res = await fetch(`${env.AI_SERVICE_URL.replace(/\/$/, '')}/health`, { signal: AbortSignal.timeout(3_000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 /** Daily forecast trained from operational sales, with live stock re-analysis throughout the day. */
 export async function runForecastAutomation() {
   if (running) return;
+  if (!(await isAiServiceReady())) {
+    logger.info('AI automation deferred: AI service is still starting up');
+    return;
+  }
   running = true;
   try {
     const ownerRow = await prisma.user.findFirst({
@@ -28,16 +43,22 @@ export async function runForecastAutomation() {
     const today = vietnamDay(new Date());
 
     for (const store of stores) {
-      try {
-        const latest = await getLatestForecast(owner, { storeId: store.id, horizonDays: HORIZON_DAYS });
-        if (!latest.run || !latest.run.model.startsWith('Live-') || vietnamDay(latest.run.generatedAt).getTime() < today.getTime()) {
-          await createForecast(owner, { storeId: store.id, horizonDays: HORIZON_DAYS });
-          logger.info({ storeId: store.id, storeName: store.name }, 'Daily demand forecast refreshed');
+      for (const horizonDays of FORECAST_HORIZONS) {
+        try {
+          const latest = await getLatestForecast(owner, { storeId: store.id, horizonDays });
+          if (!latest.run || !latest.run.model.startsWith('Live-') || vietnamDay(latest.run.generatedAt).getTime() < today.getTime()) {
+            await createForecast(owner, { storeId: store.id, horizonDays });
+            logger.info({ storeId: store.id, storeName: store.name, horizonDays }, 'Daily demand forecast refreshed');
+          }
+        } catch (error) {
+          logger.error({ err: error, storeId: store.id, horizonDays }, 'AI forecast automation failed for store');
         }
+      }
+      try {
         // Suggestions remain PENDING. This only creates proposals; approval is still manual.
-        await generateRecommendations(owner, { storeId: store.id, horizonDays: HORIZON_DAYS });
+        await generateRecommendations(owner, { storeId: store.id, horizonDays: RECOMMENDATION_HORIZON_DAYS });
       } catch (error) {
-        logger.error({ err: error, storeId: store.id }, 'AI forecast automation failed for store');
+        logger.error({ err: error, storeId: store.id }, 'AI recommendation automation failed for store');
       }
     }
   } catch (error) {

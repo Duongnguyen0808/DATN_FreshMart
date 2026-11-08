@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { iotEventInput, iotSimulationInput, iotTagMappingInput } from './iot.schemas.js';
+import { cameraScanInput, iotEventInput, iotSimulationInput, iotTagMappingInput } from './iot.schemas.js';
 
 const event = {
   eventId: 'reader-1-001', deviceId: 'READER-1', eventType: 'RFID_DETECTED', tagId: '04A1B2C3',
@@ -7,6 +7,14 @@ const event = {
 };
 
 describe('IoT request validation', () => {
+  it('accepts real camera events and a scoped browser scan without inventory mutations', () => {
+    expect(iotEventInput.safeParse({ ...event, eventType: 'CAMERA_CODE_DETECTED' }).success).toBe(true);
+    const scan = { eventId: '22222222-2222-4222-8222-222222222222', warehouseId: event.warehouseId, code: 'QR-33333333-3333-4333-8333-333333333333', capture: 'CAMERA' };
+    expect(cameraScanInput.safeParse(scan).success).toBe(true);
+    expect(cameraScanInput.safeParse({ ...scan, quantity: 1000 }).success).toBe(false);
+    expect(cameraScanInput.safeParse({ ...scan, code: '' }).success).toBe(false);
+    expect(cameraScanInput.safeParse({ ...scan, capture: 'MANUAL' }).success).toBe(false);
+  });
   it('accepts an RFID event envelope and rejects unsupported types', () => {
     expect(iotEventInput.safeParse(event).success).toBe(true);
     expect(iotEventInput.safeParse({ ...event, eventType: 'INVENTORY_UPDATE' }).success).toBe(false);

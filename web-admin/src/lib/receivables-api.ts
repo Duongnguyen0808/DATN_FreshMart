@@ -3,6 +3,7 @@ import { api } from './auth-api';
 export type ReceivableStatus = 'OPEN' | 'PARTIALLY_PAID' | 'PAID';
 export type ReceivableTiming = 'CURRENT' | 'DUE_SOON' | 'OVERDUE' | 'PAID';
 export type CollectionMethod = 'CASH' | 'QR' | 'CARD';
+export type NewCollectionMethod = Exclude<CollectionMethod, 'CARD'>;
 export type ReceivablePayment = {
   id: string; code: string; amount: number; method: CollectionMethod; reference: string | null;
   note: string | null; paidAt: string; paidBy: { id: string; name: string; email: string };
@@ -30,5 +31,5 @@ export function getReceivables(filters: { q?: string; status?: 'all' | Receivabl
   return api<ReceivableList>(`receivables?${query}`);
 }
 export const getReceivable = (id: string) => api<Receivable>(`receivables/${id}`);
-export const collectReceivable = (id: string, data: { amount: number; method: CollectionMethod; reference?: string; note?: string }) => api<Receivable>(`receivables/${id}/payments`, 'POST', data);
-export const collectCustomerReceivables = (customerId: string, data: { method: CollectionMethod; reference?: string; note?: string; allocations: { receivableId: string; amount: number }[] }) => api<Receivable[]>(`customers/${customerId}/receivable-payments`, 'POST', data);
+export const collectReceivable = (id: string, data: { amount: number; method: NewCollectionMethod; reference?: string; note?: string }) => api<Receivable>(`receivables/${id}/payments`, 'POST', data);
+export const collectCustomerReceivables = (customerId: string, data: { method: NewCollectionMethod; reference?: string; note?: string; allocations: { receivableId: string; amount: number }[] }) => api<Receivable[]>(`customers/${customerId}/receivable-payments`, 'POST', data);

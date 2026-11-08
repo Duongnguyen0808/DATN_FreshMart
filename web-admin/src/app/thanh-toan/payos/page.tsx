@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Protected, useAuth } from '../../../components/auth-provider';
 import { ApiError, errorMessage } from '../../../lib/auth-api';
 import { cancelPayosCheckout, createPayosCheckout, getPayosCheckout, payosStorageKey, type PayosCheckout, type PayosCheckoutInput } from '../../../lib/payos-api';
+import './payos-qr.css';
 
 function PayosPage() {
   const { user } = useAuth();
@@ -73,21 +74,59 @@ function PayosPage() {
   const paid = checkout?.status === 'PAID';
   const closed = checkout && ['CANCELLED', 'EXPIRED'].includes(checkout.status);
   const remaining = checkout ? Math.max(0, Math.ceil((Date.parse(checkout.expiresAt) - now) / 1000)) : 0;
-  return <main className="suite-page payos-page"><section className={`payos-card${paid ? ' payos-complete' : ''}`}>
-    <div className="payos-brand">FreshMart <span>Thanh toán hóa đơn</span></div>
-    <header><span className={`payos-state-mark${paid ? ' paid' : ''}`}>{paid ? '✓' : closed ? '—' : 'QR'}</span><div><h1>{paid ? 'Thanh toán thành công' : closed ? checkout.status === 'EXPIRED' ? 'Đã hết hạn thanh toán' : 'Đã hủy thanh toán' : 'QR thanh toán'}</h1><p>{paid ? 'Đã nhận đủ tiền. Hóa đơn của bạn đã hoàn tất.' : closed ? 'Hàng giữ chỗ đã được giải phóng; chưa tạo hóa đơn bán hàng.' : 'Mở ứng dụng ngân hàng và quét mã bên dưới.'}</p></div></header>
-    {checkout && <><strong className="payos-amount">{new Intl.NumberFormat('vi-VN').format(checkout.amount)} đ</strong><p className="payos-order">Đơn thanh toán #{checkout.orderCode}</p></>}
-    {!paid && !closed && checkout?.qrCode && <figure className="payos-qr"><QRCodeSVG value={checkout.qrCode} size={224} marginSize={4} level="M" title="Mã QR thanh toán" /><figcaption><span>Chủ tài khoản</span><strong>{checkout.accountName || 'Xem trên trang thanh toán'}</strong></figcaption></figure>}
-    {!paid && !closed && checkout && <><dl><div><dt>Số tài khoản</dt><dd>{checkout.accountNumber ?? '—'}</dd></div><div><dt>Nội dung chuyển khoản</dt><dd>{checkout.description ?? 'Xem trên trang thanh toán'}</dd></div><div><dt>Thời gian còn lại</dt><dd className="payos-countdown">{remaining > 0 ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : 'Đang xác minh trạng thái hết hạn…'}</dd></div></dl><p className="payos-wait" role="status">{checkout.status === 'CREATING' ? 'Đang tạo mã QR. Bấm kiểm tra lại nếu kết nối bị gián đoạn.' : 'Đang chờ thanh toán · Tự động cập nhật khi nhận đủ tiền'}</p></>}
-    {paid && checkout && <div className="payos-receipt"><div><span>Phương thức</span><strong>QR thanh toán</strong></div><div><span>Chủ tài khoản nhận</span><strong>{checkout.accountName || '—'}</strong></div><div><span>Trạng thái</span><strong className="payos-confirmed">Đã thanh toán</strong></div></div>}
-    {!checkout && !error && <p role="status">Đang tạo yêu cầu thanh toán…</p>}
-    {error && <p className="ui-error" role="alert">{error}</p>}
-    <footer>{paid && checkout.invoiceId ? <Link className="primary-button" href={`/hoa-don/${checkout.invoiceId}`}>Xem hóa đơn</Link> : closed ? <Link className="primary-button" href="/hoa-don/tao">Quay lại bán hàng</Link> : <>
-      {checkout?.checkoutUrl && <a className="primary-button" href={checkout.checkoutUrl} target="_blank" rel="noopener noreferrer">Mở trang thanh toán ↗</a>}
-      <button type="button" className="ui-action-button" disabled={busy} onClick={() => void refresh(checkout?.status === 'CREATING' || !checkout)}>Kiểm tra lại</button>
-      <button type="button" className="ui-action-button" disabled={busy || !checkout || checkout.status === 'CREATING'} onClick={() => void cancel()}>Hủy thanh toán</button>
-    </>}</footer>
-    <Link className="payos-back" href="/hoa-don/tao">Về trang bán hàng</Link>
-  </section></main>;
+  const [copied, setCopied] = useState('');
+  const copy = (key: string, value?: string | null) => { if (!value) return; void navigator.clipboard?.writeText(value).then(() => { setCopied(key); window.setTimeout(() => setCopied(''), 1500); }); };
+  const amountText = checkout ? new Intl.NumberFormat('vi-VN').format(checkout.amount) : '';
+  const waiting = !paid && !closed && !!checkout;
+  return <main className="pq-page">
+    <div className="pq-top"><span className="pq-logo"><img src="/logo.png" alt=""/>FreshMart POS</span>{waiting && <span className="pq-timer">Còn lại <b>{remaining > 0 ? `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : '—'}</b></span>}</div>
+    <section className={`pq-card${paid ? ' is-paid' : ''}${closed ? ' is-closed' : ''}`}>
+      <header className="pq-head"><div><h1>{paid ? 'Thanh toán thành công' : closed ? checkout.status === 'EXPIRED' ? 'Đã hết hạn thanh toán' : 'Đã hủy thanh toán' : 'Chi tiết thanh toán'}</h1><p>{paid ? 'Đã nhận đủ tiền. Hóa đơn đã hoàn tất.' : closed ? 'Hàng giữ chỗ đã được giải phóng; chưa tạo hóa đơn bán hàng.' : <>Mở app ngân hàng bất kỳ để <b>quét mã VietQR</b> hoặc <b>chuyển khoản</b> chính xác số tiền bên dưới.</>}</p></div>{checkout && <span className="pq-order">Đơn #{checkout.orderCode}</span>}</header>
+      {waiting && <div className="pq-body">
+        <figure className="pq-qr">
+          <img className="pq-qr-top-img" src="/vietqr-top.png" alt="VietQR PRO" />
+          <div className="pq-qr-box">{checkout.qrCode ? <QRCodeSVG value={checkout.qrCode} size={236} marginSize={1} level="M" title="Mã QR thanh toán" imageSettings={{ src: '/vietqr-center.png', height: 34, width: 34, excavate: true }} /> : <span className="pq-qr-loading">Đang tạo mã…</span>}</div>
+          <img className="pq-qr-bottom-img" src="/vietqr-bottom.png" alt="napas 247 | MB" />
+        </figure>
+        <div className="pq-info">
+          <div className="pq-row"><div><span>Chủ tài khoản</span><strong>{checkout.accountName || '—'}</strong></div></div>
+          <div className="pq-row"><div><span>Số tài khoản</span><strong>{checkout.accountNumber ?? '—'}</strong></div><button type="button" onClick={() => copy('acc', checkout.accountNumber)}>{copied === 'acc' ? 'Đã chép' : 'Sao chép'}</button></div>
+          <div className="pq-row"><div><span>Số tiền</span><strong className="pq-amount">{amountText} đ</strong></div><button type="button" onClick={() => copy('amt', String(checkout.amount))}>{copied === 'amt' ? 'Đã chép' : 'Sao chép'}</button></div>
+          <div className="pq-row"><div><span>Nội dung</span><strong>{checkout.description ?? '—'}</strong></div><button type="button" onClick={() => copy('desc', checkout.description)}>{copied === 'desc' ? 'Đã chép' : 'Sao chép'}</button></div>
+          <p className="pq-note">Lưu ý: nhập chính xác số tiền <b>{amountText} đ</b> và nội dung khi chuyển khoản.</p>
+          <p className="pq-wait" role="status"><i/>{checkout.status === 'CREATING' ? 'Đang tạo mã QR…' : 'Đang chờ thanh toán · tự động cập nhật'}</p>
+        </div>
+      </div>}
+      {paid && checkout && <div className="pq-status-view">
+        <div className="pq-status-badge is-paid"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <strong className="pq-status-amount">{amountText} đ</strong>
+        <span className="pq-status-pill ok">Giao dịch hoàn tất</span>
+        <dl className="pq-status-summary">
+          <div><dt>Mã giao dịch</dt><dd>#{checkout.orderCode}</dd></div>
+          <div><dt>Phương thức</dt><dd>VietQR chuyển khoản</dd></div>
+          <div><dt>Tài khoản nhận</dt><dd>{checkout.accountName || '—'}</dd></div>
+          <div><dt>Trạng thái hóa đơn</dt><dd className="ok">Đã tạo hóa đơn & trừ kho</dd></div>
+        </dl>
+      </div>}
+      {closed && checkout && <div className="pq-status-view">
+        <div className="pq-status-badge is-cancelled"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="m15 9-6 6M9 9l6 6"/></svg></div>
+        <strong className="pq-status-amount is-cancelled">{amountText} đ</strong>
+        <span className="pq-status-pill cancelled">{checkout.status === 'EXPIRED' ? 'Giao dịch đã hết hạn' : 'Giao dịch đã hủy'}</span>
+        <dl className="pq-status-summary">
+          <div><dt>Mã đơn thanh toán</dt><dd>#{checkout.orderCode}</dd></div>
+          <div><dt>Nội dung chuyển khoản</dt><dd>{checkout.description || `FM${checkout.orderCode}`}</dd></div>
+          <div><dt>Trạng thái tồn kho</dt><dd>Đã hoàn trả hàng giữ chỗ</dd></div>
+          <div><dt>Trạng thái hóa đơn</dt><dd className="cancelled">Chưa phát sinh thu tiền</dd></div>
+        </dl>
+      </div>}
+      {!checkout && !error && <p className="pq-loading" role="status">Đang tạo yêu cầu thanh toán…</p>}
+      {error && <p className="ui-error" role="alert">{error}</p>}
+      <footer className="pq-actions">{paid && checkout.invoiceId ? <><Link className="pq-btn" href="/hoa-don/tao">Bán đơn mới</Link><Link className="pq-btn primary" href={`/hoa-don/${checkout.invoiceId}`}>Xem hóa đơn →</Link></> : closed ? <Link className="pq-btn primary" href="/hoa-don/tao">← Quay lại màn hình bán hàng</Link> : <>
+        <button type="button" className="pq-btn danger" disabled={busy || !checkout || checkout.status === 'CREATING'} onClick={() => void cancel()}>Hủy thanh toán</button>
+        <button type="button" className="pq-btn" disabled={busy} onClick={() => void refresh(checkout?.status === 'CREATING' || !checkout)}>Kiểm tra lại</button>
+        {checkout?.checkoutUrl && <a className="pq-btn primary" href={checkout.checkoutUrl} target="_blank" rel="noopener noreferrer">Mở trang payOS ↗</a>}
+      </>}</footer>
+    </section>
+  </main>;
 }
 export default function Page() { return <Protected permission="invoices.create"><PayosPage /></Protected>; }

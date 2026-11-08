@@ -1,0 +1,136 @@
+/* Inner workspaces: documents, reports, administration and operational forms. */
+@media screen {
+  .retail-ui .table-scroll { container-type: inline-size; }
+  .retail-ui .table-scroll .record-table-state { position: sticky; left: 0; width: min(100%,calc(100cqw - 28px)); min-height: 160px; box-sizing: border-box; white-space: normal; }
+  .retail-ui .purchase-request-detail-modal > p { margin: 14px 24px; color: #647d6d; font-size: 13px; }
+  .retail-ui .purchase-request-detail-modal > a { display: inline-flex; margin: 18px 24px; padding: 9px 14px; background: #2f6044; color: #fff; border-radius: 5px; }
+  .retail-ui .detail-heading { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: transparent; padding: 0; border: 0; }
+  .retail-ui .detail-heading > div:last-child:not(:first-child) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .retail-ui .detail-heading p { margin-top: 8px; color: #6b7b72; font-size: 13px; }
+  .retail-ui .detail-back { margin-bottom: 16px; font-size: 12px; color: #6d8174; }
+  .retail-ui .detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+  .retail-ui .detail-grid > :is(article,section), .retail-ui .detail-info, .retail-ui .po-info { min-width: 0; padding: 22px; background: white; border: 1px solid #dfe6e1; border-radius: 8px; box-shadow: none; }
+  .retail-ui .detail-grid h2 { padding: 0 0 14px; margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #304f3c; border-bottom: 1px solid #edf1ed; }
+  body.retail-ui :is(.detail-grid,.detail-info,.po-info) dl { display: block; margin: 0; }
+  .retail-ui :is(.detail-grid,.detail-info,.po-info) dl > div { display: grid; grid-template-columns: minmax(110px,.8fr) minmax(0,1.4fr); align-items: baseline; gap: 14px; padding: 12px 0; border-bottom: 1px solid #f0f3f0; }
+  .retail-ui :is(.detail-grid,.detail-info,.po-info) dt { color: #738378; font-size: 12px; font-weight: 400; }
+  .retail-ui :is(.detail-grid,.detail-info,.po-info) dd { margin: 0; color: #354c3e; font-size: 13px; overflow-wrap: anywhere; }
+  .retail-ui :is(.detail-grid,.detail-info,.po-info) dd small { display: block; margin-top: 3px; }
+  .retail-ui .detail-table { background: #fff; border: 1px solid #dfe6e1; border-radius: 8px; overflow: hidden; box-shadow: none; }
+  .retail-ui .detail-table > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; background: #fff; border-bottom: 1px solid #e5ebe6; }
+  .retail-ui .detail-table > header h2, .retail-ui .po-section-title { margin: 0; font-size: 15px; font-weight: 600; color: #34503e; }
+  .retail-ui .detail-table > header p { margin: 5px 0 0; color: #7c8b80; font-size: 12px; max-width: 620px; line-height: 1.6; }
+  .retail-ui .detail-table > footer { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px 22px; background: #f9fbf9; border-top: 1px solid #e5ebe6; font-size: 12px; color: #758479; }
+  .retail-ui .detail-section-tabs { display: flex; gap: 20px; overflow-x: auto; padding: 0 4px; border-bottom: 1px solid #dfe6e1; }
+  .retail-ui .detail-section-tabs button { white-space: nowrap; background: transparent; padding: 12px 0; border-radius: 0; font-size: 13px; color: #718177; }
+  .retail-ui .detail-section-tabs button[aria-pressed=true] { color: #285b40; border-bottom: 2px solid #3c7954; }
+  .retail-ui .detail-timeline ol { list-style: none; margin: 18px 0 0 6px; padding: 0; border-left: 1px solid #d6e3d9; }
+  .retail-ui .detail-timeline li { position: relative; display: grid; gap: 5px; margin: 0; padding: 0 0 24px 22px; border: 0; }
+  .retail-ui .detail-timeline li:last-child { padding-bottom: 0; }
+  .retail-ui .detail-timeline li::before { content: ''; position: absolute; left: -5px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: #7c9d86; border: 2px solid #fff; box-shadow: 0 0 0 1px #b4cab9; }
+  .retail-ui .detail-timeline li strong { font-size: 13px; font-weight: 500; }
+  .retail-ui .detail-timeline li span { color: #7e8c82; font-size: 12px; }
+  body.retail-ui .detail-info dl > div { width: auto; border-right: 0; }
+  .retail-ui .product-detail-advice { border: 1px solid #dfe6e1; border-radius: 8px; background: #fff; }
+  .retail-ui .product-detail-advice > summary { padding: 16px 22px; cursor: pointer; color: #4d7159; font-size: 13px; }
+  .retail-ui .product-detail-advice .product-ai-advice { border: 0; margin: 0; }
+  .retail-ui .detail-kpis { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid #dfe6e1; border-radius: 8px; background: white; overflow: hidden; }
+  .retail-ui .detail-kpis > * { flex: 1 1 150px; min-width: 0; padding: 18px 22px; border: 0; border-right: 1px solid #e7ece8; border-radius: 0; background: white; box-shadow: none; }
+  .retail-ui .detail-kpis strong { font-size: 23px; color: #34573f; }
+  .retail-ui .receipt-evidence { padding: 18px 22px; }
+  .retail-ui .receipt-evidence img { width: 140px; height: 110px; object-fit: cover; border-radius: 6px; border: 1px solid #e0e7e2; }
+  .retail-ui :is(.po-receipts,.return-history) > article { padding: 18px 22px; border-bottom: 1px solid #e7ece8; }
+  .retail-ui .po-info { gap: 18px; }
+  .retail-ui .po-progress { height: auto; min-height: 5px; }
+
+  /* Report controls and charts keep the data in the foreground. */
+  .retail-ui .report-page .report-filter-panel { padding: 0; }
+  .retail-ui .report-page .filter-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 14px; align-items: end; padding: 18px; }
+  .retail-ui .report-page .filter-grid .text-button { justify-self: start; min-height: 38px; }
+  .retail-ui .report-breakdown { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; align-items: start; }
+  .retail-ui .report-breakdown > *, .retail-ui .report-page .panel { min-width: 0; }
+  .retail-ui .report-page .panel-heading { padding: 18px 22px; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .retail-ui .report-page .panel-heading h2 { font-size: 15px; }
+  .retail-ui .report-page .panel-meta { color: #7a8c7f; font-size: 12px; }
+  .retail-ui .report-page .chart-content { padding: 22px; }
+  .retail-ui .report-page .chart-axis { font-size: 11px; color: #8b998f; }
+  .retail-ui .report-page .revenue-chart svg rect { fill: #4e896a; }
+  .retail-ui :is(.branch-bars,.performance-bars) { padding: 20px 22px; }
+  .retail-ui .report-method { padding: 14px 18px; border: 1px solid #e0e7e2; border-radius: 7px; background: #fafcfb; color: #728278; font-size: 12px; }
+  .retail-ui .report-method > summary { cursor: pointer; font-weight: 500; color: #496450; }
+  .retail-ui .report-method > div { padding-top: 12px; line-height: 1.8; }
+
+  /* Administration is a searchable workspace with a grouped editor. */
+  .retail-ui .admin-records { overflow: hidden; }
+  .retail-ui .admin-page > .suite-heading > div:first-child { display: block; }
+  .retail-ui .admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px; border-bottom: 1px solid #e5ebe6; }
+  .retail-ui .admin-search { display: flex; align-items: center; gap: 10px; flex: 1 1 260px; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid #dce4df; border-radius: 6px; color: #8a9c8f; }
+  .retail-ui .admin-search input { width: 100%; min-width: 0; height: 100%; border: 0; background: transparent; }
+  .retail-ui .admin-toolbar select { padding: 9px 12px; border: 1px solid #dce4df; border-radius: 6px; background: #fff; }
+  .retail-ui .admin-toolbar > span { color: #839289; font-size: 12px; }
+  .retail-ui .admin-records table { width: 100%; border-collapse: collapse; min-width: 620px; }
+  .retail-ui .admin-records td small { display: block; margin-top: 4px; }
+  .retail-ui .admin-records .permission-summary { display: flex; gap: 6px; flex-wrap: wrap; max-width: 550px; }
+  .retail-ui .admin-records .permission-summary span { background: #f1f5f2; border: 1px solid #e1e9e3; border-radius: 4px; padding: 3px 7px; font-size: 11px; color: #637c6b; }
+  .retail-ui .admin-page .admin-editor-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 18px 24px; border: 0; padding: 0; margin: 0; min-width: 0; }
+  .retail-ui .admin-editor-fields > label:not(.check) { display: grid; gap: 7px; align-content: start; margin: 0; padding: 0; }
+  .retail-ui .admin-editor-fields > label > input { margin: 0; }
+  .retail-ui .admin-editor-fields > fieldset { margin: 0; padding: 16px; border: 1px solid #dfe7e1; border-radius: 7px; min-width: 0; max-height: 320px; overflow: auto; }
+  .retail-ui .admin-editor-fields legend { padding: 0 6px; color: #627b6b; font-size: 12px; }
+  .retail-ui .admin-editor-fields .check { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 13px; }
+  .retail-ui .admin-editor-fields input[type=checkbox] { min-height: 0; width: 16px; height: 16px; accent-color: #356a4a; flex-shrink: 0; }
+  .retail-ui .admin-editor-fields > :is(.hint,.admin-editor-actions) { grid-column: 1 / -1; margin: 0; }
+  .retail-ui .admin-editor-actions { display: flex; gap: 8px; justify-content: flex-end; border-top: 1px solid #e6ece8; padding-top: 18px; }
+
+  /* Consistent modal rhythm, including supplier, stocktake and finance forms. */
+  body.retail-ui .ui-modal-card { padding: 0; }
+  body.retail-ui .ui-modal-card > header { top: 0; margin: 0; padding: 20px 24px; }
+  body.retail-ui .ui-modal-card > footer { bottom: 0; margin: 0; padding: 16px 24px; }
+  body.retail-ui .ui-modal-card > header h2 { margin: 0; font-size: 19px; }
+  body.retail-ui .ui-modal-card > header p { margin: 6px 0 0; font-size: 12px; color: #75857a; }
+  body.retail-ui .ui-modal-card > header > button { flex-shrink: 0; width: 32px; height: 32px; background: #f3f6f4; border-radius: 5px; }
+  body.retail-ui .ui-modal-card > .form-grid { padding: 20px 24px; margin: 0; gap: 18px; }
+  body.retail-ui .ui-modal-card > :is(label,.ui-error,.hint,.stocktake-sku-picker,.return-invoice-search,.return-invoice-list,.po-receive-lines,.supplier-return-lines) { margin: 18px 24px; }
+  .retail-ui .ui-modal-card > label { display: grid; gap: 8px; font-size: 13px; color: #647d6d; }
+  .retail-ui .ui-modal-card :is(.form-grid,fieldset) label { min-width: 0; }
+  .retail-ui .ui-modal-card :is(input,select,textarea):not([type=checkbox]):not([type=radio]):not([type=file]) { min-width: 0; max-width: 100%; }
+  .retail-ui .stocktake-picker-heading { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding-bottom: 14px; }
+  .retail-ui .stocktake-picker-heading input { flex: 1 1 180px; padding: 9px 12px; border: 1px solid #dce4de; border-radius: 5px; }
+  .retail-ui .stocktake-picker-list { border: 1px solid #e3e9e4; border-radius: 6px; max-height: 260px; overflow: auto; }
+  .retail-ui .stocktake-picker-list > label { padding: 12px; border-bottom: 1px solid #edf1ed; }
+  .retail-ui .stocktake-count-form input { padding: 9px 11px; border: 1px solid #dce4df; border-radius: 5px; width: 100%; min-width: 100px; }
+  .retail-ui .supplier-return-lines > div, .retail-ui .sales-return-lines > div { padding: 14px 0; border-bottom: 1px solid #e6ece8; }
+  .retail-ui .return-refund-preview { margin: 18px 24px; padding: 16px; background: #f2f7f3; border-radius: 6px; }
+  .retail-ui .return-refund-preview strong { font-size: 21px; color: #386144; }
+
+  .retail-ui .signin-page { background: #f3f6f4; }
+  .retail-ui .signin-wrap { width: min(460px,100%); }
+  .retail-ui .signin-brand { text-align: left; margin-bottom: 28px; }
+  .retail-ui .signin-brand > div { justify-content: flex-start; }
+  .retail-ui .signin-brand p { padding-left: 58px; color: #829187; font-size: 12px; }
+  .retail-ui .signin-card { border: 1px solid #dde6df; border-radius: 10px; padding: 32px; box-shadow: 0 8px 32px #233f2b06; }
+  .retail-ui .signin-card h1 { font-size: 23px; color: #294633; }
+  .retail-ui .signin-submit { background: #2f6044; border-radius: 6px; min-height: 46px; }
+  .retail-ui .signin-card input:focus { border-color: #6c9a7c; box-shadow: 0 0 0 3px #56866612; }
+  .retail-ui .payos-card { width: min(520px,100%); border-color: #dce5df; border-radius: 10px; box-shadow: 0 8px 32px #233f2b08; }
+  .retail-ui .payos-card .payos-brand { color: #42634e; }
+  .retail-ui .payos-amount { color: #2d5e40; font-variant-numeric: tabular-nums; }
+  .retail-ui .payos-card footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  @media (max-width: 900px) {
+    .retail-ui .report-breakdown { grid-template-columns: 1fr; }
+    .retail-ui .detail-grid { grid-template-columns: 1fr; }
+    .retail-ui .detail-table > header { align-items: flex-start; flex-direction: column; }
+  }
+  @media (max-width: 600px) {
+    .retail-ui .report-page .filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 14px; }
+    .retail-ui .admin-page .admin-editor-fields { grid-template-columns: 1fr; }
+    .retail-ui .detail-heading h1 { font-size: 22px; overflow-wrap: anywhere; }
+    .retail-ui .detail-grid > :is(article,section) { padding: 18px; }
+    .retail-ui :is(.detail-grid,.detail-info,.po-info) dl > div { grid-template-columns: minmax(90px,.8fr) minmax(0,1.2fr); gap: 10px; }
+    .retail-ui .detail-table > footer { align-items: stretch; flex-direction: column; }
+    body.retail-ui .ui-modal-card > :is(header,footer) { padding: 16px 18px; }
+    body.retail-ui .ui-modal-card > .form-grid { padding: 18px; grid-template-columns: 1fr; }
+    .retail-ui .signin-card { padding: 24px; }
+    .retail-ui .admin-toolbar { padding: 14px; }
+  }
+}

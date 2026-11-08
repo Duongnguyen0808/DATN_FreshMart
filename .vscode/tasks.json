@@ -1,0 +1,33 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "ESP32-CAM: Biên dịch",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe",
+      "args": ["compile", "--fqbn", "esp32:esp32:esp32cam", "iot/esp32-cam"],
+      "problemMatcher": [],
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "ESP32-CAM: Nạp chương trình",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe",
+      "args": ["compile", "--upload", "--port", "${input:espCameraPort}", "--fqbn", "esp32:esp32:esp32cam", "iot/esp32-cam"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "ESP32-CAM: Xem Serial 115200",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}/Programs/Arduino IDE/resources/app/lib/backend/resources/arduino-cli.exe",
+      "args": ["monitor", "--port", "${input:espCameraPort}", "--config", "baudrate=115200,dtr=off,rts=off"],
+      "problemMatcher": [],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    }
+  ],
+  "inputs": [
+    { "id": "espCameraPort", "type": "promptString", "description": "Cổng COM của ESP32-CAM", "default": "COM3" }
+  ]
+}

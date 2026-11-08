@@ -49,6 +49,9 @@ def test_operational_forecast_compares_models_on_real_series():
     model, predictions, validation = predict_operational_batch(items, date(2026, 10, 12), 14)
 
     assert model in validation
-    assert {"MovingAverage7", "SeasonalNaive7", "RandomForest", "XGBoost"}.issubset(validation)
+    assert {
+        "MovingAverage7", "SeasonalNaive7", "Ridge",
+        "RandomForest", "ExtraTrees", "GradientBoosting", "XGBoost",
+    }.issubset(validation)
     assert len(predictions) == 3
     assert all(quantity > 0 and quality == "SUFFICIENT" for quantity, quality in predictions)

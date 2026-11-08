@@ -6,7 +6,7 @@ import { useAuth } from '../auth-provider';
 import { useToast } from '../ui/toast-provider';
 import { errorMessage } from '../../lib/auth-api';
 import { getDemandForecast, getShortageAlerts, runDemandForecast, type DemandForecast, type ForecastInventoryAdvice } from '../../lib/forecasts-api';
-import { generateRecommendations, getRecommendations, type InventoryRecommendation, type RecommendationList } from '../../lib/recommendations-api';
+import { decideRecommendation, generateRecommendations, getRecommendations, type InventoryRecommendation, type RecommendationList } from '../../lib/recommendations-api';
 import { getInventory, type InventoryList } from '../../lib/inventory-api';
 import { getStores } from '../../lib/organization-api';
 import type { Product, Sku } from '../../lib/products-api';
@@ -134,7 +134,7 @@ export function ProductAiAdvice({ product, sku }: { product: Product; sku: Sku }
 
   return <section className="detail-table panel product-ai-advice" aria-labelledby="product-ai-advice-title">
     <header>
-      <div><h2 id="product-ai-advice-title">Dự báo và cảnh báo AI</h2><p>Dùng model đã train trên M5 để dự báo từ doanh số hóa đơn thật và tồn kho PostgreSQL của chi nhánh.</p></div>
+      <div><h2 id="product-ai-advice-title">Dự báo và cảnh báo AI</h2><p>Đối chiếu nhu cầu dự kiến với tồn kho của chi nhánh đang chọn.</p></div>
       <div className="page-actions">
         <label>Chi nhánh<select value={storeId} onChange={event => setStoreId(event.target.value)} disabled={!stores.length || loading || running}>
           {stores.length ? stores.map(store => <option key={store.id} value={store.id}>{store.code} · {store.name}</option>) : <option value="">Đang tải chi nhánh…</option>}
@@ -146,7 +146,7 @@ export function ProductAiAdvice({ product, sku }: { product: Product; sku: Sku }
     {error && <div className="ui-error" role="alert">{error}</div>}
     {loading && <p role="status">Đang tải tồn kho và dự báo cho sản phẩm…</p>}
     {!loading && !stores.length && <p className="form-note">Tài khoản chưa được gán vào chi nhánh đang hoạt động.</p>}
-    {!loading && storeId && forecast && !forecast.run && <p className="form-note">Chưa có lần dự báo cho chi nhánh/kỳ này. Chọn “Dự báo từ dữ liệu thật” để đọc 56 ngày doanh số trong hệ thống, chạy model và lưu kết quả.</p>}
+    {!loading && storeId && forecast && !forecast.run && <p className="form-note">Chưa có lần dự báo cho chi nhánh/kỳ này. Chọn “Dự báo từ dữ liệu thật” để đọc lịch sử doanh số thực tế trong hệ thống, so sánh chọn mô hình tối ưu và lưu kết quả.</p>}
     {!loading && forecast?.run && <>
       <div className="product-ai-summary">
         <div><span>Model</span><strong>{forecast.run.model}</strong></div>
@@ -160,7 +160,7 @@ export function ProductAiAdvice({ product, sku }: { product: Product; sku: Sku }
         {status === 'HIGH' || status === 'MEDIUM' || status === 'LOW' ? <>
           <StatusBadge tone={status === 'HIGH' ? 'red' : status === 'MEDIUM' ? 'amber' : 'blue'}>Nguy cơ thiếu · {status === 'HIGH' ? 'Cao' : status === 'MEDIUM' ? 'Trung bình' : 'Thấp'}</StatusBadge>
           <strong>Cần bù khoảng {count(analysis?.shortageQuantity ?? 0)} {product.unit}</strong>
-          <span>Đã tính tồn an toàn, hàng đang chuyển và PO dự kiến nhận trong kỳ.</span>
+          <span>Đã tính tồn an toàn, hàng đang chuyển và đơn mua hàng dự kiến nhận trong kỳ.</span>
         </> : status === 'SURPLUS' ? <>
           <StatusBadge tone="green">Đang dư so với nhu cầu</StatusBadge>
           <strong>Dư khoảng {count(analysis?.surplusQuantity ?? 0)} {product.unit} sau khi giữ tồn an toàn.</strong>
@@ -168,21 +168,21 @@ export function ProductAiAdvice({ product, sku }: { product: Product; sku: Sku }
         </> : forecastItem ? <>
           <StatusBadge tone="green">Đủ đáp ứng kỳ dự báo</StatusBadge>
           <strong>Chưa cần điều chuyển hoặc mua thêm cho chi nhánh này.</strong>
-          <span>Dữ liệu bán: {count(forecastItem.observedQuantity)} {product.unit} trong 56 ngày · {forecastItem.dataQuality === 'SUFFICIENT' ? 'đủ dữ liệu' : forecastItem.dataQuality === 'SPARSE' ? 'dữ liệu bán thưa' : 'chưa có bán hàng'}.</span>
+          <span>Dữ liệu bán: {count(forecastItem.observedQuantity)} {product.unit} trong {count(forecast.run.historyDays)} ngày · {forecastItem.dataQuality === 'SUFFICIENT' ? 'đủ dữ liệu' : forecastItem.dataQuality === 'SPARSE' ? 'dữ liệu bán thưa' : 'chưa có bán hàng'}.</span>
         </> : <><StatusBadge tone="amber">Chưa có kết quả cho sản phẩm</StatusBadge><span>Hãy kiểm tra sản phẩm đang kinh doanh và cập nhật dự báo.</span></>}
       </div>
-      {analysis && analysis.severity && recommendations.length === 0 && <div className="product-ai-actions"><button className="primary-button" onClick={createSuggestions} disabled={generating}>{generating ? 'Đang đối chiếu tồn các chi nhánh…' : 'Tạo đề xuất chuyển / mua hàng'}</button><span>Tạo đề xuất chờ quản lý duyệt; không tự tạo phiếu hoặc sửa tồn.</span></div>}
+      {analysis && analysis.severity && recommendations.length === 0 && <div className="product-ai-actions"><button className="primary-button" onClick={createSuggestions} disabled={generating}>{generating ? 'Đang đối chiếu tồn các chi nhánh…' : 'Tạo đề xuất chuyển / mua hàng'}</button><span>Chọn Tạo phiếu ngay để áp dụng đề xuất; tồn thay đổi khi thực hiện xuất/nhận.</span></div>}
     </>}
-    {recommendations.length > 0 && <div className="table-scroll"><div className="panel-heading"><h3>Đề xuất đang lưu cho sản phẩm này</h3><Link href="/de-xuat">Mở trang duyệt đề xuất</Link></div><table><thead><tr><th>Loại</th><th>Chi nhánh / kho</th><th className="numeric">Số lượng</th><th>Trạng thái</th><th>Phiếu</th></tr></thead><tbody>{recommendations.map(item => <tr key={item.id}>
+    {recommendations.length > 0 && <div className="table-scroll"><div className="panel-heading"><h3>Đề xuất đang lưu cho sản phẩm này</h3><Link href="/de-xuat">Mở dự báo hàng</Link></div><table><thead><tr><th>Loại</th><th>Chi nhánh / kho</th><th className="numeric">Số lượng</th><th>Trạng thái</th><th>Phiếu</th></tr></thead><tbody>{recommendations.map(item => <tr key={item.id}>
       <td><StatusBadge tone={item.type === 'TRANSFER' ? 'blue' : 'amber'}>{item.type === 'TRANSFER' ? 'Điều chuyển' : 'Mua bổ sung'}</StatusBadge></td>
       <td>{item.type === 'TRANSFER' ? <>{item.sourceWarehouse?.store.name}<small>{item.sourceWarehouse?.name} → {item.destinationWarehouse?.name}</small></> : <>{item.targetStore.name}<small>Chưa đủ nguồn hàng nội bộ</small></>}</td>
       <td className="numeric"><strong>{count(item.finalQuantity ?? item.suggestedQuantity)} {product.unit}</strong></td>
-      <td>{item.status === 'PENDING' ? 'Chờ quản lý duyệt' : item.status === 'APPROVED' ? 'Đã chấp thuận' : item.status === 'SUPERSEDED' ? 'Hết hiệu lực' : 'Đã từ chối'}</td>
-      <td>{item.transfer ? <Link href={`/dieu-chuyen/${item.transfer.id}`}>{item.transfer.code}</Link> : item.purchaseRequest ? <Link href={`/de-nghi-mua/${item.purchaseRequest.id}`}>{item.purchaseRequest.code}</Link> : 'Chưa tạo (chờ duyệt)'}</td>
+      <td>{item.status === 'PENDING' ? 'Chưa áp dụng' : item.status === 'APPLIED' ? 'Đã tạo phiếu' : item.status === 'SUPERSEDED' ? 'Hết hiệu lực' : 'Đã từ chối'}</td>
+      <td>{item.transfer ? <Link href={`/dieu-chuyen/${item.transfer.id}`}>{item.transfer.code}</Link> : item.purchaseRequest ? <Link href={`/de-nghi-mua/${item.purchaseRequest.id}`}>{item.purchaseRequest.code}</Link> : <button disabled={generating || item.status !== 'PENDING' || !can(user?.permissions, item.type === 'TRANSFER' ? 'transfers.create' : 'purchase_requests.create')} onClick={async () => { setGenerating(true); try { await decideRecommendation(item.id, 'APPLY', 'Tạo phiếu trực tiếp từ đề xuất', item.suggestedQuantity); const result = await getRecommendations(storeId, horizonDays); setRecommendations(result.items.filter(r => r.skuId === sku.id)); showToast('Đã tạo phiếu, không cần duyệt thêm.'); } catch (e) { showToast(errorMessage(e), 'error'); } finally { setGenerating(false); } }}>Tạo phiếu ngay</button>}</td>
     </tr>)}</tbody></table></div>}
     {canReadInventory && inventoryRows.length > 0 && <div className="table-scroll product-ai-stock"><div className="panel-heading"><h3>Tồn sản phẩm tại các chi nhánh trong phạm vi tài khoản</h3><span className="panel-meta">Số “vượt tồn an toàn” chưa trừ nhu cầu dự báo nguồn</span></div><table><thead><tr><th>Chi nhánh / kho</th><th className="numeric">Tồn</th><th className="numeric">Khả dụng</th><th className="numeric">Đang về</th><th className="numeric">An toàn</th><th className="numeric">Trên mức an toàn</th></tr></thead><tbody>{inventoryRows.map(row => <tr key={row.id}>
       <td>{row.warehouse.store.name}<small>{row.warehouse.name}</small></td><td className="numeric">{count(row.onHand)}</td><td className="numeric">{count(row.available)}</td><td className="numeric">{count(row.incoming)}</td><td className="numeric">{count(row.safetyStock)}</td><td className="numeric">{count(Math.max(0, row.available - row.safetyStock))}</td>
     </tr>)}</tbody></table></div>}
-    {forecast?.run && <p className="form-note">Dự báo được lưu lúc {new Date(forecast.run.generatedAt).toLocaleString('vi-VN')}. Doanh số huấn luyện M5 chỉ cung cấp mô hình; số lượng hiển thị được dự đoán từ dữ liệu bán hàng và tồn kho thật của chi nhánh, không lấy tồn M5 làm tồn vận hành.</p>}
+    {forecast?.run && <p className="form-note">Dự báo được lưu lúc {new Date(forecast.run.generatedAt).toLocaleString('vi-VN')} (phân tích {count(forecast.run.historyDays)} ngày lịch sử). Tập dữ liệu M5 dùng để khảo sát, kiểm chứng pipeline lựa chọn thuật toán; dự báo vận hành được huấn luyện trực tiếp từ doanh số bán hàng và tồn kho thật của chi nhánh.</p>}
   </section>;
 }

@@ -10,3 +10,7 @@ export function attachIotRealtime(server: Server) {
 export function publishIotEvent(event: IotEvent) {
   io?.to(`iot:warehouse:${event.warehouseId}`).emit('iot:event', event);
 }
+
+export function publishWarehouseAccess(warehouseId: string, update: unknown) {
+  io?.to(`iot:warehouse:${warehouseId}`).emit('iot:access', update);
+}

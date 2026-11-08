@@ -1,3 +1,4 @@
+import { expired } from '../inventory/lot-stock.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
 import { nextDailyCode } from '../../common/daily-code.js';
@@ -23,8 +24,8 @@ const include = {
 function has(user: CurrentUser, permission: string) { return user.permissions.includes(permission); }
 function assertManager(user: CurrentUser, type: string, approval: boolean) {
   const prefix = type === 'TRANSFER' ? 'transfers' : 'purchase_requests';
-  if (!has(user, `${prefix}.approve`) || (approval && !has(user, `${prefix}.create`))) {
-    throw new AppError(403, 'RECOMMENDATION_FORBIDDEN', 'Bạn không có quyền duyệt và tạo phiếu nghiệp vụ tương ứng.');
+  if (!has(user, `${prefix}.create`)) {
+    throw new AppError(403, 'RECOMMENDATION_FORBIDDEN', 'Bạn không có quyền tạo phiếu nghiệp vụ tương ứng.');
   }
 }
 
@@ -51,11 +52,11 @@ export async function generateRecommendations(user: CurrentUser, input: Forecast
   if (!skuIds.length) return listRecommendations(user, input);
 
   const [stocks, pendingTransfers, pendingRecommendations, inboundTransfers, purchaseRequests] = await Promise.all([
-    prisma.inventory.findMany({ where: { skuId: { in: skuIds }, warehouse: { active: true, store: { active: true } } }, select: { skuId: true, warehouseId: true, onHand: true, reserved: true, safetyStock: true, warehouse: { select: { code: true, storeId: true } } } }),
-    prisma.stockTransferItem.findMany({ where: { skuId: { in: skuIds }, transfer: { status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true, transfer: { select: { sourceWarehouseId: true } } } }),
+    prisma.inventory.findMany({ where: { skuId: { in: skuIds }, warehouse: { active: true, store: { active: true } } }, select: { lots: true, skuId: true, warehouseId: true, onHand: true, reserved: true, safetyStock: true, warehouse: { select: { code: true, storeId: true } } } }),
+    prisma.stockTransferItem.findMany({ where: { skuId: { in: skuIds }, transfer: { status: { in: ['READY'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true, transfer: { select: { sourceWarehouseId: true } } } }),
     prisma.inventoryRecommendation.findMany({ where: { skuId: { in: skuIds }, type: 'TRANSFER', status: 'PENDING' }, select: { skuId: true, sourceWarehouseId: true, suggestedQuantity: true } }),
-    prisma.stockTransferItem.findMany({ where: { skuId: { in: skuIds }, transfer: { destinationWarehouse: { storeId: input.storeId }, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true } }),
-    prisma.purchaseRequestItem.findMany({ where: { skuId: { in: skuIds }, purchaseRequest: { storeId: input.storeId, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true } }),
+    prisma.stockTransferItem.findMany({ where: { skuId: { in: skuIds }, transfer: { destinationWarehouse: { storeId: input.storeId }, status: { in: ['READY'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true } }),
+    prisma.purchaseRequestItem.findMany({ where: { skuId: { in: skuIds }, purchaseRequest: { storeId: input.storeId, status: { in: ['READY'] } } }, select: { skuId: true, requestedQuantity: true, approvedQuantity: true } }),
   ]);
   const reserved = new Map<string, number>();
   const key = (warehouseId: string, skuId: string) => `${warehouseId}:${skuId}`;
@@ -74,15 +75,15 @@ export async function generateRecommendations(user: CurrentUser, input: Forecast
   const sourceRuns = await prisma.forecastRun.findMany({
     where: { storeId: { in: sourceStoreIds }, horizonDays: input.horizonDays, forecastTo: { gte: vietnamDay(new Date()) } },
     distinct: ['storeId'], orderBy: { generatedAt: 'desc' },
-    include: { forecasts: { where: { skuId: { in: skuIds } }, select: { skuId: true, predictedQuantity: true } } },
+    include: { forecasts: { where: { skuId: { in: skuIds } }, select: { skuId: true, predictedQuantity: true, safetyStockAtRun: true, safetyStockEvidence: true } } },
   });
-  const sourceDemand = new Map(sourceRuns.flatMap(run => run.forecasts.map(row => [`${run.storeId}:${row.skuId}`, row.predictedQuantity] as const)));
+  const sourceDemand = new Map(sourceRuns.flatMap(run => run.forecasts.map(row => [`${run.storeId}:${row.skuId}`, row.predictedQuantity + (row.safetyStockEvidence ? Math.max(0, row.safetyStockAtRun - stocks.filter(stock => stock.skuId === row.skuId && stock.warehouse.storeId === run.storeId).reduce((sum, stock) => sum + stock.safetyStock, 0)) : 0)] as const)));
   const proposals: Prisma.InventoryRecommendationCreateManyInput[] = [];
   for (const alert of alerts.items) {
     const destination = stocks.filter(row => row.skuId === alert.skuId && row.warehouse.storeId === input.storeId)
       .sort((a, b) => a.warehouse.code.localeCompare(b.warehouse.code))[0];
     const sourceRows = stocks.filter(row => row.skuId === alert.skuId && row.warehouse.storeId !== input.storeId && (user.globalAccess || allowedStores.has(row.warehouse.storeId)))
-      .map(row => ({ warehouseId: row.warehouseId, storeId: row.warehouse.storeId, surplus: Math.max(0, row.onHand - row.reserved - row.safetyStock - (reserved.get(key(row.warehouseId, row.skuId)) ?? 0)) }))
+      .map(row => ({ warehouseId: row.warehouseId, storeId: row.warehouse.storeId, surplus: Math.max(0, row.onHand - row.reserved - row.lots.filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0) - row.safetyStock - (reserved.get(key(row.warehouseId, row.skuId)) ?? 0)) }))
       .sort((a, b) => b.surplus - a.surplus);
     const sourceCapacity = new Map<string, number>();
     for (const source of sourceRows) sourceCapacity.set(source.storeId, (sourceCapacity.get(source.storeId) ?? 0) + source.surplus);
@@ -123,10 +124,10 @@ export async function decideRecommendation(user: CurrentUser, id: string, input:
   if (!current) throw new AppError(404, 'RECOMMENDATION_NOT_FOUND', 'Không tìm thấy đề xuất.');
   if (!user.globalAccess && !user.stores.some(store => store.id === current.targetStoreId)) throw new AppError(403, 'STORE_FORBIDDEN', 'Bạn không được xử lý đề xuất tại chi nhánh này.');
   if (current.type === 'TRANSFER' && !user.globalAccess && !user.stores.some(store => store.id === current.sourceWarehouse?.storeId)) throw new AppError(403, 'STORE_FORBIDDEN', 'Bạn không được xử lý kho nguồn của đề xuất.');
-  assertManager(user, current.type, input.action === 'APPROVE');
+  assertManager(user, current.type, input.action === 'APPLY');
   if (current.status !== 'PENDING') throw new AppError(409, 'RECOMMENDATION_DECIDED', 'Đề xuất đã được xử lý.');
   if (!current.sku.active || !current.sku.product.active) throw new AppError(409, 'SKU_INACTIVE', 'SKU đã ngừng kinh doanh.');
-  if (input.action === 'REJECT') {
+  if (input.action === 'DISMISS') {
     await prisma.$transaction(async tx => {
       const changed = await tx.inventoryRecommendation.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'REJECTED', decidedById: user.id, decidedAt: new Date(), decisionNote: input.note } });
       if (changed.count !== 1) throw new AppError(409, 'RECOMMENDATION_DECIDED', 'Đề xuất vừa được người khác xử lý.');
@@ -148,8 +149,8 @@ export async function decideRecommendation(user: CurrentUser, id: string, input:
       const pending = await tx.inventoryRecommendation.findUniqueOrThrow({ where: { id }, select: { status: true } });
       if (pending.status !== 'PENDING') throw new AppError(409, 'RECOMMENDATION_DECIDED', 'Đề xuất vừa được người khác xử lý.');
       const [pendingInboundTransfers, pendingPurchases] = await Promise.all([
-        tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { destinationWarehouse: { storeId: current.targetStoreId }, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { requestedQuantity: true, approvedQuantity: true } }),
-        tx.purchaseRequestItem.findMany({ where: { skuId: current.skuId, purchaseRequest: { storeId: current.targetStoreId, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { requestedQuantity: true, approvedQuantity: true } }),
+        tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { destinationWarehouse: { storeId: current.targetStoreId }, status: { in: ['READY'] } } }, select: { requestedQuantity: true, approvedQuantity: true } }),
+        tx.purchaseRequestItem.findMany({ where: { skuId: current.skuId, purchaseRequest: { storeId: current.targetStoreId, status: { in: ['READY'] } } }, select: { requestedQuantity: true, approvedQuantity: true } }),
       ]);
       const committedInbound = [...pendingInboundTransfers, ...pendingPurchases].reduce((sum, row) => sum + (row.approvedQuantity ?? row.requestedQuantity), 0);
       if (quantity > Math.max(0, alert.shortageQuantity - committedInbound)) throw new AppError(409, 'NEED_CHANGED', 'Số lượng còn thiếu đã thay đổi hoặc đã có phiếu chờ. Vui lòng tạo đề xuất từ dự báo mới.');
@@ -160,22 +161,24 @@ export async function decideRecommendation(user: CurrentUser, id: string, input:
         const source = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: current.sourceWarehouseId, skuId: current.skuId } }, include: { warehouse: { select: { active: true, storeId: true, store: { select: { active: true } } } } } });
         const destination = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId: current.destinationWarehouseId, skuId: current.skuId } }, include: { warehouse: { select: { active: true, store: { select: { active: true } } } } } });
         if (!source || !destination || !source.warehouse.active || !destination.warehouse.active || !source.warehouse.store.active || !destination.warehouse.store.active) throw new AppError(409, 'WAREHOUSE_UNAVAILABLE', 'Kho nguồn hoặc kho đích không còn hoạt động.');
-        const pendingItems = await tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { sourceWarehouseId: current.sourceWarehouseId, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { requestedQuantity: true, approvedQuantity: true } });
+        const pendingItems = await tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { sourceWarehouseId: current.sourceWarehouseId, status: { in: ['READY'] } } }, select: { requestedQuantity: true, approvedQuantity: true } });
         const committed = pendingItems.reduce((sum, item) => sum + (item.approvedQuantity ?? item.requestedQuantity), 0);
         if (source.onHand - source.reserved - source.safetyStock - committed < quantity) throw new AppError(409, 'SOURCE_SURPLUS_CHANGED', 'Kho nguồn không còn đủ hàng dư sau khi giữ tồn an toàn và các phiếu đang chờ.');
-        const sourceStocks = await tx.inventory.findMany({ where: { skuId: current.skuId, warehouse: { storeId: source.warehouse.storeId, active: true } }, select: { warehouseId: true, onHand: true, reserved: true, safetyStock: true } });
-        const sourceTransfers = await tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { sourceWarehouse: { storeId: source.warehouse.storeId }, status: { in: ['PENDING_APPROVAL', 'APPROVED'] } } }, select: { requestedQuantity: true, approvedQuantity: true, transfer: { select: { sourceWarehouseId: true } } } });
+        const sourceStocks = await tx.inventory.findMany({ where: { skuId: current.skuId, warehouse: { storeId: source.warehouse.storeId, active: true } }, select: { lots: true, warehouseId: true, onHand: true, reserved: true, safetyStock: true } });
+        const sourceTransfers = await tx.stockTransferItem.findMany({ where: { skuId: current.skuId, transfer: { sourceWarehouse: { storeId: source.warehouse.storeId }, status: { in: ['READY'] } } }, select: { requestedQuantity: true, approvedQuantity: true, transfer: { select: { sourceWarehouseId: true } } } });
         const committedByWarehouse = new Map<string, number>();
         for (const item of sourceTransfers) committedByWarehouse.set(item.transfer.sourceWarehouseId, (committedByWarehouse.get(item.transfer.sourceWarehouseId) ?? 0) + (item.approvedQuantity ?? item.requestedQuantity));
-        const sourceRun = await tx.forecastRun.findFirst({ where: { storeId: source.warehouse.storeId, horizonDays: current.forecastRun.horizonDays, forecastTo: { gte: vietnamDay(new Date()) } }, orderBy: { generatedAt: 'desc' }, include: { forecasts: { where: { skuId: current.skuId }, select: { predictedQuantity: true } } } });
-        const predictedDemand = sourceRun?.forecasts[0]?.predictedQuantity ?? 0;
-        const storeSurplus = sourceStocks.reduce((sum, stock) => sum + Math.max(0, stock.onHand - stock.reserved - stock.safetyStock - (committedByWarehouse.get(stock.warehouseId) ?? 0)), 0) - predictedDemand;
+        const sourceRun = await tx.forecastRun.findFirst({ where: { storeId: source.warehouse.storeId, horizonDays: current.forecastRun.horizonDays, forecastTo: { gte: vietnamDay(new Date()) } }, orderBy: { generatedAt: 'desc' }, include: { forecasts: { where: { skuId: current.skuId }, select: { predictedQuantity: true, safetyStockAtRun: true, safetyStockEvidence: true } } } });
+        const sourceForecast = sourceRun?.forecasts[0];
+        const configuredBuffer = sourceStocks.reduce((sum, stock) => sum + stock.safetyStock, 0);
+        const predictedDemand = (sourceForecast?.predictedQuantity ?? 0) + (sourceForecast?.safetyStockEvidence ? Math.max(0, sourceForecast.safetyStockAtRun - configuredBuffer) : 0);
+        const storeSurplus = sourceStocks.reduce((sum, stock) => sum + Math.max(0, stock.onHand - stock.reserved - stock.lots.filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0) - stock.safetyStock - (committedByWarehouse.get(stock.warehouseId) ?? 0)), 0) - predictedDemand;
         if (storeSurplus < quantity) throw new AppError(409, 'SOURCE_SURPLUS_CHANGED', 'Chi nhánh nguồn cần giữ hàng cho nhu cầu dự báo của mình. Vui lòng tạo đề xuất mới.');
         const transfer = await tx.stockTransfer.create({ data: {
           code: await nextDailyCode(tx, 'DC', dayPrefix => tx.stockTransfer.findMany({ where: { code: { startsWith: `${dayPrefix}-` } }, select: { code: true } })), sourceWarehouseId: current.sourceWarehouseId,
           destinationWarehouseId: current.destinationWarehouseId, createdById: user.id,
           reason: `Theo đề xuất ${id}: ${input.note}`.slice(0, 500),
-          items: { create: [{ skuId: current.skuId, requestedQuantity: quantity, costPrice: current.sku.costPrice }] },
+          items: { create: [{ skuId: current.skuId, requestedQuantity: quantity, approvedQuantity: quantity, costPrice: current.sku.costPrice }] },
         } });
         transferId = transfer.id;
       } else {
@@ -184,13 +187,13 @@ export async function decideRecommendation(user: CurrentUser, id: string, input:
         const request = await tx.purchaseRequest.create({ data: {
           code: await nextDailyCode(tx, 'PR', dayPrefix => tx.purchaseRequest.findMany({ where: { code: { startsWith: `${dayPrefix}-` } }, select: { code: true } })), storeId: current.targetStoreId,
           createdById: user.id, reason: `Theo đề xuất ${id}: ${input.note}`.slice(0, 500),
-          items: { create: [{ skuId: current.skuId, requestedQuantity: quantity }] },
+          items: { create: [{ skuId: current.skuId, requestedQuantity: quantity, approvedQuantity: quantity }] },
         } });
         purchaseRequestId = request.id;
       }
-      const changed = await tx.inventoryRecommendation.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'APPROVED', finalQuantity: quantity, decidedById: user.id, decidedAt: new Date(), decisionNote: input.note, transferId, purchaseRequestId } });
+      const changed = await tx.inventoryRecommendation.updateMany({ where: { id, status: 'PENDING' }, data: { status: 'APPLIED', finalQuantity: quantity, decidedById: user.id, decidedAt: new Date(), decisionNote: input.note, transferId, purchaseRequestId } });
       if (changed.count !== 1) throw new AppError(409, 'RECOMMENDATION_DECIDED', 'Đề xuất vừa được người khác xử lý.');
-      await tx.auditLog.create({ data: { actorId: user.id, action: 'recommendation.approve', targetId: id } });
+      await tx.auditLog.create({ data: { actorId: user.id, action: 'recommendation.apply', targetId: id } });
     }, { isolationLevel: 'Serializable' });
   } catch (error) {
     if (error instanceof AppError) throw error;

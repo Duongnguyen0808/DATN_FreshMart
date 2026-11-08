@@ -49,7 +49,7 @@ describe('infrastructure HTTP contract', () => {
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/transfers/{id}/cancel']?.post).toBeTruthy();
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/suppliers']).toBeTruthy();
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/purchase-requests']).toBeTruthy();
-    expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/purchase-orders'].get.parameters.find((item: { name: string }) => item.name === 'status').schema.enum).toContain('OVERDUE');
+    expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/purchase-orders'].get.parameters.find((item: { name: string }) => item.name === 'status').schema.enum).toEqual(['all', 'OPEN', 'COMPLETED']);
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/notifications']).toBeTruthy();
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/iot/events']?.post).toBeTruthy();
     expect((await request(app).get('/api/v1/openapi.json')).body.paths['/api/v1/iot/tag-mappings']?.post).toBeTruthy();

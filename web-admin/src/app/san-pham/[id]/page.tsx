@@ -1,4 +1,5 @@
 'use client';
+import { TableState } from '../../../components/ui/table-state';
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -8,6 +9,7 @@ import * as productsApi from '../../../lib/products-api';
 import { useAuth } from '../../../components/auth-provider';
 import { ActionButton } from '../../../components/ui/action-button';
 import { CurrencyInput } from '../../../components/ui/currency-input';
+import { CategoryBadge } from '../../../components/products/category-badge';
 import { MetricCard, MetricGrid } from '../../../components/ui/metric-card';
 import { StatusBadge } from '../../../components/ui/status-badge';
 import { useToast } from '../../../components/ui/toast-provider';
@@ -118,16 +120,16 @@ export default function ProductDetail() {
       <MetricCard tone="violet" label="SỐ quy cách" value={product.skus.length} caption={`${product.skus.filter((item) => item.active).length} quy cách đang kinh doanh`} />
     </MetricGrid>
 
-    {sku && <ProductAiAdvice product={product} sku={sku} />}
+    {sku && <details className="product-detail-advice"><summary>Dự báo nhu cầu và gợi ý bổ sung hàng</summary><ProductAiAdvice product={product} sku={sku} /></details>}
 
     <section className="detail-grid">
-      <article className="detail-info panel"><h2>Thông tin chung</h2><dl><div><dt>Mã sản phẩm</dt><dd>{product.code}</dd></div><div><dt>Danh mục</dt><dd>{product.category.name}</dd></div><div><dt>Đơn vị tính</dt><dd>{product.unit}</dd></div><div><dt>Tổng quy cách</dt><dd>{product.skus.length}</dd></div><div><dt>Quy cách đang kinh doanh</dt><dd>{product.skus.filter((item) => item.active).length}</dd></div><div><dt>Cập nhật lúc</dt><dd>{dateTime(product.updatedAt)}</dd></div></dl></article>
-      <article className="detail-timeline panel"><h2>Hoạt động gần đây</h2><ol><li><strong>Cập nhật master data</strong><span>{dateTime(product.updatedAt)}</span></li><li><strong>Tạo sản phẩm</strong><span>{dateTime(product.createdAt)}</span></li></ol></article>
+      <article className="detail-info panel"><h2>Thông tin chung</h2><dl><div><dt>Mã sản phẩm</dt><dd>{product.code}</dd></div><div><dt>Danh mục</dt><dd><CategoryBadge category={product.category}/></dd></div><div><dt>Đơn vị tính</dt><dd>{product.unit}</dd></div><div><dt>Tổng quy cách</dt><dd>{product.skus.length}</dd></div><div><dt>Quy cách đang kinh doanh</dt><dd>{product.skus.filter((item) => item.active).length}</dd></div><div><dt>Cập nhật lúc</dt><dd>{dateTime(product.updatedAt)}</dd></div></dl></article>
+      <article className="detail-timeline panel"><h2>Hoạt động gần đây</h2><ol><li><strong>Cập nhật thông tin</strong><span>{dateTime(product.updatedAt)}</span></li><li><strong>Tạo sản phẩm</strong><span>{dateTime(product.createdAt)}</span></li></ol></article>
     </section>
 
     <section className="detail-table panel sku-management">
       <header><div><h2>Quy cách và barcode</h2><p>Mỗi quy cách có barcode, giá và trạng thái riêng.</p></div>{canManage && <button className="primary-button" onClick={() => openSkuModal('create')}>＋ Thêm quy cách</button>}</header>
-      <div className="table-scroll"><table><thead><tr><th>Barcode</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Margin</th><th>Trạng thái</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody>{product.skus.length ? product.skus.map((item) => {
+      <div className="table-scroll"><table><thead><tr><th>Barcode</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên lợi nhuận</th><th>Trạng thái</th><th>Cập nhật</th><th>Thao tác</th></tr></thead><tbody>{product.skus.length ? product.skus.map((item) => {
         const itemMargin = item.sellingPrice ? (item.sellingPrice - item.costPrice) / item.sellingPrice * 100 : 0;
         return <tr key={item.id} className={item.id === sku?.id ? 'selected-sku-row' : undefined}><td>{item.barcode}</td><td className="numeric">{money(item.costPrice)}</td><td className="numeric"><strong>{money(item.sellingPrice)}</strong></td><td className="numeric positive">{itemMargin.toFixed(1)}%</td><td><StatusBadge tone={item.active ? 'green' : 'neutral'}>{item.active ? 'Hoạt động' : 'Đã ngừng'}</StatusBadge></td><td>{dateTime(item.updatedAt ?? product.updatedAt)}</td><td><div className="row-actions"><ActionButton tone="view" onClick={() => setSelectedSkuId(item.id)}>Lịch sử giá</ActionButton>{canManage && <><ActionButton tone="edit" onClick={() => openSkuModal('edit', item)}>Sửa</ActionButton><ActionButton tone={item.active ? 'danger' : 'approve'} onClick={() => changeSkuStatus(item)}>{item.active ? 'Ngừng' : 'Mở lại'}</ActionButton></>}</div></td></tr>;
       }) : <tr><td colSpan={7}>Sản phẩm chưa có barcode.</td></tr>}</tbody></table></div>
@@ -135,7 +137,7 @@ export default function ProductDetail() {
 
     <section className="detail-table panel">
       <header><div><h2>Lịch sử giá sản phẩm</h2><p>Lịch sử được ghi tự động khi giá bán hoặc giá vốn thay đổi.</p></div></header>
-      <div className="table-scroll"><table><thead><tr><th>Thời điểm</th><th className="numeric">Giá bán</th><th className="numeric">Giá vốn</th><th className="numeric">Margin</th><th>Người cập nhật</th></tr></thead><tbody>{sku?.priceHistory?.length ? sku.priceHistory.map((item) => <tr key={item.id}><td>{dateTime(item.effectiveAt)}</td><td className="numeric"><strong>{money(item.sellingPrice)}</strong></td><td className="numeric">{money(item.costPrice)}</td><td className="numeric">{item.sellingPrice ? ((item.sellingPrice - item.costPrice) / item.sellingPrice * 100).toFixed(1) : '0.0'}%</td><td>{item.changedBy?.name ?? 'Hệ thống'}</td></tr>) : <tr><td colSpan={5}>Chưa có lịch sử giá cho sản phẩm này.</td></tr>}</tbody></table></div>
+      <div className="table-scroll"><table><thead><tr><th>Thời điểm</th><th className="numeric">Giá bán</th><th className="numeric">Giá vốn</th><th className="numeric">Biên lợi nhuận</th><th>Người cập nhật</th></tr></thead><tbody>{sku?.priceHistory?.length ? sku.priceHistory.map((item) => <tr key={item.id}><td>{dateTime(item.effectiveAt)}</td><td className="numeric"><strong>{money(item.sellingPrice)}</strong></td><td className="numeric">{money(item.costPrice)}</td><td className="numeric">{item.sellingPrice ? ((item.sellingPrice - item.costPrice) / item.sellingPrice * 100).toFixed(1) : '0.0'}%</td><td>{item.changedBy?.name ?? 'Hệ thống'}</td></tr>) : <tr><td colSpan={5}><TableState message="Chưa có lịch sử giá cho sản phẩm này."/></td></tr>}</tbody></table></div>
     </section>
 
     {skuModal && <div className="ui-modal" onMouseDown={(event) => { if (event.target === event.currentTarget) setSkuModal(null); }}><form className="ui-modal-card sku-form-modal" onSubmit={saveSku}>

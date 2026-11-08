@@ -39,7 +39,7 @@ export const initialOrders: TransferOrder[] = [
     transportInfo: 'Xe tải 2.5T (Đội 2)',
     createdAt: '14/05/2026, 07:15',
     status: 'pending',
-    statusText: 'CHỜ DUYỆT',
+    statusText: 'SẴN SÀNG XUẤT',
   },
   {
     id: '3',
@@ -52,7 +52,7 @@ export const initialOrders: TransferOrder[] = [
     transportIcon: 'local_shipping',
     createdAt: '13/05/2026, 16:45',
     status: 'approved',
-    statusText: 'ĐÃ DUYỆT',
+    statusText: 'SẴN SÀNG XUẤT',
   },
   {
     id: '4',
@@ -89,7 +89,7 @@ export const initialOrders: TransferOrder[] = [
     transportInfo: 'Xe máy nội vùng',
     createdAt: '13/05/2026, 09:05',
     status: 'pending',
-    statusText: 'CHỜ DUYỆT',
+    statusText: 'SẴN SÀNG XUẤT',
   },
   {
     id: '7',
@@ -127,7 +127,7 @@ export const initialOrders: TransferOrder[] = [
     transportInfo: 'Chờ xếp phương tiện',
     createdAt: '12/05/2026, 11:30',
     status: 'approved',
-    statusText: 'ĐÃ DUYỆT',
+    statusText: 'SẴN SÀNG XUẤT',
   },
   {
     id: '10',

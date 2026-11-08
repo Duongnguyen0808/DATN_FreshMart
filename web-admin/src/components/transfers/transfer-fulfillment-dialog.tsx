@@ -4,8 +4,32 @@ import { ProductIdentity } from '../../components/ui/product-image';
 import { useState, type FormEvent } from 'react';
 import { ActionButton } from '../ui/action-button';
 import { errorMessage } from '../../lib/auth-api';
-import { dispatchTransfer, receiveTransfer, type Transfer } from '../../lib/transfers-api';
+import { cancelTransfer, dispatchTransfer, receiveTransfer, type Transfer } from '../../lib/transfers-api';
 import { normalizeIntegerInput } from '../../lib/number-input';
+
+export function TransferCancelDialog({ transfer, onClose, onDone }: { transfer: Transfer; onClose: () => void; onDone: (updated: Transfer) => void }) {
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true); setError('');
+    try { onDone(await cancelTransfer(transfer.id, reason.trim())); }
+    catch (cause) { setError(errorMessage(cause)); }
+    finally { setBusy(false); }
+  };
+
+  return <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <form className="ui-modal-card" onSubmit={submit}>
+      <header><div><h2>Hủy phiếu điều chuyển</h2><p>{transfer.code}</p></div><button type="button" aria-label="Đóng" disabled={busy} onClick={onClose}>×</button></header>
+      <p>Phiếu chưa xuất kho nên hủy phiếu sẽ không thay đổi số lượng tồn.</p>
+      <label>Lý do hủy<textarea required minLength={3} maxLength={500} value={reason} onChange={event => setReason(event.target.value)} placeholder="Nêu lý do hủy phiếu"/></label>
+      {error && <div className="ui-error" role="alert">{error}</div>}
+      <footer><ActionButton tone="more" disabled={busy} onClick={onClose}>Đóng</ActionButton><ActionButton tone="danger" type="submit" disabled={busy}>{busy ? 'Đang hủy…' : 'Xác nhận hủy phiếu'}</ActionButton></footer>
+    </form>
+  </div>;
+}
 
 type Props = {
   transfer: Transfer;
@@ -46,14 +70,14 @@ export function TransferFulfillmentDialog({ transfer, mode, onClose, onDone }: P
   return <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
     <form className="ui-modal-card transfer-fulfillment-dialog" onSubmit={submit}>
       <header><div><h2>{receiving ? 'Xác nhận nhận hàng' : 'Xác nhận xuất kho'}</h2><p>{transfer.code} · {receiving ? transfer.destinationWarehouse.name : transfer.sourceWarehouse.name}</p></div><button type="button" aria-label="Đóng" disabled={busy} onClick={onClose}>×</button></header>
-      <p className="transfer-fulfillment-hint">{receiving ? 'Nhập số thực nhận cho toàn bộ sản phẩm. Hàng nhận thiếu hoặc thừa cần ghi lý do; kho đích tăng theo đúng số thực nhận.' : 'Tồn kho nguồn sẽ giảm theo số đã duyệt và hàng chuyển sang trạng thái đang vận chuyển.'}</p>
+      <p className="transfer-fulfillment-hint">{receiving ? 'Nhập số thực nhận cho toàn bộ sản phẩm. Hàng nhận thiếu hoặc thừa cần ghi lý do; kho đích tăng theo đúng số thực nhận.' : 'Tồn kho nguồn sẽ giảm theo số lượng trên phiếu và hàng chuyển sang trạng thái đang vận chuyển.'}</p>
       <div className="transfer-fulfillment-lines">
         {transfer.items.map(item => {
           const shipped = item.dispatchedQuantity ?? 0;
           const mismatch = receiving && quantities[item.skuId] !== '' && Number(quantities[item.skuId]) !== shipped;
           return <div className="transfer-fulfillment-line" key={item.id}>
-            <div><ProductIdentity name={item.sku.product.name} code={item.sku.product.code} imageUrl={item.sku.product.imageUrl}/></div>
-            <span>{receiving ? `Đã xuất: ${shipped}` : `Đã duyệt: ${item.approvedQuantity ?? 0}`}</span>
+            <div><ProductIdentity name={item.sku.product.name} code={item.sku.product.code} imageUrl={item.sku.product.imageUrl}/>{item.rfidTagId && <small>RFID: <code>{item.rfidTagId}</code></small>}</div>
+            <span>{receiving ? `Đã xuất: ${shipped}` : `Số chuyển: ${item.approvedQuantity ?? 0}`}</span>
             {receiving && <label>Thực nhận<input required type="number" min={0} max={100000000} step={1} value={quantities[item.skuId]} onChange={event => setQuantities(current => ({ ...current, [item.skuId]: normalizeIntegerInput(event.target.value) }))}/></label>}
             {mismatch && <label className="transfer-fulfillment-reason">Lý do chênh lệch<input required maxLength={500} value={reasons[item.skuId] ?? ''} onChange={event => setReasons(current => ({ ...current, [item.skuId]: event.target.value }))} placeholder="Ghi rõ nguyên nhân nhận thiếu hoặc thừa"/></label>}
           </div>;

@@ -1,0 +1,97 @@
+/* One continuous canvas; the form has no card surface. */
+body.retail-ui .fm-login {
+  position:relative;
+  isolation:isolate;
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+  padding:40px 20px;
+  background:radial-gradient(ellipse at 50% 43%,#f6fcfa 0%,#e8f8f5 34%,transparent 75%),linear-gradient(125deg,#d6f3ec,#bdebe4 65%,#65cfc7);
+  color:#263b37;
+}
+.fm-login-backdrop {
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background-image:url('/freshmart-leaves.svg'),url('/freshmart-login-groceries.svg'),url('/freshmart-login-checkout.svg');
+  background-position:7% 16%,-2% 96%,102% 99%;
+  background-size:140px auto,min(29vw,410px) auto,min(28vw,390px) auto;
+  background-repeat:no-repeat;
+}
+.fm-login-frame {
+  position:relative;
+  width:min(100%,400px);
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+  animation:fm-login-arrive 250ms ease-out both;
+}
+.fm-login-access { padding:0; min-width:0; }
+.fm-login-brand { display:flex; justify-content:center; align-items:center; gap:10px; color:#24544b; font-size:23px; letter-spacing:-.6px; margin:0 0 20px; }
+.fm-login-brand span { display:grid; place-items:center; width:44px; height:44px; }
+.fm-login-brand img { width:44px; height:44px; object-fit:contain; }
+body.retail-ui .fm-login-brand strong { font-weight:600!important; }
+.fm-login-access-inner { width:100%; }
+body.retail-ui .fm-login-access h1 { margin:0; text-align:center; color:#263b37; font-size:28px!important; line-height:1.3!important; font-weight:500!important; letter-spacing:-.7px; }
+body.retail-ui .fm-login-intro { margin:10px 0 0; text-align:center; color:#52685f; font-size:13px; font-weight:400!important; line-height:1.6; }
+.fm-login-form { display:flex; flex-direction:column; margin-top:32px; }
+body.retail-ui .fm-login-form > label:not(.fm-login-remember) { margin:0 0 9px; color:#3f504b; font-size:13px; font-weight:500!important; }
+body.retail-ui .fm-login-form > label[for='login-password'] { margin-top:22px; }
+.fm-login-form > input, .fm-login-password { width:100%; height:50px; border:1px solid #dce7e4; border-radius:10px; background:#f8fafa; transition:border-color 160ms ease, box-shadow 160ms ease; }
+body.retail-ui .fm-login-form input { font-size:14px!important; font-weight:400!important; color:#263b37; caret-color:#087f78; }
+body.retail-ui .fm-login-form > input { padding:0 14px!important; margin:0!important; background:#f8fafa!important; border-color:#dce7e4; }
+.fm-login-form > input:focus, .fm-login-password:focus-within { border-color:#087f78!important; outline:none!important; box-shadow:0 0 0 3px #65cfc71f; }
+.fm-login-password { display:flex; align-items:center; }
+.fm-login-password input { min-width:0; width:100%; flex:1; height:48px; border:0!important; outline:0!important; box-shadow:none!important; background:transparent!important; padding:0 0 0 14px!important; margin:0!important; border-radius:10px; }
+body.retail-ui .fm-login-form input::placeholder { color:#96a29c; font-weight:400; opacity:1; }
+.fm-login-password button { display:grid; place-items:center; flex:none; width:38px; height:38px; margin-right:5px; color:#7a8c85; border-radius:8px; }
+.fm-login-password button:hover { background:#edf3f0; color:#087f78; }
+body.retail-ui .fm-login-remember { display:inline-flex!important; align-items:center; gap:9px; margin:17px 0 0!important; color:#52685f; font-size:13px!important; font-weight:400!important; cursor:pointer; align-self:flex-start; }
+.fm-login-remember input { width:16px; height:16px; margin:0; accent-color:#087f78; }
+body.retail-ui .fm-login-submit {
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  min-height:50px; width:100%; margin-top:26px; border:1px solid #087f78; border-radius:10px;
+  background:#087f78; color:white; font-size:14px; font-weight:600!important; box-shadow:0 3px 7px #173b3710;
+  transition:background 160ms ease, transform 160ms ease;
+}
+.fm-login-submit:hover:not(:disabled) { background:#076e68; }
+.fm-login-submit:active:not(:disabled) { transform:translateY(1px); }
+body.retail-ui .fm-login-submit:disabled { opacity:1!important; background:#447c75!important; border-color:#447c75!important; cursor:wait; box-shadow:none; }
+.fm-login-submit-arrow { font-size:18px; }
+.fm-login-spinner { width:16px; height:16px; border:2px solid #ffffff70; border-top-color:white; border-radius:50%; animation:fm-login-spin 700ms linear infinite; }
+body.retail-ui .fm-login-help { margin:24px 0 0; padding-top:0; border-top:0; color:#52685f; font-size:12px; font-weight:400!important; line-height:1.7; }
+.fm-login-help a { color:#087f78; text-underline-offset:3px; text-decoration:underline; }
+body.retail-ui .fm-login-error { margin:17px 0 0; padding:11px 13px; border:1px solid #efd7d2; border-radius:9px; background:#fff7f4; color:#9c4135; font-size:13px; font-weight:400!important; line-height:1.6; }
+body.retail-ui .fm-login-access-footer { display:block; text-align:center; margin-top:24px; color:#99a59e; font-size:11px; font-weight:400!important; }
+.fm-login-form input:-webkit-autofill,
+.fm-login-form input:-webkit-autofill:hover,
+.fm-login-form input:-webkit-autofill:focus {
+  -webkit-text-fill-color:#263b37!important;
+  caret-color:#087f78;
+  box-shadow:inset 0 0 0 1000px #f8fafa!important;
+  -webkit-box-shadow:inset 0 0 0 1000px #f8fafa!important;
+}
+.fm-login-form > input:-webkit-autofill:focus { outline:2px solid #087f78!important; outline-offset:2px; }
+.fm-login button:focus-visible { outline:2px solid #087f78; outline-offset:3px; }
+@keyframes fm-login-arrive { from {opacity:0;transform:translateY(8px)} to {opacity:1;transform:translateY(0)} }
+@keyframes fm-login-spin { to {transform:rotate(360deg)} }
+@media(max-width:1000px) and (min-width:601px) {
+  .fm-login-backdrop { background-size:100px auto,23vw auto,23vw auto; opacity:.7; }
+}
+@media(max-width:600px) {
+  body.retail-ui .fm-login { padding:36px 16px; }
+  .fm-login-backdrop { background-image:url('/freshmart-leaves.svg'),url('/freshmart-login-checkout.svg'); background-size:90px auto,125px auto; background-position:-20px -12px,calc(100% + 45px) 100%; opacity:.24; }
+  .fm-login-access { padding:0 8px; }
+  .fm-login-brand { margin-bottom:18px; }
+  body.retail-ui .fm-login-access h1 { font-size:26px!important; }
+  .fm-login-form { margin-top:26px; }
+}
+@media(max-height:650px) {
+  body.retail-ui .fm-login { padding-block:20px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .fm-login-frame,.fm-login-spinner { animation:none!important; }
+  .fm-login * { transition:none!important; scroll-behavior:auto!important; }
+}

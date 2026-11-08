@@ -99,7 +99,7 @@ suite('Authentication, RBAC and branch access on PostgreSQL', () => {
     expect((await request(app).post('/api/v1/users').auth(ownerToken, { type: 'bearer' }).send(input)).status).toBe(409);
   });
   it('grants and revokes role permissions immediately, and protects OWNER', async () => {
-    const body = { code: `EDIT_${prefix.replaceAll('-', '_')}`, name: 'Scoped reader', permissionCodes: ['stores.read', 'users.read'] };
+    const body = { code: `EDIT_${prefix.replaceAll('-', '_').toUpperCase()}`, name: 'Scoped reader', permissionCodes: ['stores.read', 'users.read'] };
     const result = await request(app).put(`/api/v1/roles/${cashierRoleId}`).auth(ownerToken, { type: 'bearer' }).send(body);
     expect(result.status).toBe(200);
     const users = await request(app).get('/api/v1/users').auth(cashierToken, { type: 'bearer' });

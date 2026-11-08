@@ -13,7 +13,9 @@ def test_m5_forecast_endpoint_uses_selected_model_artifact():
     })
     assert response.status_code == 200
     body = response.json()
-    assert body["model"] == "XGBoost"
+    from train_ai import MODEL_DIR
+    import json
+    assert body["model"] == json.loads((MODEL_DIR / 'selected_model.json').read_text())["model"]
     assert len(body["predictions"]) == 7
     assert body["total_forecast"] > 0
 

@@ -26,3 +26,21 @@ ai-service/pytest-cache-files-*/
 ai-service/data/output/cmdstan_tmp/
 
 web-admin/twin-*.png
+
+# Generated browser review artifacts (recreated by verification scripts)
+web-admin/artifacts/
+web-admin/*-check.png
+web-admin/*-debug.png
+web-admin/retail-desktop.png
+web-admin/retail-mobile.png
+
+# Local hardware credentials
+iot/esp32-rc522/config.local.h
+iot/esp32-cam/config.local.h
+iot/esp32-cam/.pio/
+iot/quirc-source-backup/
+
+# Local design references and skill runtime
+design-references/
+.impeccable-tools/
+.taste-skill/

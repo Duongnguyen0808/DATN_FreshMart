@@ -48,7 +48,10 @@ export async function uploadProductImage(dataUrl: string) {
 }
 
 export async function uploadOperationalEvidence(dataUrl: string) {
-  validateProductImage(dataUrl);
+  const match = /^data:image\/(?:jpeg|png|webp|avif);base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!match) throw new AppError(400, 'INVALID_EVIDENCE_IMAGE', 'Ảnh chứng từ phải có định dạng JPG, PNG, WEBP hoặc AVIF.');
+  const size = Math.floor(match[1].length * 3 / 4) - (match[1].endsWith('==') ? 2 : match[1].endsWith('=') ? 1 : 0);
+  if (size > 20 * 1024 * 1024) throw new AppError(413, 'EVIDENCE_IMAGE_TOO_LARGE', 'Ảnh chứng từ không được vượt quá 20 MB.');
   const { cloud, key, secret } = config();
   const timestamp = String(Math.floor(Date.now() / 1000));
   const evidenceFolder = 'smart-store/operation-evidence';

@@ -12,7 +12,7 @@ export const invoiceListInput = z.object({
 
 export const paymentListInput = z.object({
   q: z.string().trim().max(100).optional(),
-  method: z.enum(['all', 'CASH', 'QR', 'CARD']).default('all'),
+  method: z.enum(['all', 'CASH', 'QR']).default('all'),
   status: z.enum(['all', 'COMPLETED', 'CANCELLED']).default('all'),
   storeId: z.string().uuid().optional(),
   from: z.string().date().optional(),
@@ -29,7 +29,7 @@ export const createInvoiceInput = z.object({
   customerPhone: z.string().trim().max(20).regex(/^[0-9+ .()-]*$/).optional().nullable().transform(value => value || null),
   discount: money.default(0), creditAmount: money.default(0), creditDueDate: z.string().date().optional().nullable(), note: z.string().trim().max(500).optional().nullable().transform(value => value || null),
   items: z.array(z.object({ skuId: z.string().uuid(), quantity: z.coerce.number().int().min(1).max(100_000) }).strict()).min(1).max(100),
-  payments: z.array(z.object({ method: z.enum(['CASH', 'QR', 'CARD']), amount: money.refine(value => value > 0), reference: z.string().trim().max(100).optional().nullable().transform(value => value || null) }).strict()).max(3),
+  payments: z.array(z.object({ method: z.enum(['CASH', 'QR']), amount: money.refine(value => value > 0), reference: z.string().trim().max(100).optional().nullable().transform(value => value || null) }).strict()).max(2),
 }).strict().superRefine((value, context) => {
   if (new Set(value.items.map(item => item.skuId)).size !== value.items.length) context.addIssue({ code: 'custom', path: ['items'], message: 'Mỗi SKU chỉ được xuất hiện một lần.' });
   if (new Set(value.payments.map(payment => payment.method)).size !== value.payments.length) context.addIssue({ code: 'custom', path: ['payments'], message: 'Mỗi phương thức thanh toán chỉ được xuất hiện một lần.' });
@@ -41,7 +41,7 @@ export const cancelInvoiceInput = z.object({ reason: z.string().trim().min(3).ma
 
 export const createSalesReturnInput = z.object({
   reason: z.string().trim().min(3).max(500),
-  refundMethod: z.enum(['CASH', 'QR', 'CARD']),
+  refundMethod: z.enum(['CASH', 'QR']),
   refundReference: z.string().trim().max(100).optional().nullable().transform(value => value || null),
   items: z.array(z.object({
     invoiceItemId: z.string().uuid(),
@@ -54,7 +54,7 @@ export const createSalesReturnInput = z.object({
 
 export const salesReturnListInput = z.object({
   q: z.string().trim().max(100).optional(),
-  refundMethod: z.enum(['all', 'CASH', 'QR', 'CARD']).default('all'),
+  refundMethod: z.enum(['all', 'CASH', 'QR']).default('all'),
   storeId: z.string().uuid().optional(),
   from: z.string().date().optional(),
   to: z.string().date().optional(),

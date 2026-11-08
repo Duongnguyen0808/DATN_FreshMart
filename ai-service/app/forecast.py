@@ -11,7 +11,7 @@ import joblib
 import pandas as pd
 from pydantic import BaseModel, Field, field_validator
 
-from train_ai import FEATURE_COLUMNS, recursive_features
+from train_ai import FEATURE_COLUMNS, recursive_features, LEARNED_MODELS, CANDIDATES
 
 MODEL_DIR = Path(__file__).resolve().parents[1] / "models"
 LIVE_FEATURES = ["lag_1", "lag_7", "lag_28", "mean_7", "mean_28", "dow", "month"]
@@ -25,10 +25,23 @@ def _live_features(history: list[float], day: date) -> dict[str, float]:
 
 
 def _live_model(name: str):
+    if name == "Ridge":
+        from sklearn.linear_model import Ridge
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+        return make_pipeline(StandardScaler(), Ridge(alpha=10))
     if name == "RandomForest":
         from sklearn.ensemble import RandomForestRegressor
         return RandomForestRegressor(n_estimators=50, max_depth=12, min_samples_leaf=2,
                                      n_jobs=1, random_state=42)
+    if name == "ExtraTrees":
+        from sklearn.ensemble import ExtraTreesRegressor
+        return ExtraTreesRegressor(n_estimators=50, max_depth=12, min_samples_leaf=2,
+                                   n_jobs=1, random_state=42)
+    if name == "GradientBoosting":
+        from sklearn.ensemble import GradientBoostingRegressor
+        return GradientBoostingRegressor(n_estimators=60, max_depth=3, learning_rate=0.05,
+                                         random_state=42)
     if name == "XGBoost":
         from xgboost import XGBRegressor
         return XGBRegressor(n_estimators=120, max_depth=5, learning_rate=0.05,
@@ -65,6 +78,8 @@ def _recursive_live(model, history: list[int], last_day: date, horizon: int) -> 
 
 
 def _recursive_live_batch(model, histories: list[list[int]], last_day: date, horizon: int) -> list[list[float]]:
+    if not histories:
+        return []
     values = [[float(value) for value in history] for history in histories]
     outputs = [[] for _ in histories]
     for offset in range(1, horizon + 1):
@@ -102,9 +117,10 @@ def predict_operational_batch(items: list[SeriesInput], last_day: date, horizon_
                 train_y = [train_y[index] for index in train_x.index]
                 train_x = train_x.reset_index(drop=True)
             validation_day = last_day - timedelta(days=(min(map(len, eligible)) - cutoff))
-            candidates = ["MovingAverage7", "SeasonalNaive7", "RandomForest", "XGBoost"]
+            learned_names = ("Ridge", "RandomForest", "ExtraTrees", "GradientBoosting", "XGBoost")
+            candidates = ["MovingAverage7", "SeasonalNaive7", *learned_names]
             fitted = {}
-            for name in candidates[2:]:
+            for name in learned_names:
                 try:
                     estimator = _live_model(name)
                     estimator.fit(train_x, train_y)
@@ -112,6 +128,8 @@ def predict_operational_batch(items: list[SeriesInput], last_day: date, horizon_
                 except Exception as exc:
                     logger.warning("Bỏ qua model %s cho dự báo vận hành: %s", name, exc)
             for name in candidates:
+                if name in learned_names and name not in fitted:
+                    continue
                 validation_histories = [history[:cutoff] for history in eligible]
                 validation_predictions = _recursive_live_batch(fitted.get(name, name), validation_histories,
                                                                validation_day, validation_horizon)
@@ -122,7 +140,7 @@ def predict_operational_batch(items: list[SeriesInput], last_day: date, horizon_
                     scores[name] = sum(errors) / len(errors)
             if scores:
                 selected = min(scores, key=scores.get)
-                if selected in ("RandomForest", "XGBoost"):
+                if selected in learned_names:
                     full_x, full_y = _live_training_rows(eligible, last_day, min(map(len, eligible)))
                     if len(full_y) > 60_000:
                         full_x = full_x.sample(n=60_000, random_state=42)
@@ -179,14 +197,14 @@ def load_selected_model():
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
     name = selection["model"]
     model_path = MODEL_DIR / f"{name.lower()}.joblib"
-    if name not in ("RandomForest", "XGBoost", "MovingAverage7", "SeasonalNaive7"):
+    if name not in CANDIDATES:
         raise RuntimeError(f"Unsupported selected model: {name}")
-    if name in ("RandomForest", "XGBoost") and not model_path.is_file():
+    if name in LEARNED_MODELS and not model_path.is_file():
         raise RuntimeError(f"Selected model artifact is missing: {model_path}")
     processed_path = MODEL_DIR.parent / "data" / "processed" / "m5_processed.csv"
     processed = pd.read_csv(processed_path, usecols=["sell_price"])
     median_price = float(processed["sell_price"].dropna().median()) if processed["sell_price"].notna().any() else 0.0
-    model = joblib.load(model_path) if name in ("RandomForest", "XGBoost") else None
+    model = joblib.load(model_path) if name in LEARNED_MODELS else None
     return name, model, median_price
 
 
@@ -200,7 +218,7 @@ def predict_daily(sales: list[int], last_day: date, horizon_days: int) -> tuple[
     model_name, model, reference_price = load_selected_model()
 
     for offset in range(1, horizon_days + 1):
-        if model_name in ("RandomForest", "XGBoost"):
+        if model_name in LEARNED_MODELS:
             day = pd.Timestamp(last_day + timedelta(days=offset))
             features = recursive_features(history, day, reference_price)
             quantity = max(0.0, float(model.predict(pd.DataFrame([features], columns=FEATURE_COLUMNS))[0]))
@@ -222,7 +240,7 @@ def predict_series_batch(items: list[SeriesInput], last_day: date, horizon_days:
     if active:
         model_name, model, reference_price = load_selected_model()
         for offset in range(1, horizon_days + 1):
-            if model_name in ("RandomForest", "XGBoost"):
+            if model_name in LEARNED_MODELS:
                 day = pd.Timestamp(last_day + timedelta(days=offset))
                 features = [recursive_features(histories[index], day, reference_price) for index in active]
                 predictions = model.predict(pd.DataFrame(features, columns=FEATURE_COLUMNS))

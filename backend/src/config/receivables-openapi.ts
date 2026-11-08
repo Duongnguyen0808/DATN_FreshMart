@@ -35,8 +35,8 @@ export const receivablePaths = {
     requestBody: { required: true, content: { 'application/json': { schema: {
       type: 'object', additionalProperties: false, required: ['amount', 'method'], properties: {
         amount: { type: 'number', exclusiveMinimum: 0 },
-        method: { type: 'string', enum: ['CASH', 'QR', 'CARD'] },
-        reference: { type: 'string', nullable: true, description: 'Bắt buộc với QR và CARD.' },
+        method: { type: 'string', enum: ['CASH', 'QR'] },
+        reference: { type: 'string', nullable: true, description: 'Bắt buộc với QR.' },
         note: { type: 'string', nullable: true },
       },
     } } } },

@@ -7,7 +7,7 @@ import type { IotEvent } from './iot-api';
 const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000/api/v1').replace(/\/$/, '');
 const socketOrigin = apiBase.replace(/\/api\/v1$/, '');
 
-export function subscribeIotEvents(onEvent: (event: IotEvent) => void, onStatus?: (connected: boolean) => void) {
+function subscribeChannel<T>(channel: string, onEvent: (event: T) => void, onStatus?: (connected: boolean) => void) {
   let socket: Socket | null = null;
   let closed = false;
   let refreshing = false;
@@ -15,7 +15,7 @@ export function subscribeIotEvents(onEvent: (event: IotEvent) => void, onStatus?
   const connect = () => {
     if (closed) return;
     socket = io(socketOrigin, { auth: { token: getAccessToken() }, reconnection: true });
-    socket.on('iot:event', onEvent);
+    socket.on(channel, onEvent);
     socket.on('connect', () => onStatus?.(true));
     socket.on('disconnect', () => onStatus?.(false));
     socket.on('connect_error', async error => {
@@ -41,3 +41,6 @@ export function subscribeIotEvents(onEvent: (event: IotEvent) => void, onStatus?
     socket?.disconnect();
   };
 }
+
+export const subscribeIotEvents = (onEvent: (event: IotEvent) => void, onStatus?: (connected: boolean) => void) => subscribeChannel('iot:event', onEvent, onStatus);
+export const subscribeWarehouseAccess = (onUpdate: (update: unknown) => void, onStatus?: (connected: boolean) => void) => subscribeChannel('iot:access', onUpdate, onStatus);
