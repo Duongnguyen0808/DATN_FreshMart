@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "generated_at": "2026-10-29T07:01:56.802593+00:00",
+  "generated_at": "2026-11-13T08:53:31.591340+00:00",
   "dataset": {
     "name": "M5 daily sales CSV",
     "store": "CA_1",
@@ -119,6 +119,37 @@
       "rows_used_for_model": 840
     }
   ],
+  "inventory_policy_backtest": {
+    "summary": {
+      "fixed": {
+        "stockout_days": 38,
+        "unmet_units_proxy": 563,
+        "fill_rate": 0.9646467817896389,
+        "average_stock": 81.40595238095239,
+        "order_count": 93,
+        "ordered_units": 14160,
+        "forecast_fallback_days": 0
+      },
+      "forecast": {
+        "stockout_days": 28,
+        "unmet_units_proxy": 323,
+        "fill_rate": 0.9797174254317111,
+        "average_stock": 96.82619047619048,
+        "order_count": 81,
+        "ordered_units": 14426,
+        "forecast_fallback_days": 0
+      }
+    },
+    "assumptions": {
+      "dataset": "M5 observed sales as demand proxy",
+      "lead_days": 3,
+      "cover_days": 7,
+      "initial_stock": "mean of 28 pre-test sales days × (lead + cover)",
+      "fixed_policy": "28-day historical average",
+      "forecast_policy": "pre-test holdout forecast; no test actuals used for decisions",
+      "costs": "not estimated; no real procurement or carrying cost available"
+    }
+  },
   "artifact_fit_through_d": 1913,
   "training_rows": 56550,
   "random_seed": 42,

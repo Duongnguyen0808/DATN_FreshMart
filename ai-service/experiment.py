@@ -87,6 +87,11 @@ def run(data_path: Path, output_dir: Path, model_dir: Path, split_dir: Path):
     pd.DataFrame(metric_rows).to_csv(output_dir / 'model_metrics.csv', index=False)
     predictions = pd.DataFrame(records)
     predictions.to_csv(output_dir / 'actual_vs_predicted.csv', index=False)
+    from inventory_policy import compare_policies
+    policy_result, policy_trace = compare_policies(frame, predictions[predictions.split.eq('test')], TEST_START)
+    policy_trace.to_csv(output_dir / 'inventory_policy_trace.csv', index=False)
+    (output_dir / 'inventory_policy_backtest.json').write_text(
+        json.dumps(policy_result, ensure_ascii=False, indent=2), encoding='utf-8')
     result = {'schema_version': 2, 'generated_at': datetime.now(timezone.utc).isoformat(),
               'dataset': {'name': 'M5 daily sales CSV', 'store': str(frame.store_id.iloc[0]),
                           'sha256': hashlib.sha256(data_path.read_bytes()).hexdigest(), 'rows': len(frame)},
@@ -95,6 +100,7 @@ def run(data_path: Path, output_dir: Path, model_dir: Path, split_dir: Path):
               'full_sample_validation_metrics': validation, 'full_sample_test_metrics': {selected: test},
               'validation_window': [VALIDATION_START, VALIDATION_END], 'test_window': [TEST_START, TEST_END],
               'trained_items': len(items), 'dataset_splits': split_summary,
+              'inventory_policy_backtest': {'summary': policy_result['summary'], 'assumptions': policy_result['assumptions']},
               'artifact_fit_through_d': TEST_START - 1, 'training_rows': len(final_train),
               'random_seed': 42, 'forecast_strategy': '28-day recursive forecast; last observed selling price',
               'notes': ['All candidates use the same items and validation dates.',

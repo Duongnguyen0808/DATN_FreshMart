@@ -26,7 +26,7 @@ const { chromium, expect } = require('@playwright/test');
     expect(posts).toBe(0);
     await page.getByLabel('Chi nhánh · kho nhận').selectOption('wh2');
     await expect(page.locator('.li-replenishment>p').first()).toContainText('Hải Châu');
-    await expect(page.locator('.li-replenishment input[type=checkbox]').nth(1)).toBeDisabled();
+    await expect(page.locator('.li-replenishment .li-ordered-badge')).toBeVisible();
     await page.locator('.li-replenishment input[type=checkbox]').first().check();
     await expect(page.getByRole('button',{name:'Xác nhận tạo đơn mua hàng'})).toBeDisabled();
     await page.getByLabel('Nhà cung cấp cho các mặt hàng đã chọn').selectOption('supplier');

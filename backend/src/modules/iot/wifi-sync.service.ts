@@ -15,7 +15,6 @@ type CameraEndpointState = {
 
 let latestCameraState: CameraEndpointState | null = null;
 let lastSyncedSignature = '';
-let lastAttemptedSignature = '';
 let syncInProgress: Promise<{
   synced: boolean;
   ssid: string;
@@ -24,6 +23,8 @@ let syncInProgress: Promise<{
   port: string;
   message: string;
 }> | null = null;
+
+let cachedWifiCreds: { ssid: string; password: string; hostIp: string; at: number } | null = null;
 
 export function normalizeIpv4(raw: string | undefined | null): string {
   if (!raw) return '';
@@ -39,7 +40,7 @@ export function detectHostLanIp(): string {
     for (const [name, addrs] of entries) {
       if (!pattern.test(name) || !addrs) continue;
       for (const addr of addrs) {
-        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
+        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.') && !addr.address.startsWith('26.')) {
           return addr.address;
         }
       }
@@ -48,7 +49,7 @@ export function detectHostLanIp(): string {
   for (const [, addrs] of entries) {
     if (!addrs) continue;
     for (const addr of addrs) {
-      if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
+      if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.') && !addr.address.startsWith('26.')) {
         return addr.address;
       }
     }
@@ -62,20 +63,23 @@ export function recordCameraDeviceIp(deviceId: string, headerIp?: string | null,
   latestCameraState = {
     deviceId: deviceId || latestCameraState?.deviceId || 'FRESHMART-CAMERA-IN-01',
     cameraIp: ip,
-    ssid: latestCameraState?.ssid || '',
+    ssid: latestCameraState?.ssid || cachedWifiCreds?.ssid || '',
     hostIp: detectHostLanIp() || latestCameraState?.hostIp || '',
     port: latestCameraState?.port || '',
     updatedAt: new Date().toISOString(),
   };
 }
 
-export async function getLaptopWifiCredentials(): Promise<{ ssid: string; password: string; hostIp: string }> {
+export async function getLaptopWifiCredentials(useCache = true): Promise<{ ssid: string; password: string; hostIp: string }> {
   const hostIp = detectHostLanIp();
+  if (useCache && cachedWifiCreds && Date.now() - cachedWifiCreds.at < 15_000 && cachedWifiCreds.hostIp === hostIp && cachedWifiCreds.ssid) {
+    return { ssid: cachedWifiCreds.ssid, password: cachedWifiCreds.password, hostIp };
+  }
   if (process.platform !== 'win32') {
     return { ssid: '', password: '', hostIp };
   }
   try {
-    const { stdout: ifaceOut } = await execFileAsync('netsh', ['wlan', 'show', 'interfaces'], { timeout: 4000, windowsHide: true });
+    const { stdout: ifaceOut } = await execFileAsync('netsh', ['wlan', 'show', 'interfaces'], { timeout: 2500, windowsHide: true });
     const ssidMatch = ifaceOut.match(/^\s*SSID\s*:\s*(.+)$/m);
     const profileMatch = ifaceOut.match(/^\s*Profile\s*:\s*(.+)$/m);
     const ssid = (ssidMatch?.[1] ?? '').trim();
@@ -83,16 +87,40 @@ export async function getLaptopWifiCredentials(): Promise<{ ssid: string; passwo
     if (!ssid) return { ssid: '', password: '', hostIp };
 
     const { stdout: profileOut } = await execFileAsync('netsh', ['wlan', 'show', 'profile', `name=${profile}`, 'key=clear'], {
-      timeout: 4000,
+      timeout: 2500,
       windowsHide: true,
     });
     const keyMatch =
       profileOut.match(/^\s*Key Content\s*:\s*(.+)$/m) ??
       profileOut.match(/^\s*Nội dung khóa\s*:\s*(.+)$/im);
     const password = (keyMatch?.[1] ?? '').trim();
+    cachedWifiCreds = { ssid, password, hostIp, at: Date.now() };
     return { ssid, password, hostIp };
   } catch {
-    return { ssid: '', password: '', hostIp };
+    return { ssid: cachedWifiCreds?.ssid ?? '', password: cachedWifiCreds?.password ?? '', hostIp };
+  }
+}
+
+async function probeCameraOverHttp(candidateIp: string, hostIp: string): Promise<{ ip: string; ssid: string; deviceId: string } | null> {
+  const ip = normalizeIpv4(candidateIp);
+  if (!ip) return null;
+  try {
+    const url = `http://${ip}/status${hostIp ? `?hostIp=${encodeURIComponent(hostIp)}` : ''}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(700),
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { ip?: string; ssid?: string; deviceId?: string; ready?: boolean };
+    const resolvedIp = normalizeIpv4(data.ip) || ip;
+    return {
+      ip: resolvedIp,
+      ssid: data.ssid || '',
+      deviceId: data.deviceId || 'FRESHMART-CAMERA-IN-01',
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -101,7 +129,7 @@ export function getCameraDeviceStatus() {
   return {
     cameraIp: latestCameraState?.cameraIp ?? '',
     deviceId: latestCameraState?.deviceId ?? 'FRESHMART-CAMERA-IN-01',
-    ssid: latestCameraState?.ssid ?? '',
+    ssid: latestCameraState?.ssid || cachedWifiCreds?.ssid || '',
     hostIp,
     port: latestCameraState?.port ?? '',
     updatedAt: latestCameraState?.updatedAt ?? null,
@@ -111,7 +139,40 @@ export function getCameraDeviceStatus() {
 export async function syncLaptopWifiOverUsb(force = false) {
   if (syncInProgress) return syncInProgress;
   syncInProgress = (async () => {
-    const { ssid, password, hostIp } = await getLaptopWifiCredentials();
+    const { ssid, password, hostIp } = await getLaptopWifiCredentials(!force);
+    const signature = `${ssid}|${password}|${hostIp}`;
+
+    // Fast path 1: Check if ESP32-CAM is ALREADY reachable over HTTP on LAN (takes <60ms, avoids CH340 USB reset!)
+    const candidateIps = Array.from(
+      new Set([
+        latestCameraState?.cameraIp ?? '',
+        hostIp.startsWith('192.168.1.') ? '192.168.1.86' : '',
+      ].filter(Boolean)),
+    );
+
+    for (const candidate of candidateIps) {
+      const httpProbe = await probeCameraOverHttp(candidate, hostIp);
+      if (httpProbe && (!ssid || !httpProbe.ssid || httpProbe.ssid === ssid)) {
+        lastSyncedSignature = signature;
+        latestCameraState = {
+          deviceId: httpProbe.deviceId,
+          cameraIp: httpProbe.ip,
+          ssid: httpProbe.ssid || ssid,
+          hostIp,
+          port: latestCameraState?.port || 'LAN',
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          synced: true,
+          ssid: httpProbe.ssid || ssid,
+          hostIp,
+          cameraIp: httpProbe.ip,
+          port: latestCameraState.port,
+          message: `Đã kết nối nhanh Wi-Fi "${httpProbe.ssid || ssid}" · Camera IP: ${httpProbe.ip}`,
+        };
+      }
+    }
+
     if (!ssid || !hostIp) {
       return {
         synced: false,
@@ -122,18 +183,18 @@ export async function syncLaptopWifiOverUsb(force = false) {
         message: 'Chưa phát hiện kết nối Wi-Fi trên Laptop.',
       };
     }
-    const signature = `${ssid}|${password}|${hostIp}`;
-    if (!force && (signature === lastSyncedSignature || signature === lastAttemptedSignature)) {
+
+    if (!force && signature === lastSyncedSignature && latestCameraState?.cameraIp) {
       return {
-        synced: signature === lastSyncedSignature,
+        synced: true,
         ssid,
         hostIp,
-        cameraIp: latestCameraState?.cameraIp ?? '',
-        port: latestCameraState?.port ?? '',
-        message: `Đã đồng bộ Wi-Fi ${ssid} (${latestCameraState?.cameraIp || hostIp}).`,
+        cameraIp: latestCameraState.cameraIp,
+        port: latestCameraState.port,
+        message: `Đã đồng bộ Wi-Fi ${ssid} (${latestCameraState.cameraIp}).`,
       };
     }
-    lastAttemptedSignature = signature;
+
     if (process.platform !== 'win32') {
       return {
         synced: false,
@@ -153,6 +214,8 @@ export async function syncLaptopWifiOverUsb(force = false) {
     });
     const payloadB64 = Buffer.from(`FM_WIFI_SYNC:${payload}\n`, 'utf8').toString('base64');
 
+    // Reset-aware USB Serial provisioning:
+    // CH340 pulses DTR/RTS on Open(), resetting ESP32-CAM. We send immediately AND resend right after boot.
     const psScript = `
 $ErrorActionPreference = 'SilentlyContinue'
 $cmdLine = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${payloadB64}'))
@@ -165,23 +228,35 @@ foreach ($p in $usbPorts) {
   $sp = New-Object System.IO.Ports.SerialPort $p, 115200
   $sp.DtrEnable = $false
   $sp.RtsEnable = $false
-  $sp.ReadTimeout = 500
-  $sp.WriteTimeout = 1000
+  $sp.ReadTimeout = 250
+  $sp.WriteTimeout = 600
   try {
     $sp.Open()
     $sp.DiscardInBuffer()
     $sp.Write($cmdLine)
     $sp.Write("FM_PING\`n")
-    $deadline = (Get-Date).AddMilliseconds(5500)
+    $openedAt = Get-Date
+    $resentAfterBoot = $false
+    $deadline = $openedAt.AddMilliseconds(4200)
     while ((Get-Date) -lt $deadline) {
+      $elapsed = ((Get-Date) - $openedAt).TotalMilliseconds
+      if (-not $resentAfterBoot -and $elapsed -ge 1450) {
+        $resentAfterBoot = $true
+        $sp.Write($cmdLine)
+        $sp.Write("FM_PING\`n")
+      }
       try {
         $line = $sp.ReadLine().Trim()
-        if ($line -match 'FM_(SYNC_ACK|STATUS):(\\{.+\\})') {
+        if ($line -match 'FM_BOOT_READY|Camera initialized') {
+          $resentAfterBoot = $true
+          $sp.Write($cmdLine)
+          $sp.Write("FM_PING\`n")
+        } elseif ($line -match 'FM_(SYNC_ACK|STATUS):(\\{.+\\})') {
           $obj = $Matches[2] | ConvertFrom-Json
           $result.synced = $true
           $result.port = $p
           if ($obj.deviceId) { $result.deviceId = $obj.deviceId }
-          if ($obj.ip -and $obj.ip -ne '0.0.0.0') {
+          if ($obj.ip -and $obj.ip -ne '0.0.0.0' -and $obj.ip -ne '') {
             $result.ip = $obj.ip
             break
           }
@@ -191,7 +266,11 @@ foreach ($p in $usbPorts) {
           $result.ip = $Matches[1]
           break
         }
-      } catch {}
+      } catch {
+        if ($result.synced -and -not $result.ip) {
+          $sp.Write("FM_PING\`n")
+        }
+      }
     }
   } catch {} finally {
     if ($sp.IsOpen) { $sp.Close() }
@@ -203,7 +282,7 @@ $result | ConvertTo-Json -Compress
 
     try {
       const { stdout } = await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
-        timeout: 12000,
+        timeout: 7500,
         windowsHide: true,
       });
       const jsonLine = stdout.trim().split(/\r?\n/).findLast(line => line.trim().startsWith('{')) ?? '{}';
@@ -254,13 +333,20 @@ let watcherStarted = false;
 export function startAutomaticUsbWifiSyncWatcher() {
   if (watcherStarted || process.env.NODE_ENV === 'test') return;
   watcherStarted = true;
-  // Initial check shortly after backend starts
+  // Warm up Wi-Fi credential cache and probe camera immediately on startup
   setTimeout(() => {
-    void syncLaptopWifiOverUsb(false).catch(() => {});
-  }, 2500);
-  // Periodically check if laptop switched Wi-Fi or ESP32 hasn't reported its IP yet
+    void getLaptopWifiCredentials(false)
+      .then(() => syncLaptopWifiOverUsb(false))
+      .catch(() => {});
+  }, 800);
+  // Periodically verify if camera is reachable or laptop switched Wi-Fi
   setInterval(() => {
-    void syncLaptopWifiOverUsb(false).catch(() => {});
-  }, 20000);
+    void getLaptopWifiCredentials(false)
+      .then(() => {
+        if (!latestCameraState?.cameraIp) {
+          return syncLaptopWifiOverUsb(false);
+        }
+      })
+      .catch(() => {});
+  }, 15_000);
 }
-

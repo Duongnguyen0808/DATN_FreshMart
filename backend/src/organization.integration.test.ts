@@ -2,7 +2,7 @@ import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 const suite = process.env.TEST_DATABASE_URL ? describe : describe.skip;
-suite('Branch and warehouse lifecycle on PostgreSQL', () => {
+suite('Branch and warehouse lifecycle on SQL Server', () => {
   let db: typeof import('./common/database.js').prisma;
   let app: ReturnType<typeof import('./app.js').createApp>;
   let token = '', scopedToken = '', scopedStore = '', createdStore = '', firstWarehouse = '', secondWarehouse = '';

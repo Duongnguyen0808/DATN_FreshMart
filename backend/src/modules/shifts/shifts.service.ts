@@ -1,6 +1,7 @@
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
 import { AppError } from '../../common/app-error.js';
+import { toJson, parseJson } from '../../common/json-field.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import type { z } from 'zod';
 import type { approveShiftInput, closeShiftInput, openShiftInput, shiftListInput, shiftStaffInput } from './shifts.schemas.js';
@@ -17,9 +18,10 @@ function assertStoreScope(user: CurrentUser, storeId: string) {
   if (!user.globalAccess && !scopeIds(user).includes(storeId)) throw new AppError(403, 'STORE_FORBIDDEN', 'Bạn không được thao tác ca tại chi nhánh này.');
 }
 
-function presentShift<T extends { openingCash: unknown; cashRevenue: unknown; digitalRevenue: unknown; cashExpenses: unknown; closingCash: unknown; cashDiscrepancy: unknown }>(shift: T) {
+function presentShift<T extends { denominations?: unknown; openingCash: unknown; cashRevenue: unknown; digitalRevenue: unknown; cashExpenses: unknown; closingCash: unknown; cashDiscrepancy: unknown }>(shift: T) {
   return {
     ...shift,
+    ...(shift.denominations !== undefined ? { denominations: parseJson(shift.denominations) } : {}),
     openingCash: Number(shift.openingCash), cashRevenue: Number(shift.cashRevenue), digitalRevenue: Number(shift.digitalRevenue), cashExpenses: Number(shift.cashExpenses),
     closingCash: shift.closingCash === null ? null : Number(shift.closingCash), cashDiscrepancy: shift.cashDiscrepancy === null ? null : Number(shift.cashDiscrepancy),
   };
@@ -49,8 +51,8 @@ export async function listShifts(user: CurrentUser, input: z.infer<typeof shiftL
     ...(input.storeId ? { storeId: input.storeId } : {}),
     ...(input.cashierId ? { cashierId: input.cashierId } : {}),
     ...(input.q ? { OR: [
-      { code: { contains: input.q, mode: 'insensitive' } }, { posCode: { contains: input.q, mode: 'insensitive' } },
-      { cashier: { name: { contains: input.q, mode: 'insensitive' } } }, { store: { name: { contains: input.q, mode: 'insensitive' } } },
+      { code: { contains: input.q } }, { posCode: { contains: input.q } },
+      { cashier: { name: { contains: input.q } } }, { store: { name: { contains: input.q } } },
     ] } : {}),
   };
   const skip = (input.page - 1) * input.pageSize;
@@ -116,7 +118,7 @@ export async function closeShift(user: CurrentUser, id: string, input: z.infer<t
     if (await tx.payosCheckout.count({ where: { shiftId: id, status: { in: ['CREATING', 'PENDING'] } } })) throw new AppError(409, 'SHIFT_HAS_PENDING_PAYMENTS', 'Ca còn đơn payOS đang chờ. Hoàn tất hoặc hủy thanh toán trước khi chốt ca.');
     const updated = await tx.workShift.updateMany({ where: { id, status: 'OPEN' }, data: {
       status, closingCash: input.closingCash, cashExpenses: input.cashExpenses, cashDiscrepancy: discrepancy, discrepancyReason: input.discrepancyReason,
-      denominations: input.denominations as Prisma.InputJsonValue, closedAt: new Date(), ...(status === 'CLOSED' ? { approvedAt: new Date(), approvedById: user.id } : {}),
+      denominations: toJson(input.denominations), closedAt: new Date(), ...(status === 'CLOSED' ? { approvedAt: new Date(), approvedById: user.id } : {}),
     } });
     if (updated.count !== 1) throw new AppError(409, 'SHIFT_NOT_OPEN', 'Ca vừa được người khác chốt. Vui lòng tải lại.');
     await tx.auditLog.create({ data: { actorId: user.id, action: status === 'CLOSED' ? 'shift.close' : 'shift.submit_review', targetId: id } });

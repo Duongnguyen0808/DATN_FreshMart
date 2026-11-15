@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../common/database.js';
+import { toJson } from '../../common/json-field.js';
 import { AppError } from '../../common/app-error.js';
 import { authenticate, requirePermission } from '../../middleware/authenticate.js';
 import { expired, initializeLots, warehouseToday } from './lot-stock.js';
+import { getFefoExpiryRiskAlerts } from '../forecasts/forecasts.service.js';
+import { createFefoRiskTransfer } from '../forecasts/recommendations.service.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -23,6 +26,25 @@ lotsRoutes.get('/inventory-lots', requirePermission('inventory.read'), async (re
   res.json(ok(rows.map(row => ({ ...row, expired: expired(row.expiresAt), daysRemaining: row.expiresAt ? Math.ceil((row.expiresAt.getTime() - today) / 86400000) : null, zone: row.status === 'AVAILABLE' && !expired(row.expiresAt) ? 'Kệ hàng' : 'Khu cách ly / chờ xác minh' }))));
 });
 
+lotsRoutes.get('/inventory-lots/fefo-ai-risks', requirePermission('inventory.read'), async (req, res) => {
+  const query = z.object({
+    storeId: z.string().uuid().optional().or(z.literal('')).transform(v => v || undefined),
+    horizonDays: z.coerce.number().int().positive().optional(),
+  }).parse(req.query);
+  res.json(ok(await getFefoExpiryRiskAlerts(req.currentUser, query)));
+});
+
+lotsRoutes.post('/inventory-lots/fefo-ai-transfer', requirePermission('transfers.create'), async (req, res) => {
+  const input = z.object({
+    sourceWarehouseId: z.string().uuid(),
+    destinationWarehouseId: z.string().uuid(),
+    skuId: z.string().uuid(),
+    quantity: z.coerce.number().int().positive(),
+    lotCode: z.string().trim().min(1).max(100),
+  }).strict().parse(req.body);
+  res.status(201).json(ok(await createFefoRiskTransfer(req.currentUser, input)));
+});
+
 const classify = z.object({ quantity: z.number().int().positive(), code: z.string().trim().min(1).max(100), expiresAt: z.string().date().nullable(), reason: z.string().trim().min(3).max(500) }).strict();
 lotsRoutes.post('/inventory/:id/lots/classify', requirePermission('stocktakes.approve'), async (req, res) => {
   const inventoryId = id.parse(req.params.id), input = classify.parse(req.body);
@@ -36,7 +58,7 @@ lotsRoutes.post('/inventory/:id/lots/classify', requirePermission('stocktakes.ap
     await tx.inventoryLot.update({ where: { id: legacy.id }, data: { quantity: { decrement: input.quantity } } });
     const lot = await tx.inventoryLot.create({ data: { inventoryId, code: input.code, expiresAt, quantity: input.quantity, status: expired(expiresAt) ? 'QUARANTINE' : 'AVAILABLE' } });
     await tx.lotMovement.createMany({ data: [{ lotId: legacy.id, quantity: -input.quantity, referenceType: 'CLASSIFY', referenceId: lot.id, actorId: req.currentUser.id }, { lotId: lot.id, quantity: input.quantity, referenceType: 'CLASSIFY', referenceId: lot.id, actorId: req.currentUser.id }] });
-    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.classify', targetId: lot.id, metadata: { reason: input.reason } } });
+    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.classify', targetId: lot.id, metadata: toJson({ reason: input.reason }) } });
     return lot;
   }, { isolationLevel: 'Serializable' });
   res.json(ok(result));
@@ -49,7 +71,7 @@ lotsRoutes.post('/inventory-lots/:id/quarantine', requirePermission('stocktakes.
     const stock = await stockScope(tx, req.currentUser, lot.inventoryId);
     if (stock.reserved) throw new AppError(409, 'STOCK_RESERVED', 'Xử lý giao dịch đang giữ hàng trước khi cách ly.');
     const changed = await tx.inventoryLot.update({ where: { id: lotId }, data: { status: 'QUARANTINE' } });
-    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.quarantine', targetId: lotId, metadata: { reason } } });
+    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.quarantine', targetId: lotId, metadata: toJson({ reason }) } });
     return changed;
   }, { isolationLevel: 'Serializable' })));
 });
@@ -65,7 +87,7 @@ lotsRoutes.post('/inventory-lots/:id/count', requirePermission('stocktakes.appro
     await tx.inventory.update({ where: { id: stock.id }, data: { onHand: { increment: delta } } });
     await tx.lotMovement.create({ data: { lotId, quantity: delta, referenceType: 'LOT_COUNT', referenceId: lotId, actorId: req.currentUser.id } });
     await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId: stock.warehouseId, skuId: stock.skuId, type: 'STOCKTAKE', quantity: delta, beforeQuantity: stock.onHand, afterQuantity: stock.onHand + delta, referenceType: 'LOT_COUNT', referenceId: lotId, reason: input.reason, actorId: req.currentUser.id } });
-    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.count', targetId: lotId, metadata: { before: lot.quantity, after: input.quantity, reason: input.reason } } });
+    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'lot.count', targetId: lotId, metadata: toJson({ before: lot.quantity, after: input.quantity, reason: input.reason }) } });
     return { delta };
   }, { isolationLevel: 'Serializable' })));
 });
@@ -111,7 +133,7 @@ lotsRoutes.patch('/products/:id/procurement', requirePermission('products.manage
   const input = z.object({ purchaseUnit: z.string().trim().min(1).max(30), purchasePackSize: z.number().int().min(1).max(100000), leadTimeDays: z.number().int().min(0).max(365).nullable() }).strict().parse(req.body);
   res.json(ok(await prisma.$transaction(async tx => {
     const row = await tx.product.update({ where: { id: productId, archivedAt: null }, data: input });
-    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'product.procurement.update', targetId: productId, metadata: input } });
+    await tx.auditLog.create({ data: { actorId: req.currentUser.id, action: 'product.procurement.update', targetId: productId, metadata: toJson(input) } });
     return row;
   })));
 });

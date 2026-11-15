@@ -55,10 +55,8 @@ QRCodeReaderSetupErr ESP32QRCodeReader::setup()
   cameraConfig.xclk_freq_hz = 20000000;
   cameraConfig.pixel_format = PIXFORMAT_JPEG;
 
-  //cameraConfig.frame_size = FRAMESIZE_VGA;
-  // Match the CameraWebServer initialization confirmed on the OV3660.
   cameraConfig.frame_size = FRAMESIZE_UXGA;
-  cameraConfig.jpeg_quality = 10;
+  cameraConfig.jpeg_quality = 12;
   cameraConfig.fb_count = 2;
   cameraConfig.fb_location = CAMERA_FB_IN_PSRAM;
   cameraConfig.grab_mode = CAMERA_GRAB_LATEST;
@@ -78,10 +76,31 @@ QRCodeReaderSetupErr ESP32QRCodeReader::setup()
   }
   sensor_t *sensor = esp_camera_sensor_get();
   if (!sensor) { Serial.println("Camera init: sensor unavailable."); esp_camera_deinit(); return SETUP_CAMERA_INIT_ERROR; }
-  if (sensor->id.PID == OV3660_PID) { sensor->set_vflip(sensor, 1); sensor->set_brightness(sensor, 1); sensor->set_saturation(sensor, -2); }
   if (sensor->set_framesize(sensor, frameSize) != 0) { Serial.println("Camera init: frame size could not be set."); esp_camera_deinit(); return SETUP_CAMERA_INIT_ERROR; }
+  // Tune sensor for crisp QR edges, fast shutter speed (low motion blur), and anti-glare
+  sensor->set_quality(sensor, 12);
+  sensor->set_contrast(sensor, 2);
+  sensor->set_sharpness(sensor, 2);
+  sensor->set_brightness(sensor, 0);
+  sensor->set_saturation(sensor, -1);
+  sensor->set_denoise(sensor, 1);
+  sensor->set_gainceiling(sensor, GAINCEILING_4X);
+  sensor->set_whitebal(sensor, 1);
+  sensor->set_awb_gain(sensor, 1);
+  sensor->set_exposure_ctrl(sensor, 1);
+  sensor->set_aec2(sensor, 1);
+  sensor->set_ae_level(sensor, -1);
+  sensor->set_gain_ctrl(sensor, 1);
+  sensor->set_lenc(sensor, 1);
+  sensor->set_raw_gma(sensor, 1);
+  sensor->set_dcw(sensor, 1);
+  if (sensor->id.PID == OV3660_PID) {
+    sensor->set_vflip(sensor, 1);
+    sensor->set_brightness(sensor, 1);
+    sensor->set_saturation(sensor, -2);
+  }
   cameraConfig.frame_size = frameSize;
-  Serial.println("Camera init: sensor initialized successfully.");
+  Serial.println("Camera init: sensor initialized and tuned for high-speed QR & low motion blur.");
   return SETUP_OK;
 }
 

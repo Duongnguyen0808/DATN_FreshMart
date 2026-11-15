@@ -3,7 +3,7 @@ import { TableState } from '../../components/ui/table-state';
 import { CategoryBadge, ProductGallery, ProductImagePicker } from '../../components/products/category-badge';
 import { categoryTheme } from '../../lib/category-theme';
 import { useStockReceiptRefresh } from '../../lib/use-stock-receipt-refresh';
-import { ForecastAlertBadge, ForecastShortageBanner, useForecastShortages } from '../../components/forecast-shortage-alert';
+import { ForecastAlertBadge, ForecastShortageBanner, useForecastShortages, type ForecastAlert } from '../../components/forecast-shortage-alert';
 import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Icon } from '../../components/ui/icon';
@@ -15,7 +15,7 @@ import { TabBar } from '../../components/ui/tab-bar';
 import { useToast } from '../../components/ui/toast-provider';
 import { errorMessage } from '../../lib/auth-api';
 import * as productsApi from '../../lib/products-api';
-import { downloadExcel } from '../../lib/excel-export';
+import { downloadProductsExcelWithImages } from '../../lib/excel-export';
 
 const money = (value: number) => new Intl.NumberFormat('vi-VN').format(value) + ' đ';
 type Modal = 'create' | 'edit' | null;
@@ -44,7 +44,7 @@ function CompactDropdown({ label, value, placeholder, options, onChange }: { lab
   </div>;
 }
 
-function ProductDetails({ product, loading, canManage, onEdit, onClose }: { product: productsApi.Product; loading: boolean; canManage: boolean; onEdit: () => void; onClose: () => void }) {
+function ProductDetails({ product, forecastAlert, loading, canManage, onEdit, onClose }: { product: productsApi.Product; forecastAlert?: ForecastAlert; loading: boolean; canManage: boolean; onEdit: () => void; onClose: () => void }) {
   const sku = product.skus[0];
   const costPrice = sku?.costPrice ?? 0;
   const sellingPrice = sku?.sellingPrice ?? 0;
@@ -76,6 +76,21 @@ function ProductDetails({ product, loading, canManage, onEdit, onClose }: { prod
         <div className="detail-metric-box tone-cyan"><small>Tồn kho khả dụng</small><strong>{stock} {product.unit}</strong><span>{stock > 0 ? 'Sẵn sàng xuất bán' : 'Cần lập đơn nhập bổ sung'}</span></div>
         <div className="detail-metric-box tone-indigo"><small>Mã sản phẩm & Barcode</small><strong>{product.code}</strong><span>Barcode: {sku?.barcode || 'Chưa gán'}</span></div>
         <div className="detail-metric-box tone-violet"><small>Danh mục & Quy cách</small><strong>{product.category.name}</strong><span>{conversionText}</span></div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderRadius: 12, background: forecastAlert ? '#fffbeb' : '#f0fdf4', border: `1px solid ${forecastAlert ? '#fde68a' : '#bbf7d0'}` }}>
+        <div>
+          <strong style={{ display: 'block', fontSize: 13.5, color: forecastAlert ? '#92400e' : '#166534' }}>
+            🤖 Dự báo AI & Khuyến nghị tồn kho (14 ngày tới): {forecastAlert ? `Cần nhập bù ${forecastAlert.shortageQuantity} ${product.unit} tại ${forecastAlert.storeName}` : 'Đủ tồn kho an toàn theo sức mua dự báo'}
+          </strong>
+          <span style={{ fontSize: 12.5, color: '#475569' }}>
+            {forecastAlert
+              ? `Dự báo nhu cầu: ${forecastAlert.predictedQuantity} ${product.unit} · Tồn an toàn: ${forecastAlert.safetyStock} ${product.unit} · Khả dụng: ${forecastAlert.available} ${product.unit}`
+              : `Tồn khả dụng hiện tại (${stock} ${product.unit}) đáp ứng tốt nhu cầu bán dự kiến trong 14 ngày tới.`}
+          </span>
+        </div>
+        <Link className="outline-button" href={`/du-bao-nhu-cau?q=${encodeURIComponent(product.code)}`} style={{ fontSize: 12.5, padding: '6px 12px' }}>
+          📈 Xem biểu đồ dự báo AI →
+        </Link>
       </div>
     </>}
     <footer>
@@ -195,22 +210,36 @@ export default function Products() {
   };
   const exportProducts = async () => {
     const columns = [
-      ['Mã sản phẩm', (p: productsApi.Product) => p.code], ['Tên sản phẩm', (p: productsApi.Product) => p.name],
-      ['Danh mục', (p: productsApi.Product) => p.category.name], ['Đơn vị', (p: productsApi.Product) => p.unit],
-      ['Giá vốn', (p: productsApi.Product) => p.skus[0]?.costPrice ?? 0], ['Giá bán', (p: productsApi.Product) => p.skus[0]?.sellingPrice ?? 0],
-      ['Barcode', (p: productsApi.Product) => p.skus[0]?.barcode ?? ''], ['Trạng thái', (p: productsApi.Product) => p.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'],
+      ['Mã sản phẩm', (p: productsApi.Product) => p.code],
+      ['Tên sản phẩm', (p: productsApi.Product) => p.name],
+      ['Danh mục', (p: productsApi.Product) => p.category.name],
+      ['Đơn vị', (p: productsApi.Product) => p.unit],
+      ['Tồn kho', (p: productsApi.Product) => p.availableStock ?? 0],
+      ['Giá vốn', (p: productsApi.Product) => p.skus[0]?.costPrice ?? 0],
+      ['Giá bán', (p: productsApi.Product) => p.skus[0]?.sellingPrice ?? 0],
+      ['Barcode', (p: productsApi.Product) => p.skus[0]?.barcode ?? ''],
+      ['Trạng thái', (p: productsApi.Product) => p.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'],
     ] as const;
+    const includeImageColumn = Boolean(document.querySelector<HTMLInputElement>('[data-export-image]:checked'));
     const selectedColumns = Array.from(document.querySelectorAll<HTMLInputElement>('[data-export-field]:checked')).map(input => Number(input.value));
-    const quote = (value: unknown) => `"${String(value).replaceAll('"', '""')}"`;
     const firstPage = await productsApi.getProducts({ q: query.trim() || undefined, active: status, categoryId: categoryId || undefined, page: 1, pageSize: 100 });
     const allProducts = [...firstPage.items];
     for (let nextPage = 2; nextPage <= firstPage.pagination.totalPages; nextPage += 1) {
       const next = await productsApi.getProducts({ q: query.trim() || undefined, active: status, categoryId: categoryId || undefined, page: nextPage, pageSize: 100 });
       allProducts.push(...next.items);
     }
-    const rows = [selectedColumns.map(index => columns[index]![0]), ...allProducts.map(product => selectedColumns.map(index => columns[index]![1](product)))];
-    const csv = '\uFEFF' + [['DANH SÁCH SẢN PHẨM'], ['Số lượng', String(allProducts.length)], [], ...rows].map(row => row.map(quote).join(',')).join('\r\n');
-    downloadExcel(csv, 'danh-sach-san-pham.xls'); setExportOpen(false);
+    await downloadProductsExcelWithImages({
+      title: 'DANH SÁCH SẢN PHẨM FRESHMART',
+      headers: selectedColumns.map(index => columns[index]![0]),
+      includeImageColumn,
+      rows: allProducts.map(product => ({
+        imageUrl: product.imageUrl,
+        productName: product.name,
+        values: selectedColumns.map(index => columns[index]![1](product)),
+      })),
+      filename: 'danh-sach-san-pham.xlsx',
+    });
+    setExportOpen(false);
   };
   const save = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setSaving(true); setError('');
@@ -289,29 +318,74 @@ export default function Products() {
     </header>
     <ForecastShortageBanner {...forecastAlerts} filtered={forecastOnly} onFilter={() => { setPage(1); setForecastOnly(value => !value); }}/>
     <section className="suite-panel panel">
-      <aside className="products-filter-panel">
-        <div><div className="product-filter-heading"><strong>Nhóm hàng</strong><button type="button" onClick={() => { setError(''); setEditingCategory(null); setCategoryModal(true); }}>Tạo mới</button></div><select aria-label="Lọc theo nhóm hàng" value={categoryId} onChange={event => setCategoryId(event.target.value)}><option value="">Chọn nhóm hàng</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>
-        <div><strong>Tồn kho</strong><p>Trạng thái số lượng</p><select aria-label="Lọc còn hàng hoặc hết hàng" value={stockStatus} onChange={event => setStockStatus(event.target.value as typeof stockStatus)}><option value="all">Tất cả</option><option value="IN_STOCK">Còn hàng</option><option value="OUT_OF_STOCK">Hết hàng</option></select></div>
-        <div><strong>Trạng thái hàng hóa</strong><div className="product-filter-pills">{([['all','Tất cả'],['true','Đang bán'],['false','Ngừng bán']] as const).map(([value,label])=><button type="button" key={value} aria-pressed={status===value} onClick={()=>setStatus(value)}>{label}</button>)}</div></div>
-      </aside>
+      <div className="suite-filters products-compact-toolbar">
+        <label style={{ flex: '1 1 260px' }}>
+          <Icon name="search"/>
+          <input aria-label="Tìm hàng hóa" value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm mã sản phẩm, barcode hoặc tên..."/>
+        </label>
+        <div className="compact-filter-item">
+          <strong>Nhóm hàng:</strong>
+          <select aria-label="Lọc theo nhóm hàng" value={categoryId} onChange={event => setCategoryId(event.target.value)}>
+            <option value="">Tất cả nhóm hàng</option>
+            {categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+          {canManageCategories && (
+            <button type="button" onClick={() => { setError(''); setEditingCategory(null); setCategoryModal(true); }} style={{ padding: '3px 8px', borderRadius: 999, background: '#e6f9f6', border: '1px solid #99f6e4', color: '#0f766e', fontSize: 11.5, fontWeight: 700 }}>
+              ＋ Nhóm
+            </button>
+          )}
+        </div>
+        <div className="compact-filter-item">
+          <strong>Tồn kho:</strong>
+          <select aria-label="Lọc còn hàng hoặc hết hàng" value={stockStatus} onChange={event => setStockStatus(event.target.value as typeof stockStatus)}>
+            <option value="all">Tất cả số lượng</option>
+            <option value="IN_STOCK">Còn hàng</option>
+            <option value="OUT_OF_STOCK">Hết hàng</option>
+          </select>
+        </div>
+        <div className="compact-filter-item">
+          <strong>Trạng thái:</strong>
+          <select aria-label="Lọc trạng thái kinh doanh" value={status} onChange={event => setStatus(event.target.value as typeof status)}>
+            <option value="all">Tất cả</option>
+            <option value="true">Đang bán</option>
+            <option value="false">Ngừng bán</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          className="ai-quick-toggle"
+          aria-pressed={forecastOnly}
+          onClick={() => { setPage(1); setForecastOnly(v => !v); }}
+          title="Lọc nhanh các mặt hàng có cảnh báo thiếu hụt theo Dự báo AI"
+        >
+          🤖 Cần nhập theo AI ({forecastAlerts.items.length})
+        </button>
+        <Link className="outline-button" href="/du-bao-nhu-cau" style={{ minHeight: 40, padding: '7px 12px', fontSize: 12.5 }}>
+          📈 Trang Dự báo AI
+        </Link>
+        {(query || categoryId || status !== 'all' || stockStatus !== 'all' || forecastOnly) && (
+          <button type="button" className="outline-button" onClick={() => { setQuery(''); setCategoryId(''); setStatus('all'); setStockStatus('all'); setForecastOnly(false); }}>
+            Xóa lọc
+          </button>
+        )}
+      </div>
       <TabBar className="products-category-tabs" value={categoryId || 'all'} onChange={value => setCategoryId(value === 'all' ? '' : value)} label="Lọc sản phẩm theo danh mục" items={[{ value: 'all', label: <><Icon name="grid" size={16}/>Tất cả sản phẩm</>, style: categoryTheme().style, className: 'category-filter' }, ...categories.filter(item => item.active).map(item => ({ value: item.id, label: <><Icon name={categoryTheme(item).icon} size={16}/>{item.name}</>, style: categoryTheme(item).style, className: 'category-filter' }))]}/>
-      <div className="suite-filters"><label><Icon name="search"/><input aria-label="Tìm hàng hóa" value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm mã sản phẩm, barcode hoặc tên..."/></label>{(query || categoryId || status !== 'all' || stockStatus !== 'all') && <button type="button" onClick={() => { setQuery(''); setCategoryId(''); setStatus('all'); setStockStatus('all'); }}>Xóa lọc</button>}
-      {(query.trim() || categoryId || status !== 'all' || stockStatus !== 'all') && <div className="product-active-filters" aria-label="Điều kiện lọc đang áp dụng"><span>Đang lọc:</span>{query.trim() && <button type="button" onClick={() => setQuery('')} aria-label="Bỏ lọc từ khóa">Từ khóa: {query.trim()} <span aria-hidden="true">×</span></button>}{categoryId && <button type="button" onClick={() => setCategoryId('')} aria-label="Bỏ lọc nhóm hàng">{categories.find(item => item.id === categoryId)?.name ?? 'Nhóm hàng'} <span aria-hidden="true">×</span></button>}{stockStatus !== 'all' && <button type="button" onClick={() => setStockStatus('all')} aria-label="Bỏ lọc tồn kho">{stockStatus === 'IN_STOCK' ? 'Còn hàng' : 'Hết hàng'} <span aria-hidden="true">×</span></button>}{status !== 'all' && <button type="button" onClick={() => setStatus('all')} aria-label="Bỏ lọc trạng thái kinh doanh">{status === 'true' ? 'Đang kinh doanh' : 'Ngừng kinh doanh'} <span aria-hidden="true">×</span></button>}</div>}</div>
+      {(query.trim() || categoryId || status !== 'all' || stockStatus !== 'all' || forecastOnly) && <div className="product-active-filters" style={{ padding: '8px 18px', borderBottom: '1px solid #e2ece9' }} aria-label="Điều kiện lọc đang áp dụng"><span>Đang lọc:</span>{query.trim() && <button type="button" onClick={() => setQuery('')} aria-label="Bỏ lọc từ khóa">Từ khóa: {query.trim()} <span aria-hidden="true">×</span></button>}{categoryId && <button type="button" onClick={() => setCategoryId('')} aria-label="Bỏ lọc nhóm hàng">{categories.find(item => item.id === categoryId)?.name ?? 'Nhóm hàng'} <span aria-hidden="true">×</span></button>}{stockStatus !== 'all' && <button type="button" onClick={() => setStockStatus('all')} aria-label="Bỏ lọc tồn kho">{stockStatus === 'IN_STOCK' ? 'Còn hàng' : 'Hết hàng'} <span aria-hidden="true">×</span></button>}{status !== 'all' && <button type="button" onClick={() => setStatus('all')} aria-label="Bỏ lọc trạng thái kinh doanh">{status === 'true' ? 'Đang kinh doanh' : 'Ngừng kinh doanh'} <span aria-hidden="true">×</span></button>}{forecastOnly && <button type="button" onClick={() => setForecastOnly(false)} aria-label="Bỏ lọc AI">Dự báo thiếu hàng AI <span aria-hidden="true">×</span></button>}</div>}
       {error && !modal && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}
-      <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
-      {display === 'gallery' && (loading ? <TableState loading message="Đang tải sản phẩm…"/> : result.items.length ? <><ProductGallery items={result.items} onOpen={showProduct}/>{viewing && <section className="gallery-detail"><ProductDetails product={viewing} loading={viewLoading} canManage={canManage} onEdit={() => open('edit',viewing)} onClose={() => setViewing(null)}/></section>}</> : <TableState message="Không có sản phẩm phù hợp."/>)}
+      <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng · Bấm vào dòng sản phẩm để xem chi tiết & Dự báo AI</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
+      {display === 'gallery' && (loading ? <TableState loading message="Đang tải sản phẩm…"/> : result.items.length ? <><ProductGallery items={result.items} onOpen={showProduct}/>{viewing && <section className="gallery-detail"><ProductDetails product={viewing} forecastAlert={forecastAlerts.items.find(item => item.productId === viewing.id)} loading={viewLoading} canManage={canManage} onEdit={() => open('edit',viewing)} onClose={() => setViewing(null)}/></section>}</> : <TableState message="Không có sản phẩm phù hợp."/>)}
       <div className="table-scroll" hidden={display !== 'table'}><table><thead><tr><th>Mã sản phẩm</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên lợi nhuận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
         {loading ? <tr><td colSpan={11}><TableState message="Đang tải dữ liệu sản phẩm…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có sản phẩm phù hợp."/></td></tr> : result.items.map(product => {
           const sku = product.skus[0];
           const margin = sku?.sellingPrice ? (sku.sellingPrice - sku.costPrice) / sku.sellingPrice * 100 : 0;
-          return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm">
+          return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm & dự báo AI">
             <td><code>{product.code}</code></td><td>{sku?.barcode ?? '—'}</td>
             <td><div className="product-name-cell"><div className="product-thumb">{product.imageUrl ? <img src={product.imageUrl} alt=""/> : <span>{product.name.charAt(0)}</span>}</div><strong>{product.name}</strong></div>{forecastAlerts.items.filter(item => item.productId === product.id).slice(0, 1).map(item => <ForecastAlertBadge key={`${item.storeId}-${item.skuId}`} item={item}/>)}</td>
             <td><CategoryBadge category={product.category}/></td><td><strong>{product.unit}</strong>{product.baseUnit && product.unitsPerUnit > 1 && <small>1 {product.unit} = {product.unitsPerUnit} {product.baseUnit}</small>}</td><td className="numeric"><strong>{product.availableStock ?? 0}</strong><small>{(product.availableStock ?? 0) > 0 ? 'Còn hàng' : 'Hết hàng'}</small></td>
             <td className="numeric">{money(sku?.costPrice ?? 0)}</td><td className="numeric"><strong>{money(sku?.sellingPrice ?? 0)}</strong></td><td className="numeric"><strong className="positive">{margin.toFixed(1)}%</strong></td>
             <td><StatusBadge tone={product.active ? 'green' : 'red'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge></td>
             <td onClick={event => event.stopPropagation()}><div className="row-actions"><ActionLink tone="view" href={`/san-pham/${product.id}`}>Chi tiết</ActionLink>{canManage && <><ActionButton tone="edit" onClick={() => open('edit', product)}>Sửa</ActionButton><ActionButton tone={product.active ? 'danger' : 'approve'} onClick={() => changeStatus(product)}>{product.active ? 'Ngừng' : 'Mở lại'}</ActionButton></>}</div></td>
-          </tr>{viewing?.id===product.id&&<tr className="product-detail-row"><td colSpan={11}><ProductDetails product={viewing} loading={viewLoading} canManage={canManage} onEdit={()=>open('edit',viewing)} onClose={()=>setViewing(null)}/></td></tr>}</Fragment>;
+          </tr>{viewing?.id===product.id&&<tr className="product-detail-row"><td colSpan={11}><ProductDetails product={viewing} forecastAlert={forecastAlerts.items.find(item => item.productId === viewing.id)} loading={viewLoading} canManage={canManage} onEdit={()=>open('edit',viewing)} onClose={()=>setViewing(null)}/></td></tr>}</Fragment>;
         })}
       </tbody></table></div>
       <footer><span>Hiển thị <b>{result.items.length}</b> trên {result.pagination.total} sản phẩm</span><div className="suite-pagination"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>‹ Trước</button><span>Trang {page}/{result.pagination.totalPages}</span><button disabled={page >= result.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau ›</button></div></footer>
@@ -331,7 +405,7 @@ export default function Products() {
       </div>
       <footer><button type="button" className="outline-button" onClick={() => setModal(null)}>Đóng</button><button className="primary-button" disabled={saving}>{saving ? 'Đang tối ưu ảnh và lưu…' : 'Lưu sản phẩm'}</button></footer>
     </form></div>}
-    {exportOpen && <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget) setExportOpen(false); }}><section className="ui-modal-card product-export-modal"><header><div><h2>Tùy chọn cột hiển thị</h2><p>Chọn các thông tin cần xuất cho danh sách sản phẩm hiện tại.</p></div><button type="button" aria-label="Đóng" onClick={() => setExportOpen(false)}>×</button></header><div className="product-export-fields">{['Mã sản phẩm', 'Tên sản phẩm', 'Danh mục', 'Đơn vị', 'Giá vốn', 'Giá bán', 'Barcode', 'Trạng thái'].map((label, index) => <label key={label}><input type="checkbox" data-export-field value={index} defaultChecked/> {label}</label>)}</div><footer><button className="outline-button" type="button" onClick={() => setExportOpen(false)}>Bỏ qua</button><button className="primary-button" type="button" onClick={exportProducts}>Xuất Excel</button></footer></section></div>}
+    {exportOpen && <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget) setExportOpen(false); }}><section className="ui-modal-card product-export-modal"><header><div><h2>Tùy chọn cột xuất Excel (.xlsx)</h2><p>Chọn các cột và hình ảnh cần nhúng trực tiếp vào bảng tính Excel.</p></div><button type="button" aria-label="Đóng" onClick={() => setExportOpen(false)}>×</button></header><div className="product-export-fields"><label><input type="checkbox" data-export-image defaultChecked/> <b>Ảnh sản phẩm (nhúng trực tiếp vào ô Excel)</b></label>{['Mã sản phẩm', 'Tên sản phẩm', 'Danh mục', 'Đơn vị', 'Tồn kho', 'Giá vốn', 'Giá bán', 'Barcode', 'Trạng thái'].map((label, index) => <label key={label}><input type="checkbox" data-export-field value={index} defaultChecked/> {label}</label>)}</div><footer><button className="outline-button" type="button" onClick={() => setExportOpen(false)}>Bỏ qua</button><button className="primary-button" type="button" onClick={exportProducts}>Xuất Excel kèm ảnh</button></footer></section></div>}
     {categoryModal && <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget) setCategoryModal(false); }}><div className="ui-modal-card category-manager-modal">
       <header><div><h2>Quản lý danh mục sản phẩm</h2><p>Tạo, cập nhật và ngừng danh mục không còn sử dụng.</p></div><button type="button" onClick={() => setCategoryModal(false)}>×</button></header>
       {error && <div className="ui-error" role="alert">{error}</div>}

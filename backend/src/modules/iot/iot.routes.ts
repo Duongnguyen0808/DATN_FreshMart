@@ -10,17 +10,17 @@ import { authenticate, requirePermission } from '../../middleware/authenticate.j
 import { iotEventInput, iotEventListInput, iotTagMappingInput } from './iot.schemas.js';
 import { prisma } from '../../common/database.js';
 import { ingestEvent, listEvents, listTagMappings, upsertTagMapping } from './iot.service.js';
-import { assignAccessCard, createWarehouseEmployee, deleteAccessCard, heartbeatAccessDevice, ingestAccessDoor, ingestAccessRfid, monitorWarehouseAccess, registerAccessDevice, registerAccessDoor, resolveAccessAlert, setupAccessSimulation, SIMULATED_DEVICE_PREFIX } from './warehouse-access.service.js';
+import { assignAccessCard, deleteAccessCard, heartbeatAccessDevice, ingestAccessDoor, ingestAccessRfid, monitorWarehouseAccess, registerAccessDevice, registerAccessDoor, resolveAccessAlert, setupAccessSimulation, SIMULATED_DEVICE_PREFIX } from './warehouse-access.service.js';
 import { randomUUID } from 'node:crypto';
 import { startCameraDemo, getCameraDemo } from './camera-demo-session.service.js';
-import { ingestCameraFrame } from './camera-image.service.js';
+import { cameraFrameBus, decodePosCodeFromImage, getLatestCameraFrame, ingestCameraFrame } from './camera-image.service.js';
 import { getCameraDeviceStatus, recordCameraDeviceIp, startAutomaticUsbWifiSyncWatcher, syncLaptopWifiOverUsb } from './wifi-sync.service.js';
 
 export const iotRoutes = Router();
 startAutomaticUsbWifiSyncWatcher();
 const ok = (data: unknown) => ({ success: true, message: 'Success', data });
-const deviceLimiter = rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-8', legacyHeaders: false });
-const cameraFrameLimiter = rateLimit({ windowMs: 60_000, limit: 360, standardHeaders: 'draft-8', legacyHeaders: false });
+const deviceLimiter = rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false });
+const cameraFrameLimiter = rateLimit({ windowMs: 60_000, limit: 2400, standardHeaders: 'draft-8', legacyHeaders: false });
 const accessCode = z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9_-]+$/);
 const accessUid = z.string().trim().min(8).max(32).transform(value => value.replace(/[\s:-]/g, '').toUpperCase()).pipe(z.string().regex(/^[0-9A-F]{8,20}$/));
 const physicalBase = z.object({ eventId: accessCode, deviceId: accessCode, warehouseId: z.string().uuid(), timestamp: z.iso.datetime({ offset: true }) });
@@ -62,10 +62,6 @@ iotRoutes.delete('/iot/access/cards/:uid', authenticate, requirePermission('ware
   const warehouseId = z.string().uuid().parse(request.query.warehouseId);
   response.json(ok(await deleteAccessCard(request.currentUser, uid, warehouseId)));
 });
-iotRoutes.post('/iot/access/employees', authenticate, requirePermission('warehouses.manage'), async (request, response) => {
-  const input = z.object({ name: z.string().trim().min(2).max(100), email: z.string().trim().email().optional().or(z.literal('')), warehouseId: z.string().uuid() }).strict().parse(request.body);
-  response.status(201).json(ok(await createWarehouseEmployee(request.currentUser, input)));
-});
 iotRoutes.post('/iot/access/simulation/setup', authenticate, requirePermission('inventory.read'), async (request, response) => {
   const input = z.object({ warehouseId: z.string().uuid() }).strict().parse(request.body);
   response.json(ok(await setupAccessSimulation(request.currentUser, input.warehouseId)));
@@ -104,6 +100,7 @@ iotRoutes.post('/iot/access/simulate', authenticate, requirePermission('inventor
     z.object({ action: z.literal('RFID'), warehouseId: z.string().uuid(), deviceId: accessCode, uid: accessUid }).strict(),
     z.object({ action: z.literal('DOOR'), warehouseId: z.string().uuid(), deviceId: accessCode, doorId: accessCode, state: z.enum(['OPEN', 'CLOSED']) }).strict(),
   ]).parse(request.body);
+  await setupAccessSimulation(request.currentUser, input.warehouseId);
   const suffix = input.warehouseId.replaceAll('-', '').toUpperCase();
   const simDeviceCode = `${SIMULATED_DEVICE_PREFIX}${suffix}`;
   const effectiveDeviceId = input.deviceId.startsWith(SIMULATED_DEVICE_PREFIX) ? input.deviceId : simDeviceCode;
@@ -171,6 +168,48 @@ iotRoutes.post('/iot/camera-frames', cameraFrameLimiter, (request, _response, ne
   response.json(ok(await ingestCameraFrame(input, request.body)));
 });
 
+iotRoutes.get('/iot/camera-latest.jpg', (_request, response) => {
+  const latest = getLatestCameraFrame();
+  if (!latest) {
+    response.status(503).send('No recent camera frame');
+    return;
+  }
+  response.set({
+    'Content-Type': 'image/jpeg',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Access-Control-Allow-Origin': '*',
+  });
+  response.send(latest.jpeg);
+});
+
+iotRoutes.get('/iot/camera-stream', (request, response) => {
+  response.writeHead(200, {
+    'Content-Type': 'multipart/x-mixed-replace;boundary=freshmartframe',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+  let closed = false;
+  const sendFrame = (frame: { jpeg: Buffer }) => {
+    if (closed || response.writableEnded) return;
+    try {
+      response.write(`--freshmartframe\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.jpeg.length}\r\n\r\n`);
+      response.write(frame.jpeg);
+      response.write('\r\n');
+    } catch {
+      closed = true;
+    }
+  };
+  const initial = getLatestCameraFrame();
+  if (initial) sendFrame(initial);
+  const onFrame = (frame: { jpeg: Buffer }) => sendFrame(frame);
+  cameraFrameBus.on('frame', onFrame);
+  request.on('close', () => {
+    closed = true;
+    cameraFrameBus.off('frame', onFrame);
+  });
+});
+
 iotRoutes.get('/iot/camera-device-status', authenticate, requirePermission('inventory.read'), async (_request, response) => {
   response.set('Cache-Control', 'no-store');
   const status = getCameraDeviceStatus();
@@ -183,6 +222,65 @@ iotRoutes.get('/iot/camera-device-status', authenticate, requirePermission('inve
 iotRoutes.post('/iot/camera-sync-wifi', authenticate, requirePermission('inventory.read'), async (_request, response) => {
   response.set('Cache-Control', 'no-store');
   response.json(ok(await syncLaptopWifiOverUsb(true)));
+});
+
+const posCameraScanInput = z.object({
+  source: z.enum(['esp32', 'image']).default('esp32'),
+  imageDataUrl: z.string().max(3_000_000).optional(),
+}).strict();
+
+iotRoutes.post('/iot/camera/pos-scan', authenticate, requirePermission('inventory.read'), async (request, response) => {
+  response.set('Cache-Control', 'no-store');
+  const input = posCameraScanInput.parse(request.body ?? {});
+  let imageBuffer: Buffer | null = null;
+  if (input.source === 'image' && input.imageDataUrl) {
+    const base64Part = input.imageDataUrl.includes(',') ? input.imageDataUrl.split(',')[1]! : input.imageDataUrl;
+    imageBuffer = Buffer.from(base64Part, 'base64');
+  } else {
+    const latest = getLatestCameraFrame();
+    if (!latest) {
+      response.json(ok({ decoded: false, reason: 'NO_CAMERA_FRAME', code: null, format: null, resolvedSkuId: null, resolvedBarcode: null }));
+      return;
+    }
+    imageBuffer = latest.jpeg;
+  }
+
+  const hit = await decodePosCodeFromImage(imageBuffer);
+  if (!hit) {
+    response.json(ok({ decoded: false, reason: 'NOT_DETECTED', code: null, format: null, resolvedSkuId: null, resolvedBarcode: null }));
+    return;
+  }
+
+  let resolvedSkuId: string | null = null;
+  let resolvedBarcode: string | null = hit.code;
+  const upperCode = hit.code.toUpperCase();
+  if (upperCode.startsWith('QR-')) {
+    const parcel = await prisma.iotInboundParcel.findFirst({
+      where: { tagId: upperCode },
+    });
+    const mapping = !parcel
+      ? await prisma.iotTagMapping.findUnique({ where: { tagId: upperCode } })
+      : null;
+    const targetSkuId = parcel?.skuId ?? mapping?.skuId ?? null;
+    if (targetSkuId) {
+      resolvedSkuId = targetSkuId;
+      const sku = await prisma.sku.findUnique({
+        where: { id: targetSkuId },
+        include: { product: { select: { code: true } } },
+      });
+      if (sku) {
+        resolvedBarcode = sku.barcode ?? sku.code ?? sku.product.code;
+      }
+    }
+  }
+
+  response.json(ok({
+    decoded: true,
+    code: hit.code,
+    format: hit.format,
+    resolvedSkuId,
+    resolvedBarcode,
+  }));
 });
 
 

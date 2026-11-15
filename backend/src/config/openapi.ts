@@ -39,7 +39,7 @@ export const openapi = {
         type: 'object', additionalProperties: false, required: ['email', 'password', 'client'],
         properties: {
           email: { type: 'string', format: 'email', maxLength: 254, example: 'owner@smartstore.local' },
-          password: { type: 'string', format: 'password', minLength: 1, maxLength: 128, description: 'Mật khẩu tài khoản ứng dụng, không phải mật khẩu PostgreSQL.' },
+          password: { type: 'string', format: 'password', minLength: 1, maxLength: 128, description: 'Mật khẩu tài khoản ứng dụng, không phải mật khẩu SQL Server.' },
           client: { type: 'string', enum: ['mobile', 'web'], default: 'mobile', description: 'mobile: refresh token trong JSON. web: refresh token trong cookie HttpOnly, yêu cầu Origin được cấu hình.' },
         },
       },
@@ -157,7 +157,7 @@ export const openapi = {
     } },
     '/health': { get: { summary: 'Process health', responses: { '200': healthResponse } } },
     '/api/v1/health': { get: { summary: 'Process health (versioned)', responses: { '200': healthResponse } } },
-    '/api/v1/health/ready': { get: { summary: 'PostgreSQL readiness', responses: {
+    '/api/v1/health/ready': { get: { summary: 'SQL Server readiness', responses: {
       '200': healthResponse, '503': { description: 'Database unavailable' },
     } } },
   },

@@ -5,7 +5,7 @@ export const env = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   HOST: z.string().default('0.0.0.0'),
-  DATABASE_URL: z.string().url().refine(value => /^postgres(ql)?:/.test(value)),
+  DATABASE_URL: z.string().min(1).refine(value => /^sqlserver:/.test(value), 'DATABASE_URL must use sqlserver:// protocol'),
   JWT_SECRET: z.string().min(32),
   CORS_ORIGINS: z.string().default('http://localhost:3000'),
   IOT_INGEST_TOKEN: z.preprocess(value => value === '' ? undefined : value, z.string().min(32).optional()),

@@ -20,9 +20,51 @@ export type SalesReturnList = { items: SalesReturnRecord[]; pagination: { page: 
 export type InvoiceList = { items: Invoice[]; pagination: { page: number; pageSize: number; total: number; totalPages: number }; summary: { total: number; completed: number; cancelled: number; revenue: number } };
 export type PaymentTransaction = { id: string; invoiceId: string; method: PaymentMethod; amount: number; reference: string | null; invoice: { id: string; code: string; status: InvoiceStatus; completedAt: string; total: number; customerName: string | null; customerPhone: string | null; store: { id: string; code: string; name: string }; cashier: { id: string; name: string }; shift: { id: string; code: string; posCode: string } } };
 export type PaymentTransactionList = { items: PaymentTransaction[]; pagination: { page: number; pageSize: number; total: number; totalPages: number }; summary: { total: number; amount: number; methods: Record<PaymentMethod, { count: number; amount: number }> } };
-export type InvoiceCreate = { shiftId: string; warehouseId?: string; customerId?: string; customerName?: string; customerPhone?: string; discount: number; creditAmount?: number; creditDueDate?: string; note?: string; items: { skuId: string; quantity: number }[]; payments: { method: NewPaymentMethod; amount: number; reference?: string }[] };
+export type FefoPromoCodeItem = {
+  promoCode: string;
+  lotId: string;
+  lotCode: string;
+  skuId: string;
+  skuCode: string;
+  productName: string;
+  unit: string;
+  sellingPrice: number;
+  lotQuantity: number;
+  expiresAt: string;
+  daysRemaining: number;
+  discountPercent: number;
+  maxDiscountAmount: number;
+};
+
+export type FefoPromoVerifyItem = {
+  promoCode: string;
+  lotId: string;
+  lotCode: string;
+  skuId: string;
+  productName: string;
+  unit: string;
+  expiresAt: string;
+  daysRemaining: number;
+  lotQuantity: number;
+  cartQuantity: number;
+  eligibleQuantity: number;
+  discountPercent: number;
+  sellingPrice: number;
+  discountAmount: number;
+  proofSummary: string;
+};
+
+export type FefoPromoVerifyResult = {
+  promos: FefoPromoVerifyItem[];
+  totalDiscount: number;
+};
+
+export type InvoiceCreate = { shiftId: string; warehouseId?: string; customerId?: string; customerName?: string; customerPhone?: string; discount: number; creditAmount?: number; creditDueDate?: string; note?: string; fefoPromoCodes?: string[]; items: { skuId: string; quantity: number }[]; payments: { method: NewPaymentMethod; amount: number; reference?: string }[] };
 export function getInvoices(filters: { q?: string; status?: 'all' | InvoiceStatus; page?: number }) { const params = new URLSearchParams({ status: filters.status ?? 'all', page: String(filters.page ?? 1), pageSize: '20' }); if (filters.q) params.set('q', filters.q); return api<InvoiceList>(`invoices?${params}`); }
 export const getInvoice = (id: string) => api<Invoice>(`invoices/${id}`);
+export const getFefoPromoCodes = (warehouseId: string) => api<FefoPromoCodeItem[]>(`invoices/fefo-promo-codes?warehouseId=${encodeURIComponent(warehouseId)}`);
+export const verifyFefoPromo = (data: { warehouseId: string; promoCodes: string[]; items: { skuId: string; quantity: number }[] }) =>
+  api<FefoPromoVerifyResult>('invoices/verify-fefo-promo', 'POST', data);
 export const createInvoice = (data: InvoiceCreate) => api<Invoice>('invoices', 'POST', data);
 export const cancelInvoice = (id: string, reason: string) => api<Invoice>(`invoices/${id}/cancel`, 'POST', { reason });
 export const createSalesReturn = (id: string, data: SalesReturnCreate) => api<Invoice>(`invoices/${id}/returns`, 'POST', data);

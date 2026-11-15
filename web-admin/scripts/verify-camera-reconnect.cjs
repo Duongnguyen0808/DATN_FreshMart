@@ -8,7 +8,7 @@ const { chromium, expect } = require('@playwright/test');
   const ip = process.argv[2] || '192.168.1.86';
   const bundle = await build({
     stdin: { contents: `import React from 'react'; import {createRoot} from 'react-dom/client'; import {CameraPreview} from './src/app/kho/mo-hinh-3d/camera-preview'; function App(){const [open,setOpen]=React.useState(true);return <><button id="toggle" onClick={()=>setOpen(v=>!v)}>Toggle popup</button>{open&&<CameraPreview/>}</>};createRoot(document.getElementById('root')).render(<App/>);`, resolveDir: path.resolve(__dirname, '..'), loader: 'tsx' },
-    bundle: true, write: false, jsx: 'automatic', define: { 'process.env.NODE_ENV': '"production"' },
+    bundle: true, write: false, jsx: 'automatic', define: { 'process.env': JSON.stringify({ NODE_ENV: 'production' }) },
   });
   const server = http.createServer((req, res) => {
     if (req.url === '/app.js') { res.setHeader('Content-Type', 'application/javascript'); res.end(bundle.outputFiles[0].contents); }
@@ -23,7 +23,7 @@ const { chromium, expect } = require('@playwright/test');
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.locator('#esp-camera-ip').fill(ip);
     for (let i = 1; i <= 3; i++) {
-      await page.locator('form button').click();
+      await page.locator('form button[type="submit"]').click();
       await expect(page.locator('.li-camera-status')).toHaveClass(/connected/, { timeout: 20000 });
       await expect(page.locator('.li-camera-status')).toContainText('ESP32-CAM');
       await expect(page.locator('.li-camera-image img')).toBeVisible();
@@ -32,13 +32,13 @@ const { chromium, expect } = require('@playwright/test');
     }
     await page.locator('#toggle').click();
     await page.locator('#toggle').click();
-    await page.locator('form button').click();
+    await page.locator('form button[type="submit"]').click();
     await expect(page.locator('.li-camera-status')).toHaveClass(/connected/, { timeout: 20000 });
     console.log('PASS close and reopen popup');
     await page.locator('#toggle').click();
     await page.locator('#toggle').click();
     await page.locator('#esp-camera-ip').fill('invalid address');
-    await page.locator('form button').click();
+    await page.locator('form button[type="submit"]').click();
     await expect(page.locator('.li-camera-status')).toHaveClass(/error/);
     if (failures.length) throw new Error(failures.join('\n'));
     console.log('PASS invalid address feedback and no browser errors');

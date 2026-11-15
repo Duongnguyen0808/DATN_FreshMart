@@ -4,7 +4,7 @@ import { jwtVerify } from 'jose';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 
 const suite = process.env.TEST_DATABASE_URL ? describe : describe.skip;
-suite('POST /api/v1/auth/refresh on PostgreSQL', () => {
+suite('POST /api/v1/auth/refresh on SQL Server', () => {
   let db: typeof import('./common/database.js').prisma;
   let app: ReturnType<typeof import('./app.js').createApp>;
   let service: typeof import('./modules/auth/auth.service.js');

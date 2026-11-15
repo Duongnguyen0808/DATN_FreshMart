@@ -24,7 +24,7 @@ def write_report(result, predictions, output_dir):
         fig.savefig(buf, format='svg')
         plt.close(fig)
         svg = buf.getvalue()
-        charts.append(svg[svg.index('<svg'):])
+        charts.append('\n'.join(line.rstrip() for line in svg[svg.index('<svg'):].splitlines()))
 
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.barh(ranking.index, ranking.mae, color=['#17664d' if n == result['selected_model'] else '#a9c9bb' for n in ranking.index])
@@ -48,6 +48,8 @@ def write_report(result, predictions, output_dir):
     splits = pd.DataFrame(result['dataset_splits'])[['split', 'from_date', 'to_date', 'rows_in_csv', 'rows_used_for_model', 'sku_count']]
     splits.columns = ['Tập', 'Từ ngày', 'Đến ngày', 'Số dòng CSV', 'Số mẫu sử dụng', 'Số sản phẩm']
     item_tables = ''.join(f'<details><summary>{escape(str(item))} · 28 ngày test</summary>{rows[["date", "actual", "predicted"]].to_html(index=False, border=0, float_format=lambda v: f"{v:.3f}")}</details>' for item, rows in test.groupby('item_id'))
+    policy = result.get('inventory_policy_backtest', {}).get('summary', {})
+    policy_table = pd.DataFrame(policy).T.to_html(float_format=lambda v: f'{v:.3f}', border=0) if policy else ''
     html = f'''<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>FreshMart · Khảo sát mô hình dự báo</title><style>
 body{{font:15px/1.6 system-ui,sans-serif;color:#25372f;background:#f3f6f3;margin:0}}main{{max-width:1100px;margin:auto;padding:28px}}h1{{font-size:28px}}h2{{font-size:20px}}section,header{{background:white;border:1px solid #dce5df;padding:24px;border-radius:12px;margin-bottom:20px}}header{{border-top:5px solid #17664d}}.scroll{{overflow:auto}}table{{border-collapse:collapse;width:100%;font-size:14px}}th,td{{padding:10px;text-align:left;border-bottom:1px solid #dce5df;white-space:nowrap}}th{{background:#e8f3df}}svg{{width:100%;height:auto}}summary{{cursor:pointer;padding:12px}}.note{{color:#586b61}}@media print{{body{{background:white}}section{{break-inside:avoid}}}}
@@ -57,5 +59,6 @@ body{{font:15px/1.6 system-ui,sans-serif;color:#25372f;background:#f3f6f3;margin
 <section><h2>1. Chia dữ liệu theo thời gian</h2><p>Train → Validation → Test. Không xáo trộn các ngày. 28 ngày đầu mỗi chuỗi dùng làm lịch sử tạo đặc trưng.</p><div class="scroll">{splits.to_html(index=False, border=0)}</div></section>
 <section><h2>2. So sánh và chọn mô hình</h2><p>Mỗi mô hình được huấn luyện trên train, dự báo đệ quy 28 ngày validation. Chọn theo MAE; nếu bằng nhau, xét RMSE.</p><div class="scroll">{table}</div>{charts[0]}</section>
 <section><h2>3. Đánh giá cuối cùng trên test</h2><p>Chốt mô hình trước, huấn luyện lại trên train + validation, sau đó mới đánh giá test. Artifact lưu lại không được huấn luyện bằng test.</p><div class="scroll">{test_table}</div>{charts[1]}<p class="note">Biểu đồ tổng có thể che khuất sai số giữa sản phẩm. Bảng điểm tính trên từng sản phẩm/ngày; xem chi tiết bên dưới.</p>{item_tables}</section>
+<section><h2>4. Mô phỏng chính sách tồn kho trên test</h2><p>Hai chính sách dùng cùng chuỗi bán M5, tồn đầu kỳ và lead time 3 ngày. Fixed dùng trung bình 28 ngày quá khứ; Forecast dùng dự báo đã tạo trước test. Không dùng lượng bán tương lai để quyết định.</p><div class="scroll">{policy_table}</div><p class="note">Doanh số quan sát là proxy cho nhu cầu. Đây là mô phỏng giả định, không phải hiệu quả đo tại FreshMart. Chưa tính chi phí vì dự án chưa có dữ liệu chi phí đủ tin cậy.</p></section>
 <section><h2>Giải thích khi trình bày</h2><p>MAE: trung bình lệch bao nhiêu sản phẩm/ngày. RMSE phạt mạnh sai lệch lớn. MAPE bỏ ngày bán bằng 0; WAPE dùng tổng lượng bán thực tế làm mẫu số. R² càng cao càng tốt và có thể âm. Không gọi 100 − MAPE là “độ chính xác”.</p><p>Mô hình học từ lượng bán trễ 1/7/28 ngày, trung bình 7/28 ngày, thứ, tháng và giá bán gần nhất. Không đưa lượng bán hoặc giá tương lai vào dự báo.</p><p class="note">Tạo lúc {escape(result['generated_at'])} · Seed 42 · SHA256 CSV: {result['dataset']['sha256']}</p></section></main></html>'''
     (output_dir / 'experiment_report.html').write_text(html, encoding='utf-8')

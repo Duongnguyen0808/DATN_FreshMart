@@ -8,12 +8,15 @@ import type { z } from 'zod';
 import type { iotEventInput, iotEventListInput, iotSimulationInput, iotTagMappingInput } from './iot.schemas.js';
 import { publishIotEvent } from './iot.realtime.js';
 import { getCameraDemo } from './camera-demo-session.service.js';
+import { toJson, parseJson } from '../../common/json-field.js';
+
+const presentEvent = <T extends { payload: unknown }>(row: T) => ({ ...row, payload: parseJson<Record<string, unknown>>(row.payload) ?? {} });
 
 type EventInput = z.infer<typeof iotEventInput>;
 
 export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULATED', actorId: string | null, allowedStoreIds?: string[]) {
   const previous = await prisma.iotEvent.findUnique({ where: { deviceId_eventId: { deviceId: input.deviceId, eventId: input.eventId } } });
-  if (previous) { const event = await processInboundEvent(previous.id); publishIotEvent(event); return { event, duplicate: true }; }
+  if (previous) { const event = presentEvent(await processInboundEvent(previous.id)); publishIotEvent(event); return { event, duplicate: true }; }
 
   // The token-authenticated device still has to decode the physical QR.
   // Resolve an explicit demo binding in this request instead of a second LAN trip.
@@ -51,14 +54,14 @@ export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULAT
       const parcel = source === 'DEVICE' ? await tx.iotInboundParcel.findUnique({ where: { tagId: input.tagId } }) : null;
       const created = await tx.iotEvent.create({ data: {
         ...input,
-        payload: input.payload as Prisma.InputJsonValue,
+        payload: toJson(input.payload),
         ...(mapping?.active && mapping.warehouseId === input.warehouseId ? { tagMappingId: mapping.id, mappedSkuId: mapping.skuId, palletCode: mapping.palletCode } : {}),
         source,
         inboundParcelId: parcel?.id,
         automationStatus: source === 'DEVICE' ? parcel ? 'PENDING' : 'UNREGISTERED' : null,
         automationMessage: source === 'DEVICE' && !parcel ? 'Mã chưa đăng ký kiện. Đăng ký sản phẩm, số lượng và hạn sử dụng rồi quét lại; tồn kho chưa thay đổi.' : null,
         processed: false,
-      }, include: { mappedSku: { select: { id: true, code: true, product: { select: { name: true, unit: true } } } } } });
+      }, include: { mappedSku: { select: { id: true, code: true, product: { select: { name: true, unit: true, imageUrl: true } } } } } });
       await tx.auditLog.create({ data: {
         actorId,
         action: source === 'SIMULATED' ? 'iot.event.simulated' : 'iot.event.received',
@@ -66,13 +69,13 @@ export async function ingestEvent(input: EventInput, source: 'DEVICE' | 'SIMULAT
       } });
       return created;
     });
-    const processed = await processInboundEvent(event.id);
+    const processed = presentEvent(await processInboundEvent(event.id));
     publishIotEvent(processed);
     return { event: processed, duplicate: false };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const existing = await prisma.iotEvent.findUnique({ where: { deviceId_eventId: { deviceId: input.deviceId, eventId: input.eventId } } });
-      if (existing) { const event = await processInboundEvent(existing.id); publishIotEvent(event); return { event, duplicate: true }; }
+      if (existing) { const event = presentEvent(await processInboundEvent(existing.id)); publishIotEvent(event); return { event, duplicate: true }; }
     }
     throw error;
   }
@@ -124,7 +127,7 @@ export async function confirmIotEvents(
   const expectedSkuIds = new Set(options.skuIds);
   const matchedSkuIds = new Set(events.map(event => event.mappedSkuId).filter((id): id is string => id !== null));
   const mismatchedPayload = events.some(event => {
-    const payload = event.payload as Record<string, unknown>;
+    const payload = parseJson<Record<string, unknown>>(event.payload) ?? {};
     return (typeof payload.reference === 'string' && payload.reference !== options.referenceCode)
       || (typeof payload.workflow === 'string' && payload.workflow !== options.workflow);
   });
@@ -155,5 +158,6 @@ export async function listEvents(user: CurrentUser, input: z.infer<typeof iotEve
     const warehouse = await prisma.warehouse.findUnique({ where: { id: input.warehouseId }, select: { storeId: true } });
     if (!warehouse || !user.stores.some(store => store.id === warehouse.storeId)) throw new AppError(403, 'WAREHOUSE_FORBIDDEN', 'Bạn không có quyền xem dữ liệu IoT của kho này.');
   }
-  return prisma.iotEvent.findMany({ where, include: { mappedSku: { select: { id: true, code: true, product: { select: { name: true, unit: true } } } } }, orderBy: [{ timestamp: 'desc' }, { receivedAt: 'desc' }], take: input.limit });
+  const rows = await prisma.iotEvent.findMany({ where, include: { mappedSku: { select: { id: true, code: true, product: { select: { name: true, unit: true, imageUrl: true } } } } }, orderBy: [{ timestamp: 'desc' }, { receivedAt: 'desc' }], take: input.limit });
+  return rows.map(presentEvent);
 }

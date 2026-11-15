@@ -52,20 +52,31 @@ if (door) {
 
 try {
   const require = createRequire(resolve(root, 'backend/package.json'));
-  const { Client } = require('pg');
+  const sql = require('mssql');
   const databaseUrl = envValue(backend, 'DATABASE_URL');
-  const client = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 2500 });
-  await client.connect();
+  const parts = databaseUrl.replace(/^sqlserver:\/\//, '').split(';');
+  const [server, portText] = parts[0].split(':');
+  const kv = Object.fromEntries(parts.slice(1).filter(Boolean).map(p => p.split('=')));
+  const pool = await sql.connect({
+    server,
+    port: portText ? Number(portText) : 1433,
+    database: kv.database,
+    user: kv.user,
+    password: kv.password,
+    options: { encrypt: kv.encrypt === 'true', trustServerCertificate: kv.trustServerCertificate === 'true' },
+    connectionTimeout: 2500,
+  });
   try {
-    await client.query('BEGIN TRANSACTION READ ONLY');
-    const rows = await client.query('SELECT d.code AS device, o.code AS door, d."warehouseId" AS warehouse FROM warehouse_access_devices d LEFT JOIN warehouse_access_doors o ON o."deviceId" = d.id WHERE d."warehouseId" = $1', [value(door, 'WAREHOUSE_ID')]);
-    const match = rows.rows.some(row => row.device === value(door, 'DEVICE_ID') && row.door === value(door, 'DOOR_ID'));
-    report(match, 'Đăng ký thiết bị/cửa trong PostgreSQL', match ? 'khớp cấu hình firmware' : rows.rows.length ? `đã có: ${rows.rows.map(row => `${row.device}/${row.door || 'chưa có cửa'}`).join(', ')}` : 'chưa có thiết bị và cửa cho kho này');
-    const cards = await client.query('SELECT count(*)::int AS total FROM warehouse_access_cards WHERE "warehouseId" = $1 AND status = $2', [value(door, 'WAREHOUSE_ID'), 'ACTIVE']);
-    report(cards.rows[0].total > 0, 'Thẻ nhân viên đang hoạt động', `${cards.rows[0].total} thẻ trong kho`);
-    await client.query('COMMIT');
-  } finally { await client.end(); }
-} catch (error) { report(false, 'Dữ liệu cửa kho trong PostgreSQL', error.code || 'chưa đọc được; kiểm tra backend/.env và migration'); }
+    const wid = value(door, 'WAREHOUSE_ID');
+    const rows = await pool.request().input('wid', sql.NVarChar(191), wid)
+      .query('SELECT d.code AS device, o.code AS door, d.warehouseId AS warehouse FROM dbo.warehouse_access_devices d LEFT JOIN dbo.warehouse_access_doors o ON o.deviceId = d.id WHERE d.warehouseId = @wid');
+    const match = rows.recordset.some(row => row.device === value(door, 'DEVICE_ID') && row.door === value(door, 'DOOR_ID'));
+    report(match, 'Đăng ký thiết bị/cửa trong SQL Server', match ? 'khớp cấu hình firmware' : rows.recordset.length ? `đã có: ${rows.recordset.map(row => `${row.device}/${row.door || 'chưa có cửa'}`).join(', ')}` : 'chưa có thiết bị và cửa cho kho này');
+    const cards = await pool.request().input('wid', sql.NVarChar(191), wid)
+      .query("SELECT COUNT(*) AS total FROM dbo.warehouse_access_cards WHERE warehouseId = @wid AND status = 'ACTIVE'");
+    report(cards.recordset[0].total > 0, 'Thẻ nhân viên đang hoạt động', `${cards.recordset[0].total} thẻ trong kho`);
+  } finally { await pool.close(); }
+} catch (error) { report(false, 'Dữ liệu cửa kho trong SQL Server', error.code || error.message || 'chưa đọc được; kiểm tra backend/.env'); }
 
 const cli = spawnSync(process.platform === 'win32' ? 'where.exe' : 'which', ['arduino-cli'], { encoding: 'utf8', windowsHide: true });
 report(cli.status === 0, 'Arduino CLI', cli.status === 0 ? 'có thể biên dịch firmware' : 'chưa có trong PATH; cần Arduino IDE hoặc arduino-cli để nạp board');

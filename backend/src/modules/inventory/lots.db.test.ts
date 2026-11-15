@@ -9,7 +9,7 @@ const state = vi.hoisted(() => ({ tx: null as unknown as Prisma.TransactionClien
 vi.mock('../../common/database.js', () => ({ prisma: new Proxy({}, { get: (_, key) => key === '$transaction' ? (fn: any) => fn(state.tx) : state.tx[key as keyof typeof state.tx] }) }));
 vi.mock('../auth/auth.service.js', () => ({ authenticateToken: async () => ({ user: state.user, sessionId: 'test' }) }));
 
-describe.skipIf(process.env.RUN_LOT_DB_TEST !== '1')('lots, packaging and disposal against PostgreSQL (always rolled back)', () => {
+describe.skipIf(process.env.RUN_LOT_DB_TEST !== '1')('lots, packaging and disposal against SQL Server (always rolled back)', () => {
   it('receives packs, sells FEFO, preserves expiry across transfers, quarantines returns and disposes once with permissions', async () => {
     const { prisma: real } = await vi.importActual<{ prisma: PrismaClient }>('../../common/database.js');
     const { lotsRoutes } = await import('./lots.routes.js');

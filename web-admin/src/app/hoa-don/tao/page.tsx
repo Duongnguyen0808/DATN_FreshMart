@@ -14,7 +14,7 @@ import { errorMessage } from '../../../lib/auth-api';
 import { getCustomers, type Customer } from '../../../lib/customers-api';
 import { getInventory, type Inventory } from '../../../lib/inventory-api';
 import { getPayosConfig, payosStorageKey, type PayosCheckoutInput } from '../../../lib/payos-api';
-import { createInvoice, type PaymentMethod } from '../../../lib/invoices-api';
+import { createInvoice, getFefoPromoCodes, verifyFefoPromo, type FefoPromoCodeItem, type FefoPromoVerifyItem, type PaymentMethod } from '../../../lib/invoices-api';
 import { getWarehouses, type Warehouse } from '../../../lib/organization-api';
 import { getShifts, type Shift } from '../../../lib/shifts-api';
 import { getDemandForecast, getShortageAlerts, runDemandForecast, type ForecastInventoryAdvice } from '../../../lib/forecasts-api';
@@ -43,6 +43,11 @@ function NewInvoicePage() {
   const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
   const [discount, setDiscount] = useState('');
   const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
+  const [fefoPromoOptions, setFefoPromoOptions] = useState<FefoPromoCodeItem[]>([]);
+  const [fefoPromoInput, setFefoPromoInput] = useState('');
+  const [appliedFefoPromos, setAppliedFefoPromos] = useState<FefoPromoVerifyItem[]>([]);
+  const [fefoPromoBusy, setFefoPromoBusy] = useState(false);
+  const [fefoPromoError, setFefoPromoError] = useState('');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cashPayment, setCashPayment] = useState<string | null>(null);
   const [qrPayment, setQrPayment] = useState('0');
@@ -101,6 +106,19 @@ function NewInvoicePage() {
     return () => { active = false; window.clearInterval(timer); };
   }, [selectedShift?.storeId]);
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const param = new URLSearchParams(window.location.search).get('fefoPromo');
+    if (param) setFefoPromoInput(param.trim().toUpperCase());
+  }, []);
+  useEffect(() => {
+    if (!warehouseId) { setFefoPromoOptions([]); setAppliedFefoPromos([]); setFefoPromoError(''); return; }
+    setAppliedFefoPromos([]);
+    setFefoPromoError('');
+    let active = true;
+    void getFefoPromoCodes(warehouseId).then(rows => { if (active) setFefoPromoOptions(rows); }).catch(() => { if (active) setFefoPromoOptions([]); });
+    return () => { active = false; };
+  }, [warehouseId]);
+  useEffect(() => {
     if (!warehouseId) { setStockRows([]); setStockLoading(false); return; }
     setStockLoading(true);
     let active = true;
@@ -141,6 +159,21 @@ function NewInvoicePage() {
     if (stock.available < 1) return;
     setCart(rows => rows.some(line => line.stock.skuId === stock.skuId) ? rows.map(line => line.stock.skuId === stock.skuId ? { ...line, quantity: Math.min(line.quantity + 1, line.stock.available) } : line) : [...rows, { stock, quantity: 1 }]);
   };
+  const handleBarcodeScanned = (rawCode: string, resolvedSkuId?: string | null): boolean => {
+    const clean = rawCode.trim().toLowerCase();
+    const matched = stockRows.find(r =>
+      (resolvedSkuId && r.skuId === resolvedSkuId) ||
+      r.sku.barcode?.toLowerCase() === clean ||
+      r.sku.code.toLowerCase() === clean ||
+      r.sku.product.code.toLowerCase() === clean
+    );
+    if (matched && matched.available > 0) {
+      add(matched);
+      showToast(`Đã quét mã ${rawCode} · Thêm "${matched.sku.product.name}" (${money(matched.sku.sellingPrice)}) vào hóa đơn.`);
+      return true;
+    }
+    return false;
+  };
   const validateSale = () => {
     if (payosSelected) {
       if (!selectedShift || !warehouseId || !cart.length || invalidStock || discountInvalid || total <= 0) { setError('Kiểm tra ca, kho, tồn hàng và tổng tiền trước khi tạo QR.'); return false; }
@@ -169,6 +202,53 @@ function NewInvoicePage() {
     setBusy(true);
     router.push(`/thanh-toan/payos?checkoutId=${checkoutId}`);
   };
+  const applyFefoPromoCode = async (overrideCode?: string) => {
+    const rawCode = (overrideCode ?? fefoPromoInput).trim().toUpperCase();
+    if (!warehouseId || !rawCode) return;
+    if (!cart.length) { setFefoPromoError('Vui lòng thêm sản phẩm của lô cận hạn vào giỏ hàng trước khi áp mã.'); return; }
+    const nextCodes = [...new Set([...appliedFefoPromos.map(p => p.promoCode), rawCode])];
+    setFefoPromoBusy(true); setFefoPromoError('');
+    try {
+      const result = await verifyFefoPromo({
+        warehouseId,
+        promoCodes: nextCodes,
+        items: cart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })),
+      });
+      setAppliedFefoPromos(result.promos);
+      setDiscountMode('amount');
+      setDiscount(String(result.totalDiscount));
+      setFefoPromoInput('');
+      showToast(`Đã xác minh & áp mã FEFO: giảm ${money(result.totalDiscount)} (đã gắn minh chứng lô).`);
+    } catch (reason) {
+      setFefoPromoError(errorMessage(reason));
+    } finally {
+      setFefoPromoBusy(false);
+    }
+  };
+  const removeFefoPromoCode = async (promoCode: string) => {
+    const remaining = appliedFefoPromos.filter(p => p.promoCode !== promoCode).map(p => p.promoCode);
+    setFefoPromoError('');
+    if (!remaining.length || !warehouseId || !cart.length) {
+      setAppliedFefoPromos([]);
+      setDiscount('');
+      return;
+    }
+    setFefoPromoBusy(true);
+    try {
+      const result = await verifyFefoPromo({
+        warehouseId,
+        promoCodes: remaining,
+        items: cart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })),
+      });
+      setAppliedFefoPromos(result.promos);
+      setDiscountMode('amount');
+      setDiscount(String(result.totalDiscount));
+    } catch (reason) {
+      setFefoPromoError(errorMessage(reason));
+    } finally {
+      setFefoPromoBusy(false);
+    }
+  };
   const completeSale = async () => {
     if (!validateSale()) return;
     setBusy(true); setError('');
@@ -177,7 +257,7 @@ function NewInvoicePage() {
         ...(cashAmount > 0 ? [{ method: 'CASH' as const, amount: cashAmount }] : []),
         ...(qrAmount > 0 ? [{ method: 'QR' as const, amount: qrAmount, reference: transferMemo }] : []),
       ];
-      const invoice = await createInvoice({ shiftId, warehouseId, customerId: customerId || undefined, discount: discountAmount, creditAmount, creditDueDate: creditAmount > 0 ? dueDate : undefined, note: note.trim() || undefined, items: cart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })), payments });
+      const invoice = await createInvoice({ shiftId, warehouseId, customerId: customerId || undefined, discount: discountAmount, creditAmount, creditDueDate: creditAmount > 0 ? dueDate : undefined, note: note.trim() || undefined, fefoPromoCodes: appliedFefoPromos.length ? appliedFefoPromos.map(p => p.promoCode) : undefined, items: cart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })), payments });
       setCheckoutOpen(false); showToast(`\u0110\u00e3 ho\u00e0n t\u1ea5t h\u00f3a \u0111\u01a1n ${invoice.code}; t\u1ed3n kho \u0111\u01b0\u1ee3c c\u1eadp nh\u1eadt.`); router.push(`/hoa-don/${invoice.id}`);
     } catch (reason) { setError(errorMessage(reason)); }
     finally { setBusy(false); }
@@ -186,11 +266,62 @@ function NewInvoicePage() {
   return <div className="suite-page sale-page pos-workspace"><header className="suite-heading"><div><div className="breadcrumb"><Link href="/hoa-don">Hóa đơn</Link> <span>›</span> Bán hàng</div><h1>Tạo hóa đơn bán hàng</h1><p>Chọn sản phẩm, kiểm tra giỏ hàng và thanh toán.</p></div><Link className="ui-action-button action-view" href="/hoa-don">‹ Danh sách hóa đơn</Link></header>
     {loading && <p role="status">Đang tải ca và kho…</p>}{error && <div className="ui-error" role="alert">{error}</div>}
     <form className="sale-layout" onSubmit={submit}><section className="pos-sessionbar"><div className="sale-fields"><label>Ca đang mở<select required value={shiftId} onChange={event => setShiftId(event.target.value)}><option value="">Chọn ca</option>{shifts.map(shift => <option key={shift.id} value={shift.id}>{shift.code} · {shift.store.name} · {shift.posCode} · {shift.cashier.name}</option>)}</select><small className="sale-shift-cashier">Nhân viên đang làm ca: {selectedShift?.cashier.name ?? "Chưa chọn ca"}</small></label><label>Kho xuất hàng<select required value={warehouseId} onChange={event => { setWarehouseId(event.target.value); setCart([]); }}><option value="">Chọn kho</option>{availableWarehouses.map(row => <option key={row.id} value={row.id}>{row.code} · {row.name}</option>)}</select></label></div>{!loading && shifts.length === 0 && <p className="sale-note">Chưa có ca mở phù hợp. Hãy liên hệ quản lý để bắt đầu bán hàng.</p>}
-</section><section className="panel sale-products">      <PosCatalog key={warehouseId} rows={stockRows} ready={!!warehouseId} loading={stockLoading} query={query} onQuery={setQuery} onAdd={add} quantities={Object.fromEntries(cart.map(line => [line.stock.skuId, line.quantity]))}/>
+</section><section className="panel sale-products">      <PosCatalog key={warehouseId} rows={stockRows} ready={!!warehouseId} loading={stockLoading} query={query} onQuery={setQuery} onAdd={add} onBarcodeScanned={handleBarcodeScanned} quantities={Object.fromEntries(cart.map(line => [line.stock.skuId, line.quantity]))}/>
       </section>
       <section className="panel sale-checkout pos-ticket"><div className="panel-heading"><h2>Hóa đơn hiện tại</h2><span className="pos-ticket-count">{cart.reduce((sum, line) => sum + line.quantity, 0)} sản phẩm</span></div><div className="sale-checkout-body"><label>T&igrave;m kh&aacute;ch h&agrave;ng<input value={customerQuery} onFocus={() => setCustomerPickerOpen(true)} onChange={event => { setCustomerQuery(event.target.value); setCustomerId(''); setCustomerPickerOpen(true); }} placeholder="Khách lẻ / tìm tên hoặc số điện thoại"/></label>{customerPickerOpen && <div className="sale-customer-list"><button type="button" onMouseDown={event => event.preventDefault()} onClick={() => { setCustomerId(''); setCustomerQuery(''); setCustomerPickerOpen(false); }}>Kh&aacute;ch v&atilde;ng lai</button>{customers.length === 0 && <span className="sale-customer-empty">Kh&ocirc;ng t&igrave;m th&#7845;y kh&aacute;ch ph&ugrave; h&#7907;p.</span>}{customers.map(customer => <button type="button" key={customer.id} className={customerId === customer.id ? 'selected' : ''} onClick={() => { setCustomerId(customer.id); setCustomerQuery(`${customer.name} · ${customer.phone}`); setCustomerPickerOpen(false); }}>{customer.name} · {customer.phone}</button>)}</div>}
       <div className="sale-cart"><div className="sale-cart-heading"><strong>Gi&#7887; h&agrave;ng</strong><span>{cart.length} m&#7863;t h&agrave;ng</span></div>{cart.length ? <><div className="sale-cart-items">{cart.map(line => <article key={line.stock.skuId}><div className="sale-cart-product"><ProductIdentity name={line.stock.sku.product.name} code={line.stock.sku.product.code} imageUrl={line.stock.sku.product.imageUrl}/><span><small>{money(line.stock.sku.sellingPrice)} / {line.stock.sku.product.unit}</small></span></div><div className="sale-cart-edit"><PosQuantity name={line.stock.sku.product.name} value={line.quantity} max={line.stock.available} onChange={quantity => setCart(rows => rows.map(item => item.stock.skuId === line.stock.skuId ? { ...item, quantity } : item))}/><strong>{money(line.quantity * line.stock.sku.sellingPrice)}</strong><ActionButton tone="danger" onClick={() => setCart(rows => rows.filter(item => item.stock.skuId !== line.stock.skuId))}>X&oacute;a</ActionButton></div></article>)}</div></> : <div className="sale-cart-empty"><Icon name="bag" size={32}/><strong>Giỏ hàng đang trống</strong><span>Chọn sản phẩm để bắt đầu hóa đơn.</span></div>}</div>
-<details className="pos-discount"><summary>Chiết khấu <span>{money(discountAmount)}</span></summary>      <label>Chi&#7871;t kh&#7845;u<select value={discountMode} onChange={event => setDiscountMode(event.target.value as 'amount' | 'percent')}><option value="amount">Theo s&#7889; ti&#7873;n</option><option value="percent">Theo ph&#7847;n tr&#259;m</option></select>{discountMode === 'amount' ? <CurrencyInput min={0} max={subtotal} value={discount} onChange={setDiscount}/> : <input type="number" min="0" max="100" step="0.1" value={discount} onChange={event => setDiscount(event.target.value)} placeholder="0-100%"/>}</label>{discountInvalid && <p className="negative">Chi&#7871;t kh&#7845;u ph&#7843;i n&#7857;m trong gi&#7899;i h&#7841;n cho ph&eacute;p.</p>}
+<details className="pos-discount" open={appliedFefoPromos.length > 0 || Boolean(fefoPromoInput)}><summary>Chiết khấu & Mã xả cận hạn FEFO <span>{money(discountAmount)}</span></summary>
+      <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+        <label>Mã xả cận hạn FEFO (xác minh theo lô thực tế)
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {fefoPromoOptions.length > 0 && (
+              <select
+                value=""
+                disabled={!warehouseId || fefoPromoBusy}
+                onChange={event => {
+                  const chosen = event.target.value;
+                  if (!chosen) return;
+                  setFefoPromoInput(chosen);
+                  void applyFefoPromoCode(chosen);
+                }}
+                style={{ flex: '1 1 180px' }}
+              >
+                <option value="">Chọn nhanh lô cận hạn tại kho ({fefoPromoOptions.length})</option>
+                {fefoPromoOptions.map(opt => (
+                  <option key={opt.lotId} value={opt.promoCode}>
+                    {opt.promoCode} · {opt.productName} · còn {opt.daysRemaining}d · -{opt.discountPercent}% ({opt.lotQuantity} {opt.unit})
+                  </option>
+                ))}
+              </select>
+            )}
+            <input
+              value={fefoPromoInput}
+              disabled={!warehouseId || fefoPromoBusy}
+              onChange={event => setFefoPromoInput(event.target.value)}
+              placeholder="Ví dụ: FEFO-LOT-..."
+              style={{ flex: '1 1 140px' }}
+            />
+            <button
+              type="button"
+              className="outline-button"
+              disabled={!warehouseId || !fefoPromoInput.trim() || fefoPromoBusy}
+              onClick={() => void applyFefoPromoCode()}
+            >
+              {fefoPromoBusy ? 'Đang kiểm tra…' : 'Áp mã'}
+            </button>
+          </div>
+        </label>
+        {fefoPromoError && <p className="negative">{fefoPromoError}</p>}
+        {appliedFefoPromos.map(promo => (
+          <div key={promo.promoCode} style={{ fontSize: 12, padding: '6px 8px', borderRadius: 6, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <span>
+              <strong>{promo.promoCode}</strong> · Lô <code>{promo.lotCode}</code> còn {promo.daysRemaining} ngày · giảm {promo.discountPercent}% trên {promo.eligibleQuantity} {promo.unit} = <strong>-{money(promo.discountAmount)}</strong>
+            </span>
+            <button type="button" className="outline-button" onClick={() => void removeFefoPromoCode(promo.promoCode)}>Gỡ</button>
+          </div>
+        ))}
+      </div>
+      <label>Chi&#7871;t kh&#7845;u<select value={discountMode} onChange={event => setDiscountMode(event.target.value as 'amount' | 'percent')}><option value="amount">Theo s&#7889; ti&#7873;n</option><option value="percent">Theo ph&#7847;n tr&#259;m</option></select>{discountMode === 'amount' ? <CurrencyInput min={0} max={subtotal} value={discount} onChange={setDiscount}/> : <input type="number" min="0" max="100" step="0.1" value={discount} onChange={event => setDiscount(event.target.value)} placeholder="0-100%"/>}</label>{discountInvalid && <p className="negative">Chi&#7871;t kh&#7845;u ph&#7843;i n&#7857;m trong gi&#7899;i h&#7841;n cho ph&eacute;p.</p>}
 </details><div className="sale-bill-summary"><div><span>Ti&#7873;n h&agrave;ng</span><strong>{money(subtotal)}</strong></div><div><span>Chi&#7871;t kh&#7845;u</span><strong>{money(discountAmount)}</strong></div><div className="sale-bill-total"><span>T&#7893;ng ti&#7873;n</span><strong>{money(total)}</strong></div></div>
       <div className="sale-method-picker"><strong>Phương thức thanh toán</strong><div role="group" aria-label="Chọn phương thức thanh toán">
         {([['CASH', 'Tiền mặt', 'wallet'], ['QR', 'QR / chuyển khoản', 'card'], ['MIXED', 'Thanh toán kết hợp', 'receipt']] as const).map(([method, label, icon]) => <button type="button" key={method} className={activePaymentMethod === method ? 'selected' : ''} disabled={method === 'QR' && !bankQrReady && !payosEnabled} title={method === 'QR' && !bankQrReady && !payosEnabled ? 'Cần cấu hình VietQR để tạo mã thanh toán.' : undefined} onClick={() => choosePaymentMethod(method)}><Icon name={icon} size={15}/>{method === 'QR' && payosEnabled ? 'QR thanh toán' : label}</button>)}

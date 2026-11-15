@@ -12,6 +12,8 @@
     "dev:ai": "node ai-service/scripts/dev.mjs",
     "build": "npm run build -w backend && npm run build -w web-admin",
     "test": "npm run test -w backend",
+    "test:demo": "npm run test:demo -w web-admin",
+    "test:demo:full": "npm run test:demo:full -w web-admin",
     "db:generate": "npm run db:generate -w backend",
     "db:migrate": "npm run db:migrate -w backend"
   },

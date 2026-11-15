@@ -34,15 +34,15 @@ uint32_t bootNonce = 0;
 uint32_t lastReadAt = 0;
 uint32_t lastRfidCheckAt = 0;
 String lastTagId;
-int bootReedLevel = HIGH;
+// Closed magnet pulls the normally-open reed contact to GND.
+#ifndef DOOR_CLOSED_LEVEL
+#define DOOR_CLOSED_LEVEL LOW
+#endif
 bool rawDoorOpen = false;
 bool stableDoorOpen = false;
 bool sentDoorState = false;
 uint32_t rawDoorChangedAt = 0;
 uint32_t lastHeartbeatAt = 0;
-uint32_t autoDoorOpenAt = 0;
-uint32_t autoDoorCloseAt = 0;
-bool autoDoorOpened = false;
 
 bool isValidRfidVersion(uint8_t v) {
   return v == 0x90 || v == 0x91 || v == 0x92 || v == 0x88 || v == 0x89 || v == 0xB2 || v == 0x12 || v == 0xA0;
@@ -136,7 +136,7 @@ String makeEventId() {
 
 String utcTimestamp() {
   time_t now = time(nullptr);
-  if (now < 1700000000) return "2026-11-08T08:00:00Z";
+  if (now < 1700000000) return "";
   struct tm utc;
   gmtime_r(&now, &utc);
   char formatted[25];
@@ -319,14 +319,16 @@ void connectWifi() {
 
 void setup() {
   Serial.begin(115200);
-  delay(300);
+  delay(30);
   bootNonce = esp_random();
   loadSavedWifiConfig();
+  Serial.println("FM_BOOT_READY");
+  printSerialStatus("FM_STATUS:");
+  pollSerialProvisioning();
   pinMode(DOOR_REED_PIN, INPUT_PULLUP);
   delay(20);
-  bootReedLevel = digitalRead(DOOR_REED_PIN);
-  rawDoorOpen = false;
-  stableDoorOpen = false;
+  rawDoorOpen = digitalRead(DOOR_REED_PIN) != DOOR_CLOSED_LEVEL;
+  stableDoorOpen = rawDoorOpen;
   SPI.begin(18, 19, 23, activeSsPin); // SCK, MISO, MOSI, SS
   initRfidReader();
   connectWifi();
@@ -339,13 +341,10 @@ void loop() {
     lastRfidCheckAt = millis();
     ensureRfidReady();
   }
-  const bool sampledOpen = digitalRead(DOOR_REED_PIN) != bootReedLevel;
+  const bool sampledOpen = digitalRead(DOOR_REED_PIN) != DOOR_CLOSED_LEVEL;
   if (sampledOpen != rawDoorOpen) { rawDoorOpen = sampledOpen; rawDoorChangedAt = millis(); }
   if (sampledOpen != stableDoorOpen && millis() - rawDoorChangedAt >= DOOR_DEBOUNCE_MS) {
     stableDoorOpen = sampledOpen;
-    autoDoorOpenAt = 0;
-    autoDoorCloseAt = 0;
-    autoDoorOpened = false;
     sentDoorState = false;
   }
   if (WiFi.status() != WL_CONNECTED) {
@@ -363,19 +362,6 @@ void loop() {
     sentDoorState = postDoorState(stableDoorOpen);
     ensureRfidReady();
   }
-  const uint32_t nowMs = millis();
-  if (autoDoorOpenAt > 0 && !autoDoorOpened && nowMs >= autoDoorOpenAt && !stableDoorOpen) {
-    autoDoorOpened = true;
-    postDoorState(true);
-    ensureRfidReady();
-  }
-  if (autoDoorCloseAt > 0 && autoDoorOpened && nowMs >= autoDoorCloseAt && !stableDoorOpen) {
-    autoDoorOpenAt = 0;
-    autoDoorCloseAt = 0;
-    autoDoorOpened = false;
-    postDoorState(false);
-    ensureRfidReady();
-  }
   if (!reader.PICC_IsNewCardPresent() || !reader.PICC_ReadCardSerial()) {
     delay(20);
     return;
@@ -388,11 +374,7 @@ void loop() {
     lastReadAt = now;
     Serial.printf("Tag detected: %s\n", tagId.c_str());
     Serial.printf("FM_RFID_SCAN:{\"uid\":\"%s\",\"deviceId\":\"%s\",\"warehouseId\":\"%s\"}\n", tagId.c_str(), DEVICE_ID, WAREHOUSE_ID);
-    if (postRfidEvent(tagId) && !stableDoorOpen) {
-      autoDoorOpenAt = millis() + 3400;
-      autoDoorCloseAt = millis() + 7800;
-      autoDoorOpened = false;
-    }
+    postRfidEvent(tagId); // RFID never synthesizes Reed Switch events.
     ensureRfidReady();
   }
   reader.PICC_HaltA();

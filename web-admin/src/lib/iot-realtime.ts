@@ -44,3 +44,5 @@ function subscribeChannel<T>(channel: string, onEvent: (event: T) => void, onSta
 
 export const subscribeIotEvents = (onEvent: (event: IotEvent) => void, onStatus?: (connected: boolean) => void) => subscribeChannel('iot:event', onEvent, onStatus);
 export const subscribeWarehouseAccess = (onUpdate: (update: unknown) => void, onStatus?: (connected: boolean) => void) => subscribeChannel('iot:access', onUpdate, onStatus);
+export type InventoryUpdate = { eventId: string; warehouseId: string; reason: string; timestamp: string };
+export const subscribeInventoryUpdates = (onUpdate: (update: InventoryUpdate) => void, onStatus?: (connected: boolean) => void) => subscribeChannel('inventory:updated', onUpdate, onStatus);

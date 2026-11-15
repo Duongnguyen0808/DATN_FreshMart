@@ -51,6 +51,7 @@ export function TransferFulfillmentDialog({ transfer, mode, onClose, onDone }: P
     setError('');
     if (receiving) {
       const invalid = transfer.items.find(item => {
+        if (item.lotTracked) return false;
         const quantity = Number(quantities[item.skuId]);
         return quantities[item.skuId] === '' || !Number.isInteger(quantity) || quantity < 0 || quantity > 100_000_000 ||
           (quantity !== item.dispatchedQuantity && !reasons[item.skuId]?.trim());
@@ -60,7 +61,10 @@ export function TransferFulfillmentDialog({ transfer, mode, onClose, onDone }: P
     setBusy(true);
     try {
       const updated = receiving
-        ? await receiveTransfer(transfer.id, { note: note.trim(), items: transfer.items.map(item => ({ skuId: item.skuId, quantity: Number(quantities[item.skuId]), discrepancyReason: Number(quantities[item.skuId]) === item.dispatchedQuantity ? null : reasons[item.skuId]!.trim() })) })
+        ? await receiveTransfer(transfer.id, { note: note.trim(), items: transfer.items.map(item => {
+            const quantity = item.lotTracked ? (item.dispatchedQuantity ?? 0) : Number(quantities[item.skuId]);
+            return { skuId: item.skuId, quantity, discrepancyReason: quantity === item.dispatchedQuantity ? null : reasons[item.skuId]!.trim() };
+          }) })
         : await dispatchTransfer(transfer.id, note.trim());
       onDone(updated);
     } catch (reason) { setError(errorMessage(reason)); }
@@ -74,11 +78,12 @@ export function TransferFulfillmentDialog({ transfer, mode, onClose, onDone }: P
       <div className="transfer-fulfillment-lines">
         {transfer.items.map(item => {
           const shipped = item.dispatchedQuantity ?? 0;
-          const mismatch = receiving && quantities[item.skuId] !== '' && Number(quantities[item.skuId]) !== shipped;
+          const lotLocked = receiving && Boolean(item.lotTracked);
+          const mismatch = receiving && !lotLocked && quantities[item.skuId] !== '' && Number(quantities[item.skuId]) !== shipped;
           return <div className="transfer-fulfillment-line" key={item.id}>
-            <div><ProductIdentity name={item.sku.product.name} code={item.sku.product.code} imageUrl={item.sku.product.imageUrl}/>{item.rfidTagId && <small>RFID: <code>{item.rfidTagId}</code></small>}</div>
+            <div><ProductIdentity name={item.sku.product.name} code={item.sku.product.code} imageUrl={item.sku.product.imageUrl}/>{item.rfidTagId && <small>RFID: <code>{item.rfidTagId}</code></small>}{lotLocked && <small style={{ color: '#0e7490', display: 'block', marginTop: 2 }}>Quản lý lô (FEFO): cần nhận đúng {shipped} để giữ nguyên hạn dùng từng lô.</small>}</div>
             <span>{receiving ? `Đã xuất: ${shipped}` : `Số chuyển: ${item.approvedQuantity ?? 0}`}</span>
-            {receiving && <label>Thực nhận<input required type="number" min={0} max={100000000} step={1} value={quantities[item.skuId]} onChange={event => setQuantities(current => ({ ...current, [item.skuId]: normalizeIntegerInput(event.target.value) }))}/></label>}
+            {receiving && <label>Thực nhận<input required type="number" min={lotLocked ? shipped : 0} max={lotLocked ? shipped : 100000000} readOnly={lotLocked} step={1} value={lotLocked ? String(shipped) : quantities[item.skuId]} onChange={event => { if (!lotLocked) setQuantities(current => ({ ...current, [item.skuId]: normalizeIntegerInput(event.target.value) })); }}/></label>}
             {mismatch && <label className="transfer-fulfillment-reason">Lý do chênh lệch<input required maxLength={500} value={reasons[item.skuId] ?? ''} onChange={event => setReasons(current => ({ ...current, [item.skuId]: event.target.value }))} placeholder="Ghi rõ nguyên nhân nhận thiếu hoặc thừa"/></label>}
           </div>;
         })}

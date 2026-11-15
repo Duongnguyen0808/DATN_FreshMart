@@ -4,6 +4,7 @@ import { AppError } from '../../common/app-error.js';
 import { logger } from '../../common/logger.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import { destroyProductImage, uploadProductImage } from './cloudinary.service.js';
+import { toJson } from '../../common/json-field.js';
 
 const code = z.string().trim().toUpperCase().regex(/^[A-Z0-9][A-Z0-9_-]{1,39}$/);
 const price = z.coerce.number().finite().min(0).max(999_999_999_999);
@@ -47,7 +48,7 @@ async function requireActiveCategory(categoryId: string) {
 }
 
 export function listCategories(input: z.infer<typeof categoryListInput>) {
-  return prisma.category.findMany({ where: { ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { name: { contains: input.q, mode: 'insensitive' as const } }] } : {}) }, include: { _count: { select: { products: true } } }, orderBy: { name: 'asc' } });
+  return prisma.category.findMany({ where: { ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }] } : {}) }, include: { _count: { select: { products: true } } }, orderBy: { name: 'asc' } });
 }
 
 export async function createCategory(user: CurrentUser, input: z.infer<typeof categoryInput>) {
@@ -66,7 +67,7 @@ export async function changeCategoryStatus(user: CurrentUser, id: string, active
 export async function listProducts(input: z.infer<typeof listInput>, user: CurrentUser) {
   const warehouseScope = user.globalAccess ? {} : { warehouse: { storeId: { in: user.stores.map(store => store.id) } } };
   const inventoryStock = input.stockStatus === 'IN_STOCK' ? { some: { onHand: { gt: 0 }, ...warehouseScope } } : input.stockStatus === 'OUT_OF_STOCK' ? { none: { onHand: { gt: 0 }, ...warehouseScope } } : undefined;
-  const where = { archivedAt: null, ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(inventoryStock ? { skus: { some: { inventories: inventoryStock } } } : {}), ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { name: { contains: input.q, mode: 'insensitive' as const } }, { skus: { some: { OR: [{ code: { contains: input.q, mode: 'insensitive' as const } }, { barcode: { contains: input.q } }] } } }] } : {}) };
+  const where = { archivedAt: null, ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(inventoryStock ? { skus: { some: { inventories: inventoryStock } } } : {}), ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }, { skus: { some: { OR: [{ code: { contains: input.q } }, { barcode: { contains: input.q } }] } } }] } : {}) };
   const [items, total, activeCount, inactiveCount] = await prisma.$transaction([
     prisma.product.findMany({ where, include: includeList, orderBy: [{ lastReceivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { code: 'asc' }], skip: (input.page - 1) * input.pageSize, take: input.pageSize }),
     prisma.product.count({ where }), prisma.product.count({ where: { active: true, archivedAt: null } }), prisma.product.count({ where: { active: false, archivedAt: null } }),
@@ -82,7 +83,7 @@ export async function listProducts(input: z.infer<typeof listInput>, user: Curre
 }
 
 export async function getNextProductCode() {
-  const [row] = await prisma.$queryRaw<Array<{ value: string }>>`SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END::text AS value FROM product_code_sequence`;
+  const [row] = await prisma.$queryRaw<Array<{ value: string }>>`SELECT CAST(CASE WHEN last_used_value IS NULL THEN CAST(current_value AS BIGINT) ELSE CAST(current_value AS BIGINT) + 1 END AS NVARCHAR(50)) AS [value] FROM sys.sequences WHERE name = 'product_code_sequence'`;
   return row!.value;
 }
 
@@ -112,7 +113,7 @@ export async function createProduct(user: CurrentUser, input: z.infer<typeof pro
   const uploaded = input.imageDataUrl ? await uploadProductImage(input.imageDataUrl) : null;
   try {
     return await prisma.$transaction(async tx => {
-      const [generated] = await tx.$queryRaw<Array<{ value: string }>>`SELECT nextval('product_code_sequence')::text AS value`;
+      const [generated] = await tx.$queryRaw<Array<{ value: string }>>`SELECT CAST(NEXT VALUE FOR dbo.product_code_sequence AS NVARCHAR(50)) AS [value]`;
       const productCode = generated!.value;
       const skuCode = productCode;
       const row = await tx.product.create({ data: { code: productCode, name: input.name, unit: input.unit, baseUnit: input.baseUnit, unitsPerUnit: input.unitsPerUnit, categoryId: input.categoryId, ...uploaded, skus: { create: { code: skuCode, barcode: input.sku.barcode, sellingPrice: input.sku.sellingPrice, costPrice: input.sku.costPrice, priceHistory: { create: { sellingPrice: input.sku.sellingPrice, costPrice: input.sku.costPrice, changedById: user.id } } } } }, include: includeList });
@@ -160,7 +161,7 @@ export async function createSku(user: CurrentUser, productId: string, input: z.i
     const sku = await tx.sku.create({ data: { ...input, productId, priceHistory: { create: { sellingPrice: input.sellingPrice, costPrice: input.costPrice, changedById: user.id } } } });
     const warehouses = await tx.warehouse.findMany({ where: { active: true }, select: { id: true } });
     if (warehouses.length) await tx.inventory.createMany({ data: warehouses.map(warehouse => ({ warehouseId: warehouse.id, skuId: sku.id })) });
-    await tx.auditLog.create({ data: { actorId: user.id, action: 'sku.create', targetId: sku.id, metadata: { productId } } });
+    await tx.auditLog.create({ data: { actorId: user.id, action: 'sku.create', targetId: sku.id, metadata: toJson({ productId }) } });
   });
   return getProduct(productId);
 }
@@ -172,7 +173,7 @@ export async function updateSku(user: CurrentUser, productId: string, skuId: str
     const priceChanged = Number(current.sellingPrice) !== input.sellingPrice || Number(current.costPrice) !== input.costPrice;
     await tx.sku.update({ where: { id: skuId }, data: input });
     if (priceChanged) await tx.priceHistory.create({ data: { skuId, sellingPrice: input.sellingPrice, costPrice: input.costPrice, changedById: user.id } });
-    await tx.auditLog.create({ data: { actorId: user.id, action: 'sku.update', targetId: skuId, metadata: { productId, priceChanged } } });
+    await tx.auditLog.create({ data: { actorId: user.id, action: 'sku.update', targetId: skuId, metadata: toJson({ productId, priceChanged }) } });
   });
   return getProduct(productId);
 }
@@ -187,7 +188,7 @@ export async function changeSkuStatus(user: CurrentUser, productId: string, skuI
   }
   await prisma.$transaction(async tx => {
     await tx.sku.update({ where: { id: skuId }, data: { active } });
-    await tx.auditLog.create({ data: { actorId: user.id, action: active ? 'sku.activate' : 'sku.deactivate', targetId: skuId, metadata: { productId } } });
+    await tx.auditLog.create({ data: { actorId: user.id, action: active ? 'sku.activate' : 'sku.deactivate', targetId: skuId, metadata: toJson({ productId }) } });
   });
   return getProduct(productId);
 }
@@ -195,7 +196,7 @@ export async function changeSkuStatus(user: CurrentUser, productId: string, skuI
 export async function changeProductStatus(user: CurrentUser, id: string, active: boolean) {
   const current = await prisma.product.findUnique({ where: { id }, include: { category: true, skus: { where: { active: true }, select: { id: true } } } });
   if (!current) throw new AppError(404, 'NOT_FOUND', 'Không tìm thấy sản phẩm.');
-  if (current.archivedAt) throw new AppError(409, 'PRODUCT_ARCHIVED', 'S?n ph?m ?? x?a kh?i danh m?c.');
+  if (current.archivedAt) throw new AppError(409, 'PRODUCT_ARCHIVED', 'Sản phẩm đã xóa khỏi danh mục.');
   if (active && !current.category.active) throw new AppError(409, 'CATEGORY_INACTIVE', 'Phải kích hoạt danh mục trước.');
   if (active && !current.skus.length) throw new AppError(409, 'NO_ACTIVE_SKU', 'Sản phẩm phải có ít nhất một SKU hoạt động.');
   return prisma.$transaction(async tx => { const row = await tx.product.update({ where: { id }, data: { active }, include: includeList }); await tx.auditLog.create({ data: { actorId: user.id, action: active ? 'product.activate' : 'product.deactivate', targetId: id } }); return presentProduct(row); });

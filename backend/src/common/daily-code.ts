@@ -12,11 +12,9 @@ export async function nextDailyCode(
   }).format(at).replaceAll('-', '');
   const dayPrefix = `${prefix}-${date}`;
 
-  // Serialize only this document type and day. The caller creates the document
-  // in the same transaction, so the next request sees the committed sequence.
-  // Return a supported scalar instead of PostgreSQL's `void` result. Prisma's
-  // pg adapter cannot deserialize a raw column with type `void`.
-  await tx.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_advisory_xact_lock(hashtext(${dayPrefix})) IS NULL AS locked`;
+  // Serialize only this document type and day inside the current transaction
+  // using SQL Server's transaction-scoped application lock.
+  await tx.$executeRaw`EXEC sp_getapplock @Resource = ${dayPrefix}, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000`;
   const existing = await findExisting(dayPrefix);
   // Ignore legacy timestamp suffixes and continue only the new four-digit IDs.
   const current = existing.reduce((max, row) => {

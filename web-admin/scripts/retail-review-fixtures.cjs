@@ -38,6 +38,8 @@ module.exports = function fixtures({ store, warehouse, product, stock }) {
     if (resource === 'payables/review' || resource === 'receivables/review') return debt;
     if (resource === 'forecasts/demand') return { run: null, items: [], summary: { productCount: 0, totalPredicted: 0 }, store };
     if (resource === 'forecasts/shortages') return { run: null, items: [], analysisItems: [], summary: {}, store };
+    if (resource === 'forecasts/recommendations') return { items: [], pagination, summary };
+    if (resource === 'inventory-lots/fefo-ai-risks') return { summary: { totalTrackedLots: 0, atRiskLotsCount: 0, criticalLotsCount: 0, totalAtRiskUnits: 0, totalAtRiskValue: 0, totalRecoverableValue: 0 }, items: [] };
     return empty;
   };
 };

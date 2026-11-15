@@ -1,27 +1,48 @@
 import 'dotenv/config';
-import pg from 'pg';
+import sql from 'mssql';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 // Uses a dedicated test database; never resets the application database.
-const url = new URL(process.env.DATABASE_URL);
+const rawUrl = process.env.DATABASE_URL;
+if (!rawUrl) throw new Error('DATABASE_URL is required');
 const testFiles = { login: 'src/login.integration.test.ts', logout: 'src/logout.integration.test.ts', refresh: 'src/refresh.integration.test.ts', rbac: 'src/rbac.integration.test.ts', 'create-user': 'src/create-user.integration.test.ts', users: 'src/users.integration.test.ts', organization: 'src/organization.integration.test.ts', products: 'src/products.integration.test.ts', all: 'src/auth.integration.test.ts' };
 testFiles.workflows = ['src/modules/inventory/lots.db.test.ts', 'src/modules/iot/rfid-receipt.db.test.ts'];
 testFiles['warehouse-access'] = 'src/modules/iot/warehouse-access.db.test.ts';
 const selection = process.argv[2] ?? 'all';
 if (!(selection in testFiles)) throw new Error('Unknown test selection');
 const testName = selection === 'warehouse-access' ? 'freshmart_warehouse_access_test' : selection === 'workflows' ? 'smart_store_workflows_test' : selection === 'users' ? 'smart_store_users_test' : selection === 'organization' ? 'smart_store_organization_test' : selection === 'products' ? 'smart_store_products_test' : 'smart_store_auth_test';
-url.pathname = '/postgres';
-url.search = '';
-const client = new pg.Client({ connectionString: url.toString() });
+
+function parseSqlServerUrl(connectionString) {
+  const [prefix, ...rest] = connectionString.split(';');
+  const hostPort = prefix.replace(/^sqlserver:\/\//i, '');
+  const [server, portRaw] = hostPort.split(':');
+  const params = Object.fromEntries(rest.map(part => {
+    const idx = part.indexOf('=');
+    return idx === -1 ? [part.trim().toLowerCase(), ''] : [part.slice(0, idx).trim().toLowerCase(), part.slice(idx + 1).trim()];
+  }));
+  return {
+    server,
+    port: portRaw ? Number(portRaw) : 1433,
+    user: params.user,
+    password: params.password,
+    database: 'master',
+    options: {
+      encrypt: params.encrypt === 'true',
+      trustServerCertificate: params.trustservercertificate !== 'false',
+    },
+  };
+}
+
+const pool = await sql.connect(parseSqlServerUrl(rawUrl));
 try {
-  await client.connect();
-  if (!(await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [testName])).rowCount) {
-    await client.query(`CREATE DATABASE "${testName}"`);
-  }
-} finally { await client.end(); }
-url.pathname = `/${testName}`;
-const env = { ...process.env, DATABASE_URL: url.toString(), TEST_DATABASE_URL: url.toString(), NODE_ENV: 'test', LOG_LEVEL: 'silent', JWT_SECRET: 'integration-test-secret-not-for-production-123456' };
+  await pool.request().input('dbName', sql.NVarChar(128), testName).query(`IF DB_ID(@dbName) IS NULL EXEC('CREATE DATABASE [' + REPLACE(@dbName, ']', ']]') + ']')`);
+} finally { await pool.close(); }
+
+const testUrl = /database=[^;]*/i.test(rawUrl)
+  ? rawUrl.replace(/database=[^;]*/i, `database=${testName}`)
+  : `${rawUrl};database=${testName}`;
+const env = { ...process.env, DATABASE_URL: testUrl, TEST_DATABASE_URL: testUrl, NODE_ENV: 'test', LOG_LEVEL: 'silent', JWT_SECRET: 'integration-test-secret-not-for-production-123456' };
 if (selection === 'workflows') Object.assign(env, { RUN_LOT_DB_TEST: '1', RUN_RFID_DB_TEST: '1' });
 try {
   execFileSync(process.execPath, [fileURLToPath(new URL('../../node_modules/prisma/build/index.js', import.meta.url)), 'migrate', 'deploy'], { stdio: 'inherit', env });

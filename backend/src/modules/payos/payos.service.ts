@@ -8,6 +8,8 @@ import { env } from '../../config/env.js';
 import { logger } from '../../common/logger.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import { payosClient, payosConfigured } from './payos.client.js';
+import { toJson, parseJson } from '../../common/json-field.js';
+import { publishInventoryUpdate } from '../iot/iot.realtime.js';
 
 export const checkoutInput = z.object({
   checkoutId: z.string().uuid(), shiftId: z.string().uuid(), warehouseId: z.string().uuid(),
@@ -18,7 +20,7 @@ export const checkoutInput = z.object({
 type CheckoutInput = z.infer<typeof checkoutInput>;
 type Snapshot = { requestHash: string; cashierId: string; customerId: string | null; customerName: string | null; customerPhone: string | null; subtotal: number; discount: number; note: string | null; items: { skuId: string; productCode: string; skuCode: string; productName: string; unit: string; quantity: number; unitPrice: number; costPrice: number; lineTotal: number }[] };
 const activeStatuses = ['CREATING', 'PENDING'];
-const snapshotOf = (row: PayosCheckout) => row.snapshot as unknown as Snapshot;
+const snapshotOf = (row: PayosCheckout) => parseJson<Snapshot>(row.snapshot)!;
 const notFoundAtProvider = (error: unknown) => typeof error === 'object' && error !== null && ('code' in error && error.code === '101');
 export const presentCheckout = (row: PayosCheckout) => ({ id: row.id, orderCode: row.orderCode.toString(), amount: Number(row.amount), status: row.status, checkoutUrl: row.checkoutUrl, qrCode: row.qrCode, accountName: row.accountName, accountNumber: row.accountNumber, description: row.description, expiresAt: row.expiresAt, invoiceId: row.invoiceId });
 function assertAccess(user: CurrentUser, row: PayosCheckout) {
@@ -65,7 +67,7 @@ async function reserveCheckout(user: CurrentUser, input: CheckoutInput) {
     // Serialize checkout creation with shift closing; pending checkouts block closing.
     await tx.workShift.update({ where: { id: shift.id }, data: { updatedAt: new Date() } });
     const snapshot: Snapshot = { requestHash, cashierId: shift.cashierId, customerId: customer?.id ?? null, customerName: customer?.name ?? null, customerPhone: customer?.phone ?? null, subtotal, discount: input.discount, note: input.note ?? null, items };
-    return tx.payosCheckout.create({ data: { id: input.checkoutId, actorId: user.id, shiftId: shift.id, storeId: shift.storeId, warehouseId: warehouse.id, amount, snapshot: snapshot as unknown as Prisma.InputJsonValue, expiresAt: new Date(Date.now() + 15 * 60000) } });
+    return tx.payosCheckout.create({ data: { id: input.checkoutId, actorId: user.id, shiftId: shift.id, storeId: shift.storeId, warehouseId: warehouse.id, amount, snapshot: toJson(snapshot), expiresAt: new Date(Date.now() + 15 * 60000) } });
   });
 }
 
@@ -104,7 +106,7 @@ export async function applyProviderLink(row: PayosCheckout, link: ProviderLink) 
   const paid = link.status === 'PAID' && link.amountPaid >= Number(row.amount);
   const closed = ['CANCELLED', 'EXPIRED'].includes(link.status) && link.amountPaid === 0;
   if (!paid && !closed) return prisma.payosCheckout.findUniqueOrThrow({ where: { id: row.id } });
-  return serial(async tx => {
+  const updated = await serial(async tx => {
     const current = await tx.payosCheckout.findUniqueOrThrow({ where: { id: row.id } });
     if (!activeStatuses.includes(current.status)) return current;
     const draft = snapshotOf(current);
@@ -128,6 +130,8 @@ export async function applyProviderLink(row: PayosCheckout, link: ProviderLink) 
     await tx.auditLog.create({ data: { actorId: row.actorId, action: `payos.${status.toLowerCase()}`, targetId: row.id } });
     return tx.payosCheckout.findUniqueOrThrow({ where: { id: row.id } });
   });
+  if (updated.status !== row.status) publishInventoryUpdate(row.warehouseId, paid ? 'PAYOS_SALE' : 'PAYOS_RELEASE');
+  return updated;
 }
 
 export async function reconcileCheckout(row: PayosCheckout) {

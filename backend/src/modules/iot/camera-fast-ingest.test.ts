@@ -19,7 +19,10 @@ describe('single-request camera ingest', () => {
     mock.context.mockResolvedValue({ warehouseId: 'demo', sessionId: 'session' });
     await ingestEvent(input, 'DEVICE', null);
     expect(mock.context).toHaveBeenCalledWith(input.deviceId, input.tagId);
-    expect(mock.db.iotEvent.create.mock.calls[0][0].data).toMatchObject({ warehouseId: 'demo', payload: { reportedWarehouseId: 'physical', demoSessionId: 'session' }, source: 'DEVICE' });
+    const created = mock.db.iotEvent.create.mock.calls[0][0].data;
+    expect(created).toMatchObject({ warehouseId: 'demo', source: 'DEVICE' });
+    const payload = typeof created.payload === 'string' ? JSON.parse(created.payload) : created.payload;
+    expect(payload).toMatchObject({ reportedWarehouseId: 'physical', demoSessionId: 'session' });
   });
   it('keeps the physical warehouse when no live matching session exists', async () => {
     await ingestEvent(input, 'DEVICE', null);

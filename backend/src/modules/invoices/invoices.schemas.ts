@@ -28,6 +28,7 @@ export const createInvoiceInput = z.object({
   customerName: z.string().trim().max(120).optional().nullable().transform(value => value || null),
   customerPhone: z.string().trim().max(20).regex(/^[0-9+ .()-]*$/).optional().nullable().transform(value => value || null),
   discount: money.default(0), creditAmount: money.default(0), creditDueDate: z.string().date().optional().nullable(), note: z.string().trim().max(500).optional().nullable().transform(value => value || null),
+  fefoPromoCodes: z.array(z.string().trim().min(3).max(80)).max(20).optional(),
   items: z.array(z.object({ skuId: z.string().uuid(), quantity: z.coerce.number().int().min(1).max(100_000) }).strict()).min(1).max(100),
   payments: z.array(z.object({ method: z.enum(['CASH', 'QR']), amount: money.refine(value => value > 0), reference: z.string().trim().max(100).optional().nullable().transform(value => value || null) }).strict()).max(2),
 }).strict().superRefine((value, context) => {

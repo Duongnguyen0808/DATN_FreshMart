@@ -14,14 +14,19 @@ import { getInventory, type Inventory } from '../../../lib/inventory-api';
 import { getWarehouses, type Warehouse } from '../../../lib/organization-api';
 import { getPurchaseOrders, type PurchaseOrder } from '../../../lib/purchase-orders-api';
 import type { IotEvent } from '../../../lib/iot-api';
-import { subscribeIotEvents } from '../../../lib/iot-realtime';
+import { subscribeIotEvents, subscribeInventoryUpdates } from '../../../lib/iot-realtime';
 import type { DemoState } from './warehouse-twin-scene';
 import { useWarehouseDoor, WarehouseDoorPanel, WarehouseCardStaffModal, WarehouseAccessCompleteModal, type AccessKind, type AccessPhase } from './warehouse-door-experience';
 const WarehouseTwinScene = dynamic(() => import('./warehouse-twin-scene').then(m => m.WarehouseTwinScene), { ssr: false, loading: () => <p>Đang tải mô hình minh họa…</p> });
 import './live-inbound.css';
 
-type Parcel = { id: string; tagId: string; palletCode: string; deviceId: string; skuId: string; quantity: number; lotCode: string; expiresAt: string | null; noExpiry: boolean; evidenceUrls?: string[] | null; status: string; purchaseOrderId: string; purchaseOrderItemId?: string; purchaseOrderCode?: string; product?: { name: string; unit: string }; goodsReceiptId: string | null };
+type Parcel = { id: string; tagId: string; palletCode: string; deviceId: string; skuId: string; quantity: number; lotCode: string; expiresAt: string | null; noExpiry: boolean; evidenceUrls?: string[] | null; status: string; purchaseOrderId: string; purchaseOrderItemId?: string; purchaseOrderCode?: string; product?: { name: string; unit: string; imageUrl?: string | null }; goodsReceiptId: string | null };
 type SupplierParcelRow = { key: string; poCode: string; supplierName: string; skuCode: string; productName: string; purchaseOrderItemId: string; quantity: number; tagId: string; palletCode: string; lotCode: string; expiresAt: string | null; noExpiry: boolean; status: 'PENDING_UID' | 'REGISTERED' | 'ERROR'; message: string };
+async function loadWarehouseStock(warehouseId: string): Promise<Inventory[]> {
+  const first = await getInventory({ warehouseId, pageSize: 100 });
+  const rest = await Promise.all(Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, i) => getInventory({ warehouseId, pageSize: 100, page: i + 2 })));
+  return [...first.items, ...rest.flatMap(page => page.items)];
+}
 const statuses: Record<string, string> = { WAITING_CONFIRMATION: 'Chờ xác nhận nhập kho', RECEIVED: 'Đã nhập kho', ALREADY_RECEIVED: 'Đã nhận trước đó · bỏ qua lượt lặp', BLOCKED: 'Cần xử lý ngoại lệ', UNREGISTERED: 'Chưa đăng ký kiện', PENDING: 'Đang xử lý', READY: 'Chờ thẻ thật', CANCELLED: 'Đã hủy đăng ký' };
 
 type DemoFlow = 'inbound' | 'transfer';
@@ -42,12 +47,12 @@ const TIMELINE: Record<DemoFlow, TimelineStep[]> = {
 };
 const ACCESS_TIMELINE: Record<AccessKind, { title: string; detail: string; phases: AccessPhase[] }[]> = {
   authorized: [
-    { title: 'Đến cửa', detail: 'Nhân viên đi tới checkpoint', phases: ['APPROACH', 'WAITING_REAL'] },
-    { title: 'Quét RFID', detail: 'RC522 đọc thẻ nhân viên', phases: ['SCANNING'] },
-    { title: 'Xác thực', detail: 'Backend kiểm tra thẻ và quyền', phases: ['VERIFYING', 'GRANTED'] },
-    { title: 'Mở cửa', detail: 'Reed Switch gửi DOOR_OPEN', phases: ['OPENING'] },
-    { title: 'Vào kho', detail: 'Ghi truy cập hợp lệ', phases: ['ENTERING'] },
-    { title: 'Đóng cửa', detail: 'Cảm biến báo cửa đóng và lưu nhật ký', phases: ['CLOSING', 'COMPLETE'] },
+    { title: 'Đến cửa kho', detail: 'Nhân viên tới đầu đọc thẻ', phases: ['APPROACH', 'WAITING_REAL'] },
+    { title: 'Quét thẻ RFID', detail: 'Đọc thẻ nhân viên', phases: ['SCANNING'] },
+    { title: 'Xác thực', detail: 'Backend kiểm tra quyền', phases: ['VERIFYING', 'GRANTED'] },
+    { title: 'Mở cửa', detail: 'Chờ Reed Switch báo mở', phases: ['OPENING'] },
+    { title: 'Truy cập kho', detail: 'Hiển thị lượt truy cập', phases: ['ENTERING', 'WAITING_CLOSE'] },
+    { title: 'Đóng cửa', detail: 'Reed Switch báo đóng, lưu nhật ký', phases: ['CLOSING', 'COMPLETE'] },
   ],
   unauthorized: [
     { title: 'Không quét thẻ', detail: 'Không có quyền mở cửa gần đây', phases: ['IDLE'] },
@@ -99,8 +104,8 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const [items, setItems] = useState<Inventory[]>([]), [orders, setOrders] = useState<PurchaseOrder[]>([]), [parcels, setParcels] = useState<Parcel[]>([]), [events, setEvents] = useState<IotEvent[]>([]);
   const [connected, setConnected] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
   const [speedMultiplier, setSpeedMultiplier] = useState<1 | 1.5 | 2>(1.5);
-  const access = useWarehouseDoor(warehouseId, speedMultiplier);
   const [accessKind, setAccessKind] = useState<AccessKind | null>(null);
+  const access = useWarehouseDoor(warehouseId, speedMultiplier, section === 'scene' && accessKind !== null);
   const [doorInspector, setDoorInspector] = useState(false);
   const [lineId, setLineId] = useState(''), [noExpiry, setNoExpiry] = useState(false);
   const [productSearch, setProductSearch] = useState('');
@@ -182,7 +187,9 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     const stockPages = await Promise.all(Array.from({ length: Math.max(0, stock.pagination.totalPages - 1) }, (_, i) => getInventory({ warehouseId: id, pageSize: 100, page: i + 2 })));
     const poPages = po ? await Promise.all(Array.from({ length: Math.max(0, po.pagination.totalPages - 1) }, (_, i) => getPurchaseOrders({ warehouseId: id, page: i + 2 }))) : [];
     if (currentWarehouse.current !== id || refreshVersion.current !== version) return;
-    setItems([...stock.items, ...stockPages.flatMap(p => p.items)]);
+    const latestItems = [...stock.items, ...stockPages.flatMap(p => p.items)];
+    setItems(latestItems);
+    setSelected(previous => previous ? latestItems.find(item => item.id === previous.id) ?? null : null);
     setOrders([...(po?.items ?? []), ...poPages.flatMap(p => p.items)].filter(p => p.status === 'OPEN'));
     setParcels(registered); setEvents(history.filter(e => e.source === 'DEVICE' && (section === 'scene' ? isEspEvent(e) : e.eventType === 'RFID_DETECTED')));
     setLoadedWarehouse(id);
@@ -225,6 +232,16 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     void refresh(event.warehouseId).catch(e => setError(errorMessage(e)));
   }, online => { setConnected(online); if (online && currentWarehouse.current) void refresh(currentWarehouse.current).catch(e => setError(errorMessage(e))); }), [refresh, section]);
   useEffect(() => {
+    if (section !== 'scene') return;
+    return subscribeInventoryUpdates(update => {
+      if (update.warehouseId === currentWarehouse.current) {
+        void refresh(update.warehouseId).catch(e => setError(errorMessage(e)));
+      } else if (update.warehouseId === destId && flow === 'transfer') {
+        void loadWarehouseStock(update.warehouseId).then(setDestItems).catch(e => setError(errorMessage(e)));
+      }
+    }, online => { if (online && currentWarehouse.current) void refresh(currentWarehouse.current).catch(e => setError(errorMessage(e))); });
+  }, [section, refresh, destId, flow]);
+  useEffect(() => {
     // A real confirmed receipt plays the inbound "store on rack" animation; transfer demo must not be interrupted.
     if (flow === 'inbound' && ['IDLE', 'WAITING_CONFIRMATION'].includes(motion) && queue.length) {
       setMovingEvent(queue[0]); setQueue(previous => previous.slice(1)); setRun(n => n + 1); setMotion('GOODS_RECEIVED'); setZone('receiving');
@@ -263,7 +280,7 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     setDestItems([]);
     if (flow !== 'transfer' || !destId) return;
     let alive = true;
-    getInventory({ warehouseId: destId, pageSize: 100 }).then(r => { if (alive) setDestItems(r.items); }).catch(() => {});
+    loadWarehouseStock(destId).then(rows => { if (alive) setDestItems(rows); }).catch(() => {});
     return () => { alive = false; };
   }, [flow, destId]);
   const resetDemo = () => { demoSession.current = null; setPrepared(null); setScanQueue([]); setQueue([]); setPaused(false); setMotion('IDLE'); setZone('overview'); access.stop(); };
@@ -389,6 +406,18 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const scannedParcel = parcels.find(p => p.id === scan?.inboundParcelId);
   const latest = events[0];
   const stockAtScan = items.find(i => i.skuId === scan?.mappedSkuId);
+  const scanProductName = scan?.mappedSku?.product.name ?? scannedParcel?.product?.name ?? prepared?.product?.name ?? 'Mã chưa liên kết sản phẩm';
+  const scanProductImage =
+    scan?.mappedSku?.product.imageUrl ??
+    scannedParcel?.product?.imageUrl ??
+    prepared?.product?.imageUrl ??
+    stockAtScan?.sku.product.imageUrl ??
+    orders
+      .flatMap(po => po.items)
+      .find(i => i.skuId === (scan?.mappedSkuId ?? scannedParcel?.skuId) || i.sku.product.name === scanProductName)
+      ?.sku.product.imageUrl ??
+    items.find(i => i.sku.product.name === scanProductName)?.sku.product.imageUrl ??
+    null;
   const confirmScan = async () => {
     if (!scan || confirming) return;
     setConfirming(true); setConfirmError('');
@@ -399,6 +428,7 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
       if (currentWarehouse.current !== result.warehouseId) return;
       setScanQueue(q => q.map(e => e.inboundParcelId === result.inboundParcelId ? result : e));
       if (result.automationStatus === 'RECEIVED' && !seen.current.has(result.id)) { seen.current.add(result.id); setQueue(q => [...q, result]); }
+      window.dispatchEvent(new Event('focus'));
       await refresh(result.warehouseId);
     } catch (e) { setConfirmError(errorMessage(e)); } finally { setConfirming(false); }
   };
@@ -409,8 +439,8 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const timeline = accessKind ? ACCESS_TIMELINE[accessKind] : TIMELINE[flow];
   const activeStep = accessKind ? (access.phase === 'IDLE' ? -1 : Math.max(0, ACCESS_TIMELINE[accessKind].findIndex(step => step.phases.includes(access.phase)))) : motion === 'COMPLETE' ? timeline.length : TIMELINE[flow].findIndex(step => step.states.includes(motion));
   const shownStep = Math.max(0, activeStep + (activeStep < 0 && motion !== 'IDLE' ? 1 : 0));
-  const motionLabel = accessKind ? (access.phase === 'IDLE' ? 'Sẵn sàng' : access.phase === 'ALERT' ? 'Cảnh báo cửa kho' : access.phase === 'COMPLETE' ? 'Hoàn tất luồng' : access.phase === 'WAITING_REAL' ? 'Chờ tín hiệu ESP32' : access.phase === 'WAITING_ALERT' ? 'Đang theo dõi thời gian mở cửa' : access.phase === 'APPROACH' ? 'Nhân viên đang đến cửa' : access.phase === 'SCANNING' ? 'Đang quét thẻ RFID…' : access.phase === 'VERIFYING' ? 'Backend đang xác thực' : access.phase === 'GRANTED' ? 'Đã xác thực nhân viên' : access.phase === 'OPENING' ? 'Cửa đang mở' : access.phase === 'ENTERING' ? 'Nhân viên đang vào kho' : 'Cửa đang đóng') : paused ? 'Tạm dừng' : motion === 'IDLE' ? 'Sẵn sàng' : motion === 'COMPLETE' ? 'Hoàn tất luồng' : motion === 'WAITING_CONFIRMATION' ? 'Chờ camera quét mã kiện' : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Chờ xác nhận xuất kho' : motion === 'WAITING_RECEIVE_CONFIRM' ? 'Chờ xác nhận nhận hàng' : 'Đang chạy mô phỏng';
-  const motionHint = accessKind ? (access.error || (access.phase === 'WAITING_ALERT' || (access.phase === 'ALERT' && access.activeAlerts.some(a => a.type === 'DOOR_OPEN_TOO_LONG')) ? ('Cửa mở ' + access.elapsedOpenSeconds + ' giây · giới hạn ' + access.openLimit + ' giây.') : '') || (access.phase === 'GRANTED' ? access.lastAccess?.employee?.name : '') || access.notice || (accessKind === 'authorized' ? 'Nhân viên → RFID → xác thực → mở cửa → vào kho → đóng cửa' : accessKind === 'unauthorized' ? 'Cửa mở không có thẻ hợp lệ → cảnh báo → lưu nhật ký' : 'Quét thẻ → mở cửa → quá thời gian → cảnh báo → đóng cửa')) : motion === 'IDLE' ? (flow === 'inbound' ? 'Xe đến → dỡ hàng → camera đọc mã kiện → xác nhận nhập → cất lên kệ' : 'Bấm Chạy demo: toàn bộ luồng là mô phỏng, không đổi tồn kho')
+  const motionLabel = accessKind ? (access.phase === 'IDLE' ? 'Sẵn sàng' : access.phase === 'ALERT' ? 'Cảnh báo cửa kho' : access.phase === 'COMPLETE' ? 'Hoàn tất phiên ra vào kho' : access.phase === 'WAITING_REAL' ? 'Chờ tín hiệu ESP32' : access.phase === 'WAITING_ALERT' ? 'Đang theo dõi thời gian mở cửa' : access.phase === 'APPROACH' ? 'Nhân viên đang đến cửa' : access.phase === 'SCANNING' ? 'Chờ quét thẻ nhân viên…' : access.phase === 'VERIFYING' ? 'Backend đang xác thực thẻ' : access.phase === 'GRANTED' ? 'Đã xác thực nhân viên' : access.phase === 'OPENING' ? 'Cửa cuốn đang mở' : access.phase === 'ENTERING' ? 'Nhân viên đang vào kho' : access.phase === 'WAITING_CLOSE' ? 'Chờ cảm biến báo cửa đóng…' : 'Cửa cuốn đang đóng') : paused ? 'Tạm dừng' : motion === 'IDLE' ? 'Sẵn sàng' : motion === 'COMPLETE' ? 'Hoàn tất luồng' : motion === 'WAITING_CONFIRMATION' ? 'Chờ camera quét mã kiện' : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Chờ xác nhận xuất kho' : motion === 'WAITING_RECEIVE_CONFIRM' ? 'Chờ xác nhận nhận hàng' : 'Đang chạy mô phỏng';
+  const motionHint = accessKind ? (access.error || access.activeAlerts[0]?.message || (access.phase === 'WAITING_ALERT' || (access.phase === 'ALERT' && access.activeAlerts.some(a => a.type === 'DOOR_OPEN_TOO_LONG')) ? ('Cửa mở ' + access.elapsedOpenSeconds + ' giây · giới hạn ' + access.openLimit + ' giây.') : '') || (access.phase === 'GRANTED' ? access.lastAccess?.employee?.name : '') || access.notice || (accessKind === 'authorized' ? 'Nhân viên → RFID → xác thực → mở cửa → vào kho → đóng cửa' : accessKind === 'unauthorized' ? 'Cửa mở không có thẻ hợp lệ → cảnh báo → lưu nhật ký' : 'Quét thẻ → mở cửa → quá thời gian → cảnh báo → đóng cửa')) : motion === 'IDLE' ? (flow === 'inbound' ? 'Xe đến → dỡ hàng → camera đọc mã kiện → xác nhận nhập → cất lên kệ' : 'Bấm Chạy demo: toàn bộ luồng là mô phỏng, không đổi tồn kho')
     : motion === 'WAITING_CONFIRMATION' ? 'ESP32-CAM: quét tem QR của kiện đang chờ nhận.'
     : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Bấm Xác nhận xuất kho để xe rời kho'
     : motion === 'WAITING_RECEIVE_CONFIRM' ? 'Bấm Xác nhận nhận hàng tại kho đích'
@@ -426,7 +456,7 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
       if (scanAgeMs < 300000) {
         const tStr = new Date(access.lastAccess.occurredAt).toLocaleTimeString('vi-VN');
         if (access.lastAccess.eventType === 'ACCESS_GRANTED') {
-          const empName = access.lastAccess.employee?.name ?? 'Lý Chí Chương';
+          const empName = access.lastAccess.employee?.name ?? 'Nhân viên đã xác thực';
           const uid = access.lastAccess.payload?.uid ? ` (${access.lastAccess.payload.uid})` : '';
           return { text: `✓ Quét thành công: ${empName}${uid} lúc ${tStr}`, tone: 'ok' };
         }
@@ -449,49 +479,84 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
       {scan.processed ? <>
         <div className="rfid-success-hero">
           <span className="rfid-success-icon" aria-hidden="true">✓</span>
-          <div>
+          <div className="rfid-success-hero-copy">
             <span className="rfid-live-badge">NHẬP KHO THÀNH CÔNG</span>
-            <h2 id="rfid-dialog-title">Kiện đã được nhận</h2>
-            <p role="status" className="rfid-success-sub">Đã lưu phiếu nhập và cập nhật tồn kho.</p>
+            <h2 id="rfid-dialog-title">Kiện hàng đã được nhập kho</h2>
+            <p role="status" className="rfid-success-sub">Đã lưu phiếu nhập kho và cộng tồn thực tế tại {warehouse?.name}. Chọn mục bên dưới để xem chi tiết ngay:</p>
           </div>
         </div>
-        <div className="rfid-success-summary">
-          <div className="rfid-success-product">
-            <small>Sản phẩm vừa nhận</small>
-            <strong>{scan.mappedSku?.product.name ?? scannedParcel?.product?.name ?? 'Sản phẩm kho'}</strong>
-            <span>Đơn mua: {scannedParcel?.purchaseOrderCode ?? orders.find(p => p.id === scannedParcel?.purchaseOrderId)?.code ?? '—'} · Kho nhận: {warehouse?.name}</span>
+        <div className="rfid-success-metrics">
+          <div className="rfid-metric-card is-plus">
+            <small>SỐ LƯỢNG VỪA CỘNG THÊM</small>
+            <b className="plus">+{scannedParcel?.quantity ?? 0} {scan.mappedSku?.product.unit ?? scannedParcel?.product?.unit ?? ''}</b>
           </div>
-          <div className="rfid-success-metrics">
-            <div>
-              <small>Số lượng cộng thêm</small>
-              <b className="plus">+{scannedParcel?.quantity ?? 0} {scan.mappedSku?.product.unit ?? scannedParcel?.product?.unit ?? ''}</b>
+          <div className="rfid-metric-card">
+            <small>TỒN HIỆN TẠI TẠI {(warehouse?.name ?? 'KHO').toUpperCase()}</small>
+            <b>{stockAtScan ? `${stockAtScan.onHand} ${scan.mappedSku?.product.unit ?? ''}` : 'Đã cập nhật'}</b>
+          </div>
+        </div>
+        <div className="rfid-clickable-list">
+          <Link href="/san-pham" className="rfid-clickable-card" onClick={dismissScan}>
+            <div className="rfid-clickable-main">
+              <ProductImage src={scanProductImage} name={scanProductName} size="md" />
+              <div className="rfid-clickable-copy">
+                <small>SẢN PHẨM VỪA NHẬP KHO</small>
+                <strong>{scanProductName}</strong>
+                <span>Mã kiện: {scan.tagId} · Đã cập nhật đủ tồn an toàn</span>
+              </div>
             </div>
-            <div>
-              <small>Tồn hiện tại tại {warehouse?.name}</small>
-              <b>{stockAtScan ? `${stockAtScan.onHand} ${scan.mappedSku?.product.unit ?? ''}` : 'Đã cập nhật'}</b>
+            <span className="rfid-clickable-cta">Xem sản phẩm →</span>
+          </Link>
+
+          <Link href="/nhap-hang" className="rfid-clickable-card" onClick={dismissScan}>
+            <div className="rfid-clickable-main">
+              <div className="rfid-clickable-copy">
+                <small>CHỨNG TỪ & ĐƠN MUA HÀNG</small>
+                <strong>Đơn mua: {scannedParcel?.purchaseOrderCode ?? orders.find(p => p.id === scannedParcel?.purchaseOrderId)?.code ?? '—'}</strong>
+                <span>Kho nhận: {warehouse?.name} · Thiết bị quét: {scan.deviceId}</span>
+              </div>
             </div>
-          </div>
-          <div className="rfid-success-links">
-            {stockAtScan && <Link href={`/ton-kho/${stockAtScan.id}`}>Xem tồn kho và lịch sử nhập →</Link>}
-            <Link href="/nhap-hang">Xem phiếu nhập</Link>
-            <Link href="/san-pham">Xem sản phẩm mới nhập</Link>
-          </div>
+            <span className="rfid-clickable-cta">Xem phiếu nhập →</span>
+          </Link>
+
+          <Link href={stockAtScan ? `/ton-kho/${stockAtScan.id}` : '/ton-kho'} className="rfid-clickable-card" onClick={dismissScan}>
+            <div className="rfid-clickable-main">
+              <div className="rfid-clickable-copy">
+                <small>TỒN KHO & LỊCH SỬ THẺ KHO</small>
+                <strong>Tồn thực tế: {stockAtScan ? `${stockAtScan.onHand} ${scan.mappedSku?.product.unit ?? ''}` : 'Đã cập nhật'}</strong>
+                <span>Cộng thêm +{scannedParcel?.quantity ?? 0} {scan.mappedSku?.product.unit ?? scannedParcel?.product?.unit ?? ''} vào lô hàng tại {warehouse?.name}</span>
+              </div>
+            </div>
+            <span className="rfid-clickable-cta">Xem tồn kho & lịch sử →</span>
+          </Link>
         </div>
         <footer>
-          <button className="rfid-confirm" onClick={dismissScan}>Đóng</button>
+          <button className="rfid-confirm" onClick={dismissScan}>Hoàn tất & Đóng</button>
         </footer>
       </> : <>
         <span className="rfid-live-badge">{scan.eventType === 'CAMERA_CODE_DETECTED' ? 'CAMERA · QUÉT MÃ KIỆN' : 'RFID · LIVE IOT'}</span><h2 id="rfid-dialog-title">{scan.eventType === 'CAMERA_CODE_DETECTED' ? 'Đã đọc mã kiện bằng camera' : 'Đã quét thẻ RFID'}</h2>
-        <h3>{scan.mappedSku?.product.name ?? scannedParcel?.product?.name ?? 'Mã chưa liên kết sản phẩm'}</h3>
-        <dl><dt>{scan.eventType === 'CAMERA_CODE_DETECTED' ? 'Mã kiện' : 'UID thẻ RFID'}</dt><dd>{scan.tagId}</dd>
-        <dt>Số lượng đăng ký</dt><dd>{scannedParcel ? `${scannedParcel.quantity} ${scan.mappedSku?.product.unit ?? ''}` : 'Chưa có thông tin kiện'}</dd>
-        <dt>Đơn mua hàng</dt><dd>{scannedParcel?.purchaseOrderCode ?? orders.find(p => p.id === scannedParcel?.purchaseOrderId)?.code ?? scannedParcel?.purchaseOrderId ?? '—'}</dd>
-        <dt>Hạn sử dụng</dt><dd>{scannedParcel?.expiresAt?.slice(0, 10) ?? (scannedParcel?.noExpiry ? 'Không hạn sử dụng' : 'Chưa xác nhận')}</dd>
-        <dt>Kho nhận</dt><dd>{warehouse?.name}</dd><dt>Thiết bị</dt><dd>{scan.deviceId}</dd><dt>Thời gian quét</dt><dd>{new Date(scan.timestamp).toLocaleString('vi-VN')}</dd></dl>
-        <p role="status">{scan.automationMessage}</p>
+        <div className="rfid-product-hero">
+          <ProductImage src={scanProductImage} name={scanProductName} size="md" />
+          <div className="rfid-product-hero-copy">
+            <h3>{scanProductName}</h3>
+            {scannedParcel && (
+              <span>
+                Kiện đăng ký: <b>{scannedParcel.quantity} {scan.mappedSku?.product.unit ?? scannedParcel.product?.unit ?? ''}</b>
+                {stockAtScan ? ` · Tồn sau nhận dự kiến: ${stockAtScan.onHand + scannedParcel.quantity} ${scan.mappedSku?.product.unit ?? ''}` : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        <dl className="rfid-dl-grid">
+          <div><dt>{scan.eventType === 'CAMERA_CODE_DETECTED' ? 'Mã kiện' : 'UID thẻ RFID'}</dt><dd>{scan.tagId}</dd></div>
+          <div><dt>Số lượng đăng ký</dt><dd>{scannedParcel ? `${scannedParcel.quantity} ${scan.mappedSku?.product.unit ?? ''}` : 'Chưa có thông tin kiện'}</dd></div>
+          <div><dt>Đơn mua hàng</dt><dd>{scannedParcel?.purchaseOrderCode ?? orders.find(p => p.id === scannedParcel?.purchaseOrderId)?.code ?? scannedParcel?.purchaseOrderId ?? '—'}</dd></div>
+          <div><dt>Hạn sử dụng</dt><dd>{scannedParcel?.expiresAt?.slice(0, 10) ?? (scannedParcel?.noExpiry ? 'Không hạn sử dụng' : 'Chưa xác nhận')}</dd></div>
+          <div><dt>Kho nhận</dt><dd>{warehouse?.name}</dd></div>
+          <div><dt>Thời gian & Thiết bị</dt><dd>{new Date(scan.timestamp).toLocaleTimeString('vi-VN')} · {scan.deviceId}</dd></div>
+        </dl>
         {scan.warehouseId !== warehouseId && <p role="alert" className="live-error">Camera đã đọc đúng QR nhưng gửi từ {warehouses.find(w => w.id === scan.warehouseId)?.name ?? 'kho khác'}, trong khi kiện nhận tại {warehouse?.name}. Hãy dùng firmware mới và bắt đầu lại demo để camera nhận đúng kho của phiên này. Tồn kho chưa thay đổi.</p>}
         {scan.automationStatus === 'UNREGISTERED' && canReceive && (section === 'scene' ? <Link href="/kho/mo-hinh-3d/camera">Đăng ký kiện và tạo tem QR</Link> : <button onClick={() => captureTag(scan)}>Dùng UID này để đăng ký kiện</button>)}
-        {scannedParcel && <p>Số lượng lấy từ kiện đã đăng ký; mã quét chỉ dùng nhận diện. Hãy kiểm tra thực tế đủ {scannedParcel.quantity} {scan.mappedSku?.product.unit}, đúng lô và hàng nguyên vẹn trước khi xác nhận.{stockAtScan && ` Tồn hiện tại: ${stockAtScan.onHand}; dự kiến sau nhận: ${stockAtScan.onHand + scannedParcel.quantity} (nếu không có giao dịch khác).`}</p>}
         {scannedParcel && !scannedParcel.expiresAt && !scannedParcel.noExpiry && <div className="li-form"><label>Hạn sử dụng thực tế<input type="date" value={receiptExpiry} disabled={receiptNoExpiry} onChange={e => setReceiptExpiry(e.target.value)}/></label><label><input type="checkbox" checked={receiptNoExpiry} onChange={e => { setReceiptNoExpiry(e.target.checked); if (e.target.checked) setReceiptExpiry(''); }}/> Sản phẩm không có hạn sử dụng</label></div>}
         {!canReceive && <p>Bạn không có quyền xác nhận nhập hàng.</p>}
         {confirmError && <p role="alert" className="live-error">{confirmError}</p>}
@@ -521,6 +586,7 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
               <small>Thẻ RFID & Nhân viên kho</small>
             </button>
           )}
+
         </div>
       </div>
     </header>
@@ -571,16 +637,6 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
           <div className="live-demo-controls">
             {!accessKind && motion === 'WAITING_DISPATCH_CONFIRM' && <button onClick={() => setMotion('DISPATCHED')}>Xác nhận xuất kho</button>}
             {!accessKind && motion === 'WAITING_RECEIVE_CONFIRM' && <button onClick={() => setMotion('RECEIVED')}>Xác nhận nhận hàng</button>}
-            {accessKind && access.phase === 'SCANNING' && (
-              <button
-                type="button"
-                className="li-ghost"
-                style={{ borderColor: '#0d9488', color: '#0f766e', fontWeight: 600 }}
-                onClick={() => void access.action({ action: 'RFID', uid: '6563CC04' }, 'Đã quét thẻ thử: Lý Chí Chương (6563CC04)')}
-              >
-                📇 Quét thẻ thử (6563CC04)
-              </button>
-            )}
             {accessKind && access.door?.state === 'OPEN' && access.monitor.mode === 'SIMULATION' && <button className="li-ghost" disabled={access.busy} onClick={() => void access.close()}>Đóng cửa kết thúc</button>}
             {!running && <button disabled={!warehouseId || (accessKind ? !access.canSimulate : flow === 'inbound' && (!canReceive || queue.length > 0))} onClick={startDemo}>▶ {(accessKind ? access.phase : motion) === 'COMPLETE' ? 'Chạy lại' : 'Chạy demo'}</button>}
             {running && (accessKind ? <button className="li-ghost" onClick={resetDemo}>Dừng theo dõi</button> : <><button className="li-ghost" onClick={() => setPaused(v => !v)}>{paused ? 'Tiếp tục' : 'Tạm dừng'}</button><button className="li-ghost" onClick={resetDemo}>Đặt lại</button></>)}
@@ -592,10 +648,11 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
             </div>
           </div>
           {doorInspector && <aside className="wde-door-inspector"><header><strong>{access.door?.name ?? 'Cửa kho chính'}</strong><button type="button" className="li-ghost" onClick={() => setDoorInspector(false)} aria-label="Đóng chi tiết cửa">×</button></header><dl><dt>Kho</dt><dd>{warehouse?.name ?? '—'}</dd><dt>Door ID</dt><dd>{access.door?.code ?? '—'}</dd><dt>Reed Switch</dt><dd>{access.door?.state ?? 'UNKNOWN'}</dd><dt>Trạng thái</dt><dd>{access.activeAlerts.length ? 'WARNING' : access.door?.state ?? 'Chưa đăng ký'}</dd><dt>ESP32</dt><dd>{access.device?.online ? 'ONLINE' : 'OFFLINE'}</dd><dt>Thẻ gần nhất</dt><dd>{access.lastAccess?.employee?.name ?? '—'}</dd><dt>Sự kiện gần nhất</dt><dd>{access.monitor.events[0]?.eventType ?? '—'}</dd></dl></aside>}
-          {selected && <div className="li-selected"><ProductImage src={selected.sku.product.imageUrl} name={selected.sku.product.name} size="sm"/><div><strong>{selected.sku.product.name}</strong><small>Tồn {selected.onHand} {selected.sku.product.unit}</small></div><button type="button" className="li-close" aria-label="Bỏ chọn" onClick={() => setSelected(null)}>×</button></div>}
-          <div className="li-legend"><span><i className="rx" />Cổng nhận</span><span><i className="tx" />Cổng xuất</span><span>Kéo để xoay · cuộn để zoom · bấm thùng để xem</span></div>
+          {selected && <div className="li-selected"><ProductImage src={selected.sku.product.imageUrl} name={selected.sku.product.name} size="sm"/><div><strong>{selected.sku.product.name}</strong><small>Tồn tại kho: {selected.onHand} {selected.sku.product.unit}. Kệ chỉ minh họa, chưa có dữ liệu vị trí thực.</small></div><button type="button" className="li-close" aria-label="Bỏ chọn" onClick={() => setSelected(null)}>×</button></div>}
+          <div className="li-legend"><span><i className="rx" />Cổng nhận</span><span><i className="tx" />Cổng xuất</span><span>Kệ minh họa · tồn theo kho/SKU từ backend</span><span>Kéo để xoay · cuộn để zoom · bấm thùng để xem</span></div>
         </div>
-        <WarehouseCardStaffModal
+  {section === 'scene' && <WarehouseDoorPanel access={access} warehouseId={warehouseId} warehouseName={warehouse?.name ?? ''} active={!!accessKind}/>}
+            <WarehouseCardStaffModal
           isOpen={staffModalOpen}
           onClose={() => setStaffModalOpen(false)}
           access={access}
@@ -606,6 +663,8 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
           isOpen={accessKind !== null && access.phase === 'COMPLETE'}
           onClose={access.stop}
           onRestart={() => void access.start('authorized')}
+          onOpenStaffModal={() => setStaffModalOpen(true)}
+          onOpenDeviceDrawer={() => setDoorInspector(true)}
           access={access}
           warehouseName={warehouse?.name ?? 'Kho Ba Đình'}
         />

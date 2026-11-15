@@ -18,5 +18,5 @@ export type IotEvent = {
   tagMappingId?: string | null;
   mappedSkuId?: string | null;
   palletCode?: string | null;
-  mappedSku?: { id: string; code: string; product: { name: string; unit: string } } | null;
+  mappedSku?: { id: string; code: string; product: { name: string; unit: string; imageUrl?: string | null } } | null;
 };

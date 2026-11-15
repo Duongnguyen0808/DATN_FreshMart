@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const suite = process.env.TEST_DATABASE_URL ? describe : describe.skip;
-suite('Product management on PostgreSQL', () => {
+suite('Product management on SQL Server', () => {
   let db: typeof import('./common/database.js').prisma;
   let app: ReturnType<typeof import('./app.js').createApp>;
   let adminToken: string;

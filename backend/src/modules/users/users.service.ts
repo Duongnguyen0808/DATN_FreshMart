@@ -55,7 +55,7 @@ export async function getUser(actor: CurrentUser, id: string) {
 }
 export async function listUsers(actor: CurrentUser, query: z.infer<typeof listInput>) {
   const where: Prisma.UserWhereInput = { AND: [userScope(actor),
-    ...(query.q ? [{ OR: [{ name: { contains: query.q, mode: 'insensitive' as const } }, { email: { contains: query.q, mode: 'insensitive' as const } }] }] : []),
+    ...(query.q ? [{ OR: [{ name: { contains: query.q } }, { email: { contains: query.q } }] }] : []),
     ...(query.active ? [{ active: query.active === 'true' }] : []),
     ...(query.roleId ? [{ roles: { some: { roleId: query.roleId } } }] : []),
     ...(query.storeId ? [{ stores: { some: { storeId: query.storeId } } }] : []),
@@ -121,5 +121,63 @@ export async function saveUser(actor: CurrentUser, input: z.infer<typeof userUpd
     await tx.auditLog.create({ data: { actorId: actor.id, action: id ? 'user.update' : 'user.create', targetId: user.id } });
     if (id && passwordHash) await tx.auditLog.create({ data: { actorId: actor.id, action: 'user.password.reset', targetId: id } });
     return managedUser(user);
+  }, { isolationLevel: 'Serializable' });
+}
+
+export async function deleteUser(actor: CurrentUser, id: string) {
+  if (actor.id === id) {
+    throw new AppError(409, 'SELF_DELETE_FORBIDDEN', 'Không thể xóa tài khoản đang đăng nhập.');
+  }
+  await prisma.$transaction(async tx => {
+    actor = await currentActor(tx, actor);
+    const current = await tx.user.findUniqueOrThrow({ where: { id }, include: userInclude });
+    assertTarget(actor, current, true);
+    await protectLastOwner(tx, current, false, false);
+
+    // Nullify optional references
+    await tx.priceHistory.updateMany({ where: { changedById: id }, data: { changedById: null } });
+    await tx.workShift.updateMany({ where: { approvedById: id }, data: { approvedById: null } });
+    await tx.invoice.updateMany({ where: { cancelledById: id }, data: { cancelledById: null } });
+    await tx.inventoryTransaction.updateMany({ where: { actorId: id }, data: { actorId: null } });
+    await tx.iotEvent.updateMany({ where: { processedById: id }, data: { processedById: null } });
+    await tx.warehouseAccessEvent.updateMany({ where: { employeeId: id }, data: { employeeId: null } });
+    await tx.warehouseSecurityAlert.updateMany({ where: { employeeId: id }, data: { employeeId: null } });
+    await tx.stocktake.updateMany({ where: { approvedById: id }, data: { approvedById: null } });
+    await tx.stockTransfer.updateMany({ where: { approvedById: id }, data: { approvedById: null } });
+    await tx.stockTransfer.updateMany({ where: { dispatchedById: id }, data: { dispatchedById: null } });
+    await tx.stockTransfer.updateMany({ where: { receivedById: id }, data: { receivedById: null } });
+    await tx.stockTransfer.updateMany({ where: { cancelledById: id }, data: { cancelledById: null } });
+    await tx.stockTransfer.updateMany({ where: { discrepancyResolvedById: id }, data: { discrepancyResolvedById: null } });
+    await tx.purchaseRequest.updateMany({ where: { approvedById: id }, data: { approvedById: null } });
+    await tx.inventoryRecommendation.updateMany({ where: { decidedById: id }, data: { decidedById: null } });
+    await tx.lotDisposal.updateMany({ where: { approvedById: id }, data: { approvedById: null } });
+    await tx.lotDisposal.updateMany({ where: { completedById: id }, data: { completedById: null } });
+    await tx.auditLog.updateMany({ where: { actorId: id }, data: { actorId: null } });
+
+    // Remove assigned RFID access cards
+    await tx.warehouseAccessCard.deleteMany({ where: { employeeId: id } });
+
+    // Reassign required historical document actor references to the acting admin so history stays intact
+    const fallbackId = actor.id;
+    await tx.workShift.updateMany({ where: { cashierId: id }, data: { cashierId: fallbackId } });
+    await tx.invoice.updateMany({ where: { cashierId: id }, data: { cashierId: fallbackId } });
+    await tx.payosCheckout.updateMany({ where: { actorId: id }, data: { actorId: fallbackId } });
+    await tx.iotTagMapping.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.stocktake.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.stockTransfer.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.purchaseRequest.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.purchaseOrder.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.goodsReceipt.updateMany({ where: { receivedById: id }, data: { receivedById: fallbackId } });
+    await tx.payablePayment.updateMany({ where: { paidById: id }, data: { paidById: fallbackId } });
+    await tx.salesReturn.updateMany({ where: { processedById: id }, data: { processedById: fallbackId } });
+    await tx.supplierReturn.updateMany({ where: { processedById: id }, data: { processedById: fallbackId } });
+    await tx.receivablePayment.updateMany({ where: { paidById: id }, data: { paidById: fallbackId } });
+    await tx.inventoryRecommendation.updateMany({ where: { generatedById: id }, data: { generatedById: fallbackId } });
+    await tx.lotMovement.updateMany({ where: { actorId: id }, data: { actorId: fallbackId } });
+    await tx.lotDisposal.updateMany({ where: { createdById: id }, data: { createdById: fallbackId } });
+    await tx.iotInboundParcel.updateMany({ where: { registeredById: id }, data: { registeredById: fallbackId } });
+
+    await tx.user.delete({ where: { id } });
+    await tx.auditLog.create({ data: { actorId: actor.id, action: 'user.delete', targetId: id, metadata: JSON.stringify({ email: current.email, name: current.name }) } });
   }, { isolationLevel: 'Serializable' });
 }

@@ -174,10 +174,17 @@
 
 /* Scan confirmation dialog */
 .rfid-dialog-backdrop{position:fixed;inset:0;z-index:10000;background:rgba(12,34,33,.62);display:flex;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(5px)}
-.rfid-dialog{background:linear-gradient(180deg,#ecfaf7 0%,#ffffff 110px)!important;color:#123735;width:min(560px,100%);max-height:90vh;overflow:auto;border:1.5px solid #99e0d4!important;border-radius:20px!important;padding:26px 28px;box-shadow:0 24px 80px rgba(8,52,49,.28)!important;outline:none}
-.rfid-dialog h2{font-size:22px;margin:12px 0 6px;color:#0b3b38}.rfid-dialog h3{font-size:17px;margin:0 0 16px;padding:10px 14px;background:#e4f7f3;border-left:4px solid #0d9488;border-radius:8px;color:#0a4d48}.rfid-live-badge{display:inline-block;color:#065f46;background:linear-gradient(135deg,#a7f3d0,#d1fae5);border:1px solid #6ee7b7;border-radius:999px;padding:5px 13px;font-size:11.5px;font-weight:700;letter-spacing:.04em}
-.rfid-dialog dl{display:grid;grid-template-columns:145px 1fr;gap:10px 14px;font-size:13.5px;padding:14px 16px;margin:0 0 14px;background:#f4fbf9;border:1px solid #cde8e2;border-radius:12px}.rfid-dialog dt{color:#496a67;font-weight:500}.rfid-dialog dd{margin:0;overflow-wrap:anywhere;font-weight:700;color:#103835}.rfid-dialog p{padding:11px 14px;background:#eef7ff;border:1px solid #c7dff8;color:#19486a;border-radius:10px;margin:10px 0 0;font-size:13px;line-height:1.5}.rfid-dialog footer{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid #d9ece8}.rfid-dialog button{padding:10px 18px;border:1.5px solid #f2b8c0!important;border-radius:10px;cursor:pointer;background:#fff1f3!important;color:#be123c!important;font-weight:600}.rfid-dialog button:hover:not(:disabled){background:#ffe4e8!important;border-color:#e11d48!important}.rfid-dialog button.rfid-confirm{background:linear-gradient(135deg,#0d9488,#087f78)!important;color:white!important;border-color:#087f78!important;box-shadow:0 4px 12px rgba(8,127,120,.25)!important}.rfid-dialog button.rfid-confirm:hover:not(:disabled){background:linear-gradient(135deg,#0f766e,#065f59)!important}.rfid-dialog button:disabled{opacity:.5;cursor:not-allowed}.rfid-dialog button:focus-visible{outline:3px solid #2dd4bf;outline-offset:2px}
-@media(max-width:760px){.rfid-dialog{padding:18px;max-height:90dvh}.rfid-dialog dl{grid-template-columns:105px minmax(0,1fr)}.rfid-dialog footer{flex-wrap:wrap}.rfid-dialog footer button{flex:1;min-height:48px}}
+.rfid-dialog{background:#ffffff!important;color:#123735;width:min(680px,calc(100vw - 32px));max-height:90vh;overflow:auto;border:1.5px solid #99e0d4!important;border-radius:22px!important;padding:28px 32px;box-shadow:0 24px 80px rgba(8,52,49,.28)!important;outline:none}
+.rfid-dialog h2{font-size:22px;margin:10px 0 8px;color:#0b3b38}.rfid-dialog h3{font-size:17px;margin:0;color:#0a3835;font-weight:750}.rfid-live-badge{display:inline-block;color:#065f46;background:linear-gradient(135deg,#a7f3d0,#d1fae5);border:1px solid #6ee7b7;border-radius:999px;padding:5px 13px;font-size:11.5px;font-weight:700;letter-spacing:.04em}
+.rfid-product-hero{display:flex;align-items:center;gap:14px;padding:14px 16px;margin:0 0 14px;background:#f8fafc;border:1.5px solid #cde8e2;border-left:4px solid #0d9488;border-radius:14px;box-shadow:0 4px 12px rgba(15,61,62,.05)}
+.rfid-product-hero .product-image{width:56px;height:56px;flex:0 0 56px;border-radius:10px;border:1px solid #e2e8f0;background:#fff}
+.rfid-product-hero-copy{display:grid;gap:4px;min-width:0;flex:1;text-align:left}
+.rfid-product-hero-copy span{font-size:13.5px;color:#475569;line-height:1.4}
+.rfid-product-hero-copy span b{color:#0d7a73;font-weight:700}
+.rfid-dl-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;padding:14px 18px;margin:0 0 14px;background:#f8fafc;border:1px solid #d5e8e4;border-radius:14px}
+.rfid-dl-grid>div{display:grid;gap:3px;padding:4px 0}
+.rfid-dialog dt{color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}.rfid-dialog dd{margin:0;overflow-wrap:anywhere;font-size:14px;font-weight:700;color:#0f172a}.rfid-dialog p{padding:11px 14px;background:#eef7ff;border:1px solid #c7dff8;color:#19486a;border-radius:10px;margin:10px 0 0;font-size:13px;line-height:1.5}.rfid-dialog footer{display:flex;gap:12px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid #d9ece8}.rfid-dialog button{padding:10px 18px;border:1.5px solid #f2b8c0!important;border-radius:10px;cursor:pointer;background:#fff1f3!important;color:#be123c!important;font-weight:600}.rfid-dialog button:hover:not(:disabled){background:#ffe4e8!important;border-color:#e11d48!important}.rfid-dialog button.rfid-confirm{background:linear-gradient(135deg,#0d9488,#087f78)!important;color:white!important;border-color:#087f78!important;box-shadow:0 4px 12px rgba(8,127,120,.25)!important}.rfid-dialog button.rfid-confirm:hover:not(:disabled){background:linear-gradient(135deg,#0f766e,#065f59)!important}.rfid-dialog button:disabled{opacity:.5;cursor:not-allowed}.rfid-dialog button:focus-visible{outline:3px solid #2dd4bf;outline-offset:2px}
+@media(max-width:760px){.rfid-dialog{padding:20px;max-height:90dvh}.rfid-dl-grid{grid-template-columns:1fr}.rfid-dialog footer{flex-wrap:wrap}.rfid-dialog footer button{flex:1;min-height:48px}}
 .camera-scan-dialog{width:min(640px,calc(100vw - 28px));max-height:90vh;overflow:auto;margin:auto;padding:24px;border:1px solid #dce5df;border-radius:16px;background:#fff;color:#25372f}
 .camera-scan-dialog::backdrop{background:#10251dcc;backdrop-filter:blur(4px)}
 .camera-scan-dialog header{display:flex;align-items:flex-start;gap:16px;justify-content:space-between;margin-bottom:16px}
@@ -207,14 +214,31 @@
 .esp-workspace .camera-parcel-label code{overflow-wrap:anywhere}.esp-workspace .camera-parcel-label p button{margin:6px}
 .esp-prepare-dialog{width:min(760px,calc(100vw - 32px));padding:28px}.esp-prepare-dialog>p{color:#62766b;line-height:1.7}.esp-prepare-dialog .li-form{margin-top:24px;gap:20px}.esp-prepare-dialog .camera-parcel-label{padding:24px;background:#f2f6ed;border:1px dashed #b4c8aa;border-radius:12px;text-align:center}.esp-prepare-dialog code{overflow-wrap:anywhere}
 .esp-prepare-dialog:has(.li-replenishment){width:min(900px,calc(100vw - 32px));max-height:88dvh}
-.li-replenishment{margin:20px 0;padding:18px;border:1px solid #f0c7b9;border-radius:14px;background:#fff9f6}
-.li-replenishment header{margin:0 0 10px;align-items:center}.li-replenishment h3{margin:5px 0;font-size:17px;color:#743a2e}.li-replenishment-eyebrow{font-size:10px;letter-spacing:.08em;font-weight:700;color:#a04732}
-.li-replenishment>p{font-size:13px;line-height:1.6;color:#65736f}.li-replenishment header button{background:#fff;color:#087f78;border:1px solid #c9e2dd;flex:none;font-size:12px;padding:7px 10px}
-.li-replenishment-list{display:grid;gap:9px;max-height:310px;overflow:auto;padding:2px}.li-replenishment-list article{background:#fff;border:1px solid #eaded9;border-radius:11px;padding:12px}.li-replenishment-list article.selected{border-color:#65cfc7;background:#f5fcfa}
-.esp-prepare-dialog .li-replenishment .li-replenishment-pick{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;align-self:stretch;gap:12px;padding:0!important;margin:0;width:100%;cursor:pointer;min-width:0;text-align:left!important}.li-replenishment-pick>.product-image{width:48px;height:48px;flex:0 0 48px}.li-replenishment-pick>.li-replenishment-copy{display:grid;gap:5px;min-width:0;flex:1;text-align:left}.li-replenishment-pick strong{font-size:14px;overflow-wrap:anywhere}.li-replenishment-pick small{font-size:12px;color:#64766e}.li-replenishment-pick b{font-size:12px;color:#b74b35}
+.li-replenishment{margin:20px 0;padding:20px;border:1px solid #d7e8e4;border-radius:16px;background:linear-gradient(180deg,#f7fbfa 0%,#ffffff 100%);box-shadow:0 6px 20px rgba(15,61,62,.04)}
+.li-replenishment header{margin:0 0 10px;align-items:center}.li-replenishment h3{margin:5px 0;font-size:18px;color:#0f292e;font-weight:750}.li-replenishment-eyebrow{font-size:11px;letter-spacing:.08em;font-weight:750;color:#0b6b63}
+.li-replenishment>p{font-size:13.5px;line-height:1.6;color:#4f6865;margin:0 0 12px}.li-replenishment header button{background:#fff;color:#087f78;border:1px solid #b8ded7;flex:none;font-size:12.5px;font-weight:650;padding:8px 13px;border-radius:9px}
+.li-replenishment-list{display:grid;gap:10px;max-height:310px;overflow:auto;padding:2px}
+.li-replenishment-list article{background:#fff;border:1.5px solid #e2ece9;border-radius:13px;padding:13px 15px;transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease}
+.li-replenishment-list article.is-shortage:hover{border-color:#b9dcd5;box-shadow:0 4px 12px rgba(15,61,62,.05)}
+.li-replenishment-list article.is-covered{background:#f8fafc;border-color:#d8e3e0}
+.li-replenishment-list article.selected{border-color:#0d9488;background:#f2fbf9;box-shadow:0 4px 14px rgba(13,148,136,.1)}
+.esp-prepare-dialog .li-replenishment .li-replenishment-pick{display:flex!important;flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:flex-start!important;align-self:stretch;gap:14px;padding:0!important;margin:0;width:100%;cursor:pointer;min-width:0;text-align:left!important}
+.esp-prepare-dialog .li-replenishment .li-replenishment-pick.is-covered-row{cursor:default}
+.li-replenishment-check-spacer{width:18px;height:18px;flex:0 0 18px}
+.li-replenishment-pick>.product-image{width:50px;height:50px;flex:0 0 50px;border-radius:10px}
+.li-replenishment-pick>.li-replenishment-copy{display:grid;gap:6px;min-width:0;flex:1;text-align:left}
+.li-replenishment-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.li-replenishment-pick strong{font-size:15px;font-weight:700;color:#0f292e;overflow-wrap:anywhere}
+.li-replenishment-metrics{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.li-metric-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:7px;background:#f1f5f9;border:1px solid #e2e8f0;color:#475569;font-size:12px;font-weight:500}
+.li-metric-chip b{color:#0f292e;font-weight:700;font-size:12px}
+.li-replenishment-side{display:flex;align-items:center;justify-content:flex-end;flex:none;margin-left:auto}
+.li-shortage-badge{display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:#fff1f2;border:1px solid #fecdd3;color:#be123c!important;font-size:12.5px;font-weight:700;white-space:nowrap}
+.li-ordered-badge{display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:#e6f6f3;border:1px solid #b5e2da;color:#0b6b63!important;font-size:12.5px;font-weight:700;white-space:nowrap}
 .li-replenishment-values{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0 0 30px}.li-replenishment-values label{font-size:12px}
 @media(min-width:760px){.li-replenishment-list article.selected{display:grid;grid-template-columns:minmax(0,1fr) 270px;align-items:center;gap:16px}.li-replenishment-list article.selected .li-replenishment-values{margin:0;gap:10px}}
 .li-replenishment-checkout{display:grid;gap:10px;margin-top:15px}.li-replenishment-checkout>small{font-size:12px;color:#64766e;line-height:1.6}.li-replenishment-checkout>div{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.li-replenishment-checkout>div>strong{font-size:14px}.li-replenishment-checkout button{background:#087f78}.li-replenishment button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:640px){.esp-prepare-dialog .li-replenishment .li-replenishment-pick{flex-wrap:wrap!important}.li-replenishment-side{width:100%;justify-content:flex-start;margin-left:0;padding-left:44px}}
 @media(max-width:600px){.esp-prepare-dialog:has(.li-replenishment){padding:17px}.li-replenishment{padding:12px}.li-replenishment header{flex-wrap:wrap}.li-replenishment-values{margin-left:0;grid-template-columns:1fr}.li-replenishment-checkout>div>button{width:100%}}
 .esp-guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.esp-guide article{padding:20px;background:#eef5ed;border:1px solid #d4e3d2;border-radius:12px}.esp-guide b{display:block;color:#315b43;margin-bottom:10px}.esp-guide p{margin:0;color:#607765;font-size:13px!important;line-height:1.7}
 @media(max-width:800px){.esp-station{flex-wrap:wrap;padding:20px}.esp-station-status{border-left:0;border-top:1px solid #496e5e;padding:16px 0 0;max-width:none;width:100%}.esp-guide{grid-template-columns:1fr}.esp-workspace .li-card{padding:18px}.esp-workspace .esp-checkbox{padding-top:0}}
@@ -265,19 +289,28 @@
 @keyframes li-camera-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.li-camera-spinner{animation:none}}
 @media (max-width: 680px) { .li-qr-columns { grid-template-columns: 1fr; } .li-qr-modal { padding: 20px; } }
-.rfid-dialog.is-processed{width:min(480px,calc(100vw - 32px));padding:28px 24px 22px;text-align:center}
-.rfid-success-hero{display:grid;justify-items:center;gap:6px;margin-bottom:16px}
-.rfid-success-icon{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#10b981,#0d9488);color:#fff;font-size:28px;font-weight:800;box-shadow:0 8px 20px rgba(13,148,136,.28);margin-bottom:4px}
-.rfid-success-sub{margin:0;font-size:13px;color:#0f766e;font-weight:600}
-.rfid-success-summary{display:grid;gap:12px;padding:16px;border-radius:14px;background:linear-gradient(180deg,#f0fdfa 0%,#f8fafc 100%);border:1px solid #99f6e4;text-align:left;margin-bottom:14px}
-.rfid-success-product{display:grid;gap:3px;padding-bottom:10px;border-bottom:1px dashed #cbd5e1}
-.rfid-success-product strong{font-size:16px;color:#0f3d3e}
-.rfid-success-product span{font-size:12px;color:#475569;overflow-wrap:anywhere}
-.rfid-success-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px}
-.rfid-success-metrics div{display:grid;gap:3px;padding:10px;border-radius:10px;background:#fff;border:1px solid #e2e8f0}
-.rfid-success-metrics span{font-size:11px;color:#64748b}
-.rfid-success-metrics b{font-size:14px;color:#0f766e}
-.rfid-success-links{display:flex;justify-content:center;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;margin:10px 0 4px}
-.rfid-success-links a{color:#0d9488;font-weight:600;text-decoration:none}
-.rfid-success-links a:hover{text-decoration:underline}
-@media(max-width:520px){.rfid-success-metrics{grid-template-columns:1fr}}
+.rfid-dialog.is-processed{width:min(680px,calc(100vw - 32px));padding:28px 32px;text-align:left}
+.rfid-success-hero{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.rfid-success-hero-copy{display:grid;gap:4px;min-width:0;flex:1}
+.rfid-success-hero-copy h2{margin:2px 0 0;font-size:22px;color:#0f172a}
+.rfid-success-icon{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(135deg,#10b981,#0d9488);color:#fff;font-size:24px;font-weight:800;box-shadow:0 8px 20px rgba(13,148,136,.24);flex:0 0 48px}
+.rfid-dialog.is-processed p.rfid-success-sub{margin:0;padding:0;background:transparent;border:none;font-size:13.5px;color:#475569;font-weight:500}
+.rfid-success-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.rfid-metric-card{display:grid;gap:4px;padding:14px 18px;border-radius:14px;background:#f8fafc;border:1px solid #cbd5e1}
+.rfid-metric-card.is-plus{background:#f0fdfa;border-color:#99f6e4}
+.rfid-metric-card small{font-size:11px;font-weight:800;letter-spacing:.04em;color:#475569}
+.rfid-metric-card.is-plus small{color:#0f766e}
+.rfid-metric-card b{font-size:20px;font-weight:800;color:#0f172a}
+.rfid-metric-card b.plus{color:#0d9488}
+.rfid-clickable-list{display:grid;gap:10px}
+.rfid-clickable-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border-radius:14px;background:#ffffff;border:1.5px solid #dbe4e2;text-decoration:none;color:inherit;transition:all .16s ease}
+.rfid-clickable-card:hover{border-color:#0d9488;background:#f0fdfa;transform:translateY(-1px);box-shadow:0 8px 20px -10px rgba(13,148,136,.25)}
+.rfid-clickable-main{display:flex;align-items:center;gap:14px;min-width:0;flex:1}
+.rfid-clickable-main .product-image{width:54px;height:54px;flex:0 0 54px;border-radius:10px;border:1px solid #e2e8f0;background:#fff}
+.rfid-clickable-copy{display:grid;gap:3px;min-width:0;flex:1}
+.rfid-clickable-copy small{font-size:10.5px;font-weight:800;letter-spacing:.05em;color:#64748b}
+.rfid-clickable-copy strong{font-size:15.5px;font-weight:800;color:#0f172a;overflow-wrap:anywhere}
+.rfid-clickable-copy span{font-size:13px;color:#475569;line-height:1.4}
+.rfid-clickable-cta{flex:none;font-size:13px;font-weight:800;color:#0d9488;white-space:nowrap}
+.li-demo-scan-btn{padding:10px 16px!important;border-radius:10px!important;font-size:13px!important;font-weight:750!important;cursor:pointer;box-shadow:0 6px 18px rgba(13,148,136,.25)!important}
+@media(max-width:580px){.rfid-success-metrics{grid-template-columns:1fr}.rfid-clickable-card{flex-direction:column;align-items:flex-start}}

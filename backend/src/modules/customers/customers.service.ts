@@ -28,7 +28,7 @@ const duplicate = (error: unknown) => error instanceof Prisma.PrismaClientKnownR
 export async function listCustomers(input: z.infer<typeof customerListInput>) {
   const where: Prisma.CustomerWhereInput = {
     ...(input.active === 'all' ? {} : { active: input.active === 'true' }),
-    ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' } }, { name: { contains: input.q, mode: 'insensitive' } }, { phone: { contains: input.q } }, { email: { contains: input.q, mode: 'insensitive' } }] } : {}),
+    ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }, { phone: { contains: input.q } }, { email: { contains: input.q } }] } : {}),
   };
   const skip = (input.page - 1) * input.pageSize;
   const [rows, total, active, inactive] = await Promise.all([

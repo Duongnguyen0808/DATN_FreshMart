@@ -32,7 +32,21 @@ type Options = { forecastRunId: string | null; horizonDays: number; storeName: s
 type Line = { selected: boolean; quantity: string; unitCost: string };
 const money = (value: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 
-export function ForecastReplenishment({ warehouseId, onCreated, onBusy }: { warehouseId: string; onCreated: (order: PurchaseOrder) => Promise<void>; onBusy: (busy: boolean) => void }) {
+export function ForecastReplenishment({
+  warehouseId,
+  readyParcels = [],
+  selectedParcelId = '',
+  onSelectParcel,
+  onCreated,
+  onBusy,
+}: {
+  warehouseId: string;
+  readyParcels?: CameraParcel[];
+  selectedParcelId?: string;
+  onSelectParcel?: (parcelId: string) => void;
+  onCreated: (order: PurchaseOrder) => Promise<void>;
+  onBusy: (busy: boolean) => void;
+}) {
   const [options, setOptions] = useState<Options | null>(null), [loading, setLoading] = useState(true), [error, setError] = useState('');
   const [lines, setLines] = useState<Record<string, Line>>({}), [supplierId, setSupplierId] = useState('');
   const [creating, setCreating] = useState(false), [created, setCreated] = useState<PurchaseOrder | null>(null), [version, setVersion] = useState(0);
@@ -71,9 +85,32 @@ export function ForecastReplenishment({ warehouseId, onCreated, onBusy }: { ware
         <div className="li-replenishment-list">{options.items.map(row => {
           const line = lines[row.skuId]; if (!line) return null;
           const covered = row.suggestedQuantity <= 0;
-          return <article key={row.skuId} className={line.selected ? 'selected' : ''}>
-            <label className="li-replenishment-pick"><input type="checkbox" checked={line.selected} disabled={creating || covered} onChange={e => change(row.skuId, { selected: e.target.checked })}/><ProductImage src={row.imageUrl} name={row.productName} size="md"/><span className="li-replenishment-copy"><strong>{row.productName}</strong><small>Còn {row.available} {row.unit} · Đã đặt, chưa nhận {row.pendingQuantity} {row.unit}</small><b>{covered ? 'Đã có đơn chờ nhận' : `Cần đặt thêm ${row.suggestedQuantity} ${row.unit}`}</b></span></label>
-            {line.selected && <div className="li-replenishment-values"><label>Số lượng ({row.unit})<input type="number" min="1" max={row.suggestedQuantity} step="1" value={line.quantity} disabled={creating} onChange={e => change(row.skuId, { quantity: e.target.value })}/></label><label>Giá nhập / {row.unit}<input type="number" min="0.01" step="0.01" value={line.unitCost} disabled={creating} onChange={e => change(row.skuId, { unitCost: e.target.value })}/></label></div>}
+          return <article key={row.skuId} className={`${covered ? 'is-covered' : 'is-shortage'} ${line.selected ? 'selected' : ''}`}>
+            <label className={`li-replenishment-pick ${covered ? 'is-covered-row' : ''}`}>
+              {covered ? (
+                <span className="li-replenishment-check-spacer" aria-hidden="true" />
+              ) : (
+                <input type="checkbox" checked={line.selected} disabled={creating} onChange={e => change(row.skuId, { selected: e.target.checked })}/>
+              )}
+              <ProductImage src={row.imageUrl} name={row.productName} size="md"/>
+              <span className="li-replenishment-copy">
+                <span className="li-replenishment-title-row">
+                  <strong>{row.productName}</strong>
+                </span>
+                <span className="li-replenishment-metrics">
+                  <span className="li-metric-chip">Tồn kho: <b>{row.available} {row.unit}</b></span>
+                  <span className="li-metric-chip">Chờ nhận: <b>{row.pendingQuantity} {row.unit}</b></span>
+                </span>
+              </span>
+              <span className="li-replenishment-side">
+                {covered ? (
+                  <b className="li-ordered-badge">Đã lên đơn mua hàng</b>
+                ) : (
+                  <b className="li-shortage-badge">Cần đặt thêm {row.suggestedQuantity} {row.unit}</b>
+                )}
+              </span>
+            </label>
+            {!covered && line.selected && <div className="li-replenishment-values"><label>Số lượng ({row.unit})<input type="number" min="1" max={row.suggestedQuantity} step="1" value={line.quantity} disabled={creating} onChange={e => change(row.skuId, { quantity: e.target.value })}/></label><label>Giá nhập / {row.unit}<input type="number" min="0.01" step="0.01" value={line.unitCost} disabled={creating} onChange={e => change(row.skuId, { unitCost: e.target.value })}/></label></div>}
           </article>;
         })}</div>
         {selected.length > 0 && <div className="li-replenishment-checkout"><label>Nhà cung cấp cho các mặt hàng đã chọn<select value={supplierId} disabled={creating} onChange={e => setSupplierId(e.target.value)}><option value="">Chọn nhà cung cấp</option>{options.suppliers.map(s => <option key={s.id} value={s.id}>{s.code} · {s.name}</option>)}</select></label><small>Giá gợi ý lấy từ giá vốn sản phẩm; kiểm tra lại theo báo giá nhà cung cấp. Số lượng tính theo đơn vị tồn kho.</small><div><strong>{selected.length} mặt hàng · {money(total)}</strong><button type="button" disabled={creating || !supplierId || !valid} onClick={() => void create()}>{creating ? 'Đang tạo đơn…' : 'Xác nhận tạo đơn mua hàng'}</button></div></div>}
@@ -83,7 +120,7 @@ export function ForecastReplenishment({ warehouseId, onCreated, onBusy }: { ware
   </section>;
 }
 
-export type CameraParcel = { id: string; tagId: string; deviceId: string; quantity: number; status: string; purchaseOrderItemId?: string; purchaseOrderCode?: string; purchaseOrderStatus?: string; expiresAt: string | null; noExpiry?: boolean; product?: { name: string; unit: string } };
+export type CameraParcel = { id: string; tagId: string; deviceId: string; quantity: number; status: string; purchaseOrderItemId?: string; purchaseOrderCode?: string; purchaseOrderStatus?: string; expiresAt: string | null; noExpiry?: boolean; product?: { name: string; unit: string; imageUrl?: string | null } };
 export function PrepareCameraDemo({ orders, parcels, warehouses, warehouseId, onWarehouseChange, onClose, onStart }: { orders: PurchaseOrder[]; parcels: CameraParcel[]; warehouses: Warehouse[]; warehouseId: string; onWarehouseChange: (id: string) => void; onClose: () => void; onStart: (parcel: CameraParcel) => void }) {
   const { user } = useAuth();
   const dialog = useRef<HTMLDialogElement>(null);
@@ -108,7 +145,7 @@ export function PrepareCameraDemo({ orders, parcels, warehouses, warehouseId, on
     <header><h2>Chuẩn bị nhập kho</h2><button disabled={busy} onClick={onClose} aria-label="Đóng">×</button></header>
     <p>Chọn chi nhánh nhận hàng, sau đó chọn kiện từ đơn mua hàng. Mã QR sẽ hiện ở bước camera quét.</p>
     <label>Chi nhánh · kho nhận<select disabled={busy} value={warehouseId} onChange={event => onWarehouseChange(event.target.value)}>{warehouses.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label>
-    {(user?.permissions.includes('purchase_orders.create') || user?.permissions.includes('*')) && <ForecastReplenishment key={warehouseId} warehouseId={warehouseId} onBusy={setCreatingOrder} onCreated={async order => {
+    {(user?.permissions.includes('purchase_orders.create') || user?.permissions.includes('*')) && <ForecastReplenishment key={warehouseId} warehouseId={warehouseId} readyParcels={ready} selectedParcelId={selectedId} onSelectParcel={setSelectedId} onBusy={setCreatingOrder} onCreated={async order => {
       try {
         const rows = await api<(CameraParcel & { purchaseOrderId: string })[]>(`iot/inbound-parcels?warehouseId=${encodeURIComponent(warehouseId)}`);
         setAvailable(rows); setSelectedId(rows.find(row => row.purchaseOrderId === order.id && row.status === 'READY')?.id ?? '');

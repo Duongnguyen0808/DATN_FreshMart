@@ -6,6 +6,7 @@ export type InventoryRecommendation = {
   priority: 'HIGH' | 'MEDIUM' | 'LOW' | null;
   skuId: string; skuCode: string; productCode: string; imageUrl: string | null; productName: string; unit: string;
   suggestedQuantity: number; finalQuantity: number | null; decisionNote: string | null;
+  selectionBasis: string;
   createdAt: string; decidedAt: string | null;
   targetStore: { id: string; code: string; name: string };
   sourceWarehouse: { id: string; code: string; name: string; store: { id: string; code: string; name: string } } | null;

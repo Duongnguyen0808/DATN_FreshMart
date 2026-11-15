@@ -18,7 +18,9 @@ describe('temporary camera demo warehouse', () => {
   });
   it('binds a ready parcel only after checking warehouse scope', async () => {
     await expect(startCameraDemo(actor, parcel.id)).resolves.toHaveProperty('sessionId', 'session');
-    expect(db.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ metadata: expect.objectContaining({ warehouseId: parcel.warehouseId, tagId: parcel.tagId }) }) }));
+    const createdData = db.auditLog.create.mock.calls[0][0].data;
+    const meta = typeof createdData.metadata === 'string' ? JSON.parse(createdData.metadata) : createdData.metadata;
+    expect(meta).toMatchObject({ warehouseId: parcel.warehouseId, tagId: parcel.tagId });
     await expect(startCameraDemo({ ...actor, stores: [] }, parcel.id)).rejects.toMatchObject({ status: 403 });
   });
   it('refuses closed parcels and another operator taking an active camera', async () => {

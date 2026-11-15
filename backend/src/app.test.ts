@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 let createApp: typeof import('./app.js').createApp;
 beforeAll(async () => {
-  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/smart_store';
+  process.env.DATABASE_URL ??= 'sqlserver://localhost:14333;database=smart_store;user=sa;password=test;encrypt=false;trustServerCertificate=true';
   process.env.LOG_LEVEL = 'silent';
   process.env.JWT_SECRET = 'test-only-secret-at-least-32-characters';
   ({ createApp } = await import('./app.js'));

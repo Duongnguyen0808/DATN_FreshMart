@@ -69,9 +69,9 @@ Hỗ trợ horizon 7, 14 hoặc 28 ngày.
 
 ## AI Service cho dự báo vận hành
 
-Web Admin gửi yêu cầu qua Node.js Backend. Backend lấy doanh số và tồn kho trong phạm vi quyền, gọi Python AI Service tại `POST /forecast/demand`, sau đó lưu kết quả vào PostgreSQL. Kết quả dự báo nghiệp vụ xem ở trang **Dự báo nhu cầu**. Báo cáo nghiên cứu được đọc qua `GET /api/v1/forecasts/experiment` (quyền `reports.read`), proxy tới `GET /ai/experiment`; thao tác xem báo cáo không khởi chạy huấn luyện.
+Web Admin gửi yêu cầu qua Node.js Backend. Backend lấy doanh số và tồn kho trong phạm vi quyền, gọi Python AI Service tại `POST /forecast/demand`, sau đó lưu kết quả vào SQL Server. Kết quả dự báo nghiệp vụ xem ở trang **Dự báo nhu cầu**. Báo cáo nghiên cứu được đọc qua `GET /api/v1/forecasts/experiment` (quyền `reports.read`), proxy tới `GET /ai/experiment`; thao tác xem báo cáo không khởi chạy huấn luyện.
 
-Forecast vận hành **không dùng model đã train trên M5**. Mỗi lần tạo forecast, backend gửi tối đa 180 ngày bán hàng thật của từng SKU/chi nhánh. API so sánh Moving Average 7 ngày, Seasonal Naive 7 ngày, Random Forest và XGBoost trên validation theo thời gian; model có MAE thấp nhất được dùng, còn thiếu dữ liệu thì dùng baseline. Terminal AI Service ghi model thắng và MAE validation. Forecast 14 ngày được backend tự tạo mỗi ngày; mỗi lần Mobile xem cảnh báo, hệ thống tính lại thiếu hàng theo tồn, hàng đang về và tồn an toàn mới nhất.
+Forecast vận hành **không dùng model đã train trên M5**. Mỗi lần tạo forecast, backend gửi tối đa 366 ngày bán hàng thật của từng SKU/chi nhánh. API so sánh Moving Average 7 ngày, Seasonal Naive 7 ngày, Ridge, Random Forest, Extra Trees, Gradient Boosting và XGBoost trên validation theo thời gian; model có MAE thấp nhất được dùng, còn thiếu dữ liệu thì dùng baseline. Terminal AI Service ghi model thắng và MAE validation. Forecast 7 và 14 ngày được backend tự tạo mỗi ngày; mỗi lần Mobile xem cảnh báo, hệ thống tính lại thiếu hàng theo tồn, hàng đang về và tồn an toàn mới nhất.
 
 Mobile hiển thị dự báo ngắn ngay trong màn **Tồn kho**, cảnh báo trong **Thông báo** và nhiệm vụ ưu tiên tại **Trang chủ**. Các thao tác này dùng endpoint chỉ đọc yêu cầu quyền `inventory.read`; quyền duyệt và phân tích toàn chuỗi vẫn thuộc Web Admin. Nhận hàng, điều chuyển hoặc mua thêm vẫn cần luồng chứng từ bình thường và quản lý phê duyệt.
 
@@ -82,6 +82,16 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Backend mặc định dùng `AI_SERVICE_URL=http://127.0.0.1:8000`.
+
+## Đối chiếu chính sách tồn kho trên M5
+
+`train_ai.py` ghi thêm `data/output/inventory_policy_backtest.json` và
+`data/output/inventory_policy_trace.csv`. Báo cáo HTML hiển thị hai chính sách
+trên cùng 28 ngày test: điểm đặt hàng cố định theo trung bình 28 ngày trước test,
+và điểm đặt hàng theo dự báo đã chốt trước test. Cả hai dùng cùng tồn đầu kỳ giả
+định, thời gian nhận hàng 3 ngày và mức bao phủ 7 ngày. Chỉ so sánh ngày thiếu,
+lượng thiếu, tỷ lệ đáp ứng và tồn bình quân; không suy ra chi phí hay hiệu quả
+thực tế tại FreshMart. Bán hàng M5 chỉ là dữ liệu đại diện cho nhu cầu.
 
 Kiểm thử AI:
 

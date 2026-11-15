@@ -1,4 +1,6 @@
-import { takeLots, receiveLot, restoreCancelledLots } from '../inventory/lot-stock.js';
+import { takeLots, receiveLot, restoreCancelledLots, expired, warehouseToday } from '../inventory/lot-stock.js';
+import { buildFefoPromoCode, calculateFefoPromoDiscount, parseFefoPromoLotCode, resolveFefoDiscountPercent } from '../forecasts/fefo-promo.js';
+import { publishInventoryUpdate } from '../iot/iot.realtime.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
 import { AppError } from '../../common/app-error.js';
@@ -33,7 +35,7 @@ export async function listInvoices(user: CurrentUser, input: z.infer<typeof invo
   if (input.storeId) assertStoreScope(user, input.storeId);
   const where: Prisma.InvoiceWhereInput = { ...visibleWhere(user), ...(input.status === 'all' ? {} : { status: input.status }), ...(input.storeId ? { storeId: input.storeId } : {}), ...(input.shiftId ? { shiftId: input.shiftId } : {}),
     ...(input.from || input.to ? { completedAt: { ...(input.from ? { gte: input.from } : {}), ...(input.to ? { lte: input.to } : {}) } } : {}),
-    ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' } }, { customerName: { contains: input.q, mode: 'insensitive' } }, { customerPhone: { contains: input.q } }, { cashier: { name: { contains: input.q, mode: 'insensitive' } } }] } : {}) };
+    ...(input.q ? { OR: [{ code: { contains: input.q } }, { customerName: { contains: input.q } }, { customerPhone: { contains: input.q } }, { cashier: { name: { contains: input.q } } }] } : {}) };
   const base = visibleWhere(user); const skip = (input.page - 1) * input.pageSize;
   const [items, total, completed, cancelled, revenue] = await Promise.all([
     prisma.invoice.findMany({ where, include: includeInvoice, orderBy: { completedAt: 'desc' }, skip, take: input.pageSize }), prisma.invoice.count({ where }),
@@ -64,11 +66,11 @@ export async function listInvoicePayments(user: CurrentUser, input: z.infer<type
     method: { not: 'CARD' },
     invoice: invoiceWhere,
     ...(input.q ? { OR: [
-      { reference: { contains: input.q, mode: 'insensitive' } },
-      { invoice: { code: { contains: input.q, mode: 'insensitive' } } },
-      { invoice: { customerName: { contains: input.q, mode: 'insensitive' } } },
+      { reference: { contains: input.q } },
+      { invoice: { code: { contains: input.q } } },
+      { invoice: { customerName: { contains: input.q } } },
       { invoice: { customerPhone: { contains: input.q } } },
-      { invoice: { cashier: { name: { contains: input.q, mode: 'insensitive' } } } },
+      { invoice: { cashier: { name: { contains: input.q } } } },
     ] } : {}),
   };
   const where: Prisma.InvoicePaymentWhereInput = { ...baseWhere, ...(input.method === 'all' ? {} : { method: input.method }) };
@@ -98,11 +100,11 @@ export async function listSalesReturns(user: CurrentUser, input: z.infer<typeof 
     ...(input.refundMethod === 'all' ? {} : { refundMethod: input.refundMethod }),
     ...(from || to ? { createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}),
     ...(input.q ? { OR: [
-      { code: { contains: input.q, mode: 'insensitive' } },
-      { invoice: { code: { contains: input.q, mode: 'insensitive' } } },
-      { invoice: { customerName: { contains: input.q, mode: 'insensitive' } } },
+      { code: { contains: input.q } },
+      { invoice: { code: { contains: input.q } } },
+      { invoice: { customerName: { contains: input.q } } },
       { invoice: { customerPhone: { contains: input.q } } },
-      { processedBy: { name: { contains: input.q, mode: 'insensitive' } } },
+      { processedBy: { name: { contains: input.q } } },
     ] } : {}),
   };
   const itemWhere: Prisma.SalesReturnItemWhereInput = { salesReturn: where };
@@ -119,6 +121,146 @@ export async function listSalesReturns(user: CurrentUser, input: z.infer<typeof 
     pagination: { page: input.page, pageSize: input.pageSize, total, totalPages: Math.max(1, Math.ceil(total / input.pageSize)) },
     summary: { total, refundAmount: Number(amounts._sum.refundAmount ?? 0), restockedQuantity: restocked._sum.quantity ?? 0, nonRestockedQuantity: rejected._sum.quantity ?? 0 },
   };
+}
+
+const DAY_MS = 86_400_000;
+const daysUntilExpiry = (expiresAt: Date | null, today: Date) =>
+  expiresAt === null ? null : Math.floor((expiresAt.getTime() - today.getTime()) / DAY_MS);
+
+export async function listFefoPromoCodes(user: CurrentUser, warehouseId: string) {
+  const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { id: true, storeId: true, active: true } });
+  if (!warehouse || !warehouse.active) throw new AppError(404, 'WAREHOUSE_NOT_FOUND', 'Không tìm thấy kho hoạt động.');
+  assertStoreScope(user, warehouse.storeId);
+  const today = warehouseToday();
+  const lots = await prisma.inventoryLot.findMany({
+    where: {
+      quantity: { gt: 0 },
+      status: 'AVAILABLE',
+      expiresAt: { not: null },
+      inventory: { warehouseId, sku: { active: true, product: { active: true } } },
+    },
+    include: { inventory: { include: { sku: { include: { product: true } } } } },
+    orderBy: [{ expiresAt: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  return lots
+    .map(lot => {
+      const isExpired = expired(lot.expiresAt);
+      const daysRemaining = daysUntilExpiry(lot.expiresAt, today);
+      const discountPercent = isExpired ? 0 : resolveFefoDiscountPercent(daysRemaining);
+      if (isExpired || discountPercent <= 0 || daysRemaining === null) return null;
+      const sellingPrice = Number(lot.inventory.sku.sellingPrice);
+      const unit = lot.inventory.sku.product.unit;
+      return {
+        promoCode: buildFefoPromoCode(lot.code),
+        lotId: lot.id,
+        lotCode: lot.code,
+        skuId: lot.inventory.skuId,
+        skuCode: lot.inventory.sku.code,
+        productName: lot.inventory.sku.product.name,
+        unit,
+        sellingPrice,
+        lotQuantity: lot.quantity,
+        expiresAt: lot.expiresAt!.toISOString(),
+        daysRemaining,
+        discountPercent,
+        maxDiscountAmount: Math.round(lot.quantity * sellingPrice * (discountPercent / 100)),
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+}
+
+type PromoVerificationItem = {
+  promoCode: string;
+  lotId: string;
+  lotCode: string;
+  skuId: string;
+  productName: string;
+  unit: string;
+  expiresAt: string;
+  daysRemaining: number;
+  lotQuantity: number;
+  cartQuantity: number;
+  eligibleQuantity: number;
+  discountPercent: number;
+  sellingPrice: number;
+  discountAmount: number;
+  proofSummary: string;
+};
+
+async function resolveVerifiedFefoPromos(
+  tx: Prisma.TransactionClient | typeof prisma,
+  warehouseId: string,
+  promoCodes: string[],
+  items: { skuId: string; quantity: number }[],
+) {
+  const uniqueLotCodes = [...new Set(promoCodes.map(parseFefoPromoLotCode).filter((code): code is string => Boolean(code)))];
+  if (!uniqueLotCodes.length) throw new AppError(400, 'FEFO_PROMO_INVALID', 'Mã khuyến mãi FEFO không hợp lệ.');
+  const today = warehouseToday();
+  const itemQtyBySku = new Map(items.map(item => [item.skuId, item.quantity]));
+
+  const lots = await tx.inventoryLot.findMany({
+    where: {
+      code: { in: uniqueLotCodes },
+      inventory: { warehouseId },
+    },
+    include: { inventory: { include: { sku: { include: { product: true } } } } },
+  });
+  const lotByCode = new Map(lots.map(lot => [lot.code.trim().toUpperCase(), lot]));
+
+  const verified: PromoVerificationItem[] = [];
+  for (const lotCode of uniqueLotCodes) {
+    const lot = lotByCode.get(lotCode);
+    if (!lot) throw new AppError(400, 'FEFO_PROMO_INVALID', `Không tìm thấy lô ${lotCode} tại kho xuất hàng.`);
+    if (lot.status !== 'AVAILABLE') throw new AppError(409, 'FEFO_PROMO_UNAVAILABLE', `Lô ${lotCode} đang ở trạng thái ${lot.status}, không thể áp mã xả cận hạn.`);
+    const skuId = lot.inventory.skuId;
+    const cartQuantity = itemQtyBySku.get(skuId) ?? 0;
+    if (cartQuantity <= 0) throw new AppError(400, 'FEFO_PROMO_SKU_NOT_IN_CART', `Sản phẩm "${lot.inventory.sku.product.name}" của mã FEFO-${lotCode} chưa có trong giỏ hàng.`);
+
+    const daysRemaining = daysUntilExpiry(lot.expiresAt, today);
+    const calc = calculateFefoPromoDiscount({
+      lotCode,
+      lotQuantity: lot.quantity,
+      daysRemaining,
+      expired: expired(lot.expiresAt),
+      sellingPrice: Number(lot.inventory.sku.sellingPrice),
+      cartQuantity,
+      unit: lot.inventory.sku.product.unit,
+    });
+    if (!calc.eligible || daysRemaining === null || !lot.expiresAt) {
+      throw new AppError(400, 'FEFO_PROMO_INVALID', calc.reason ?? `Mã FEFO-${lotCode} không đủ điều kiện áp dụng.`);
+    }
+    verified.push({
+      promoCode: calc.promoCode,
+      lotId: lot.id,
+      lotCode,
+      skuId,
+      productName: lot.inventory.sku.product.name,
+      unit: lot.inventory.sku.product.unit,
+      expiresAt: lot.expiresAt.toISOString(),
+      daysRemaining,
+      lotQuantity: lot.quantity,
+      cartQuantity,
+      eligibleQuantity: calc.eligibleQuantity,
+      discountPercent: calc.discountPercent,
+      sellingPrice: calc.sellingPrice,
+      discountAmount: calc.discountAmount,
+      proofSummary: calc.proofSummary,
+    });
+  }
+
+  const totalDiscount = verified.reduce((sum, item) => sum + item.discountAmount, 0);
+  return { promos: verified, totalDiscount };
+}
+
+export async function verifyFefoPromoForCart(
+  user: CurrentUser,
+  input: { warehouseId: string; promoCodes: string[]; items: { skuId: string; quantity: number }[] },
+) {
+  const warehouse = await prisma.warehouse.findUnique({ where: { id: input.warehouseId }, select: { id: true, storeId: true, active: true } });
+  if (!warehouse || !warehouse.active) throw new AppError(404, 'WAREHOUSE_NOT_FOUND', 'Không tìm thấy kho hoạt động.');
+  assertStoreScope(user, warehouse.storeId);
+  return resolveVerifiedFefoPromos(prisma, input.warehouseId, input.promoCodes, input.items);
 }
 
 export async function createInvoice(user: CurrentUser, input: z.infer<typeof createInvoiceInput>) {
@@ -146,6 +288,13 @@ export async function createInvoice(user: CurrentUser, input: z.infer<typeof cre
   const date = new Date().toISOString().slice(0, 10).replaceAll('-', ''); const code = `HD-${date}-${Date.now().toString().slice(-7)}`;
   try {
     const row = await prisma.$transaction(async tx => {
+      const promoResult = input.fefoPromoCodes?.length
+        ? await resolveVerifiedFefoPromos(tx, warehouseId, input.fefoPromoCodes, input.items)
+        : null;
+      if (promoResult && input.discount < promoResult.totalDiscount) {
+        throw new AppError(400, 'FEFO_PROMO_DISCOUNT_MISMATCH', `Chiết khấu hóa đơn (${input.discount.toLocaleString('vi-VN')} đ) nhỏ hơn tổng giảm giá mã FEFO đã xác minh (${promoResult.totalDiscount.toLocaleString('vi-VN')} đ).`);
+      }
+
       for (const sku of skus) {
         const stock = await tx.inventory.findUnique({ where: { warehouseId_skuId: { warehouseId, skuId: sku.id } } }); const sold = quantity.get(sku.id)!;
         if (!stock || stock.onHand - stock.reserved < sold) throw new AppError(409, 'INSUFFICIENT_STOCK', `SKU ${sku.code} không đủ tồn khả dụng.`);
@@ -155,12 +304,34 @@ export async function createInvoice(user: CurrentUser, input: z.infer<typeof cre
       }
       const locked = await tx.workShift.updateMany({ where: { id: shift.id, status: 'OPEN' }, data: { cashRevenue: { increment: cash }, digitalRevenue: { increment: digital } } });
       if (locked.count !== 1) throw new AppError(409, 'SHIFT_NOT_OPEN', 'Ca vừa được chốt. Vui lòng tải lại.');
-      const invoice = await tx.invoice.create({ data: { code, shiftId: shift.id, warehouseId, storeId: shift.storeId, cashierId: shift.cashierId, customerId: customer?.id, customerName: customer?.name ?? input.customerName, customerPhone: customer?.phone ?? input.customerPhone, subtotal, discount: input.discount, total, creditAmount: input.creditAmount, note: input.note,
+      const promoProofNote = promoResult
+        ? promoResult.promos.map(p => p.proofSummary).join(' ')
+        : '';
+      const mergedNote = [input.note, promoProofNote].filter(Boolean).join(' ').slice(0, 500) || null;
+      const invoice = await tx.invoice.create({ data: { code, shiftId: shift.id, warehouseId, storeId: shift.storeId, cashierId: shift.cashierId, customerId: customer?.id, customerName: customer?.name ?? input.customerName, customerPhone: customer?.phone ?? input.customerPhone, subtotal, discount: input.discount, total, creditAmount: input.creditAmount, note: mergedNote,
         items: { create: skus.map(sku => ({ skuId: sku.id, productCode: sku.product.code, skuCode: sku.code, productName: sku.product.name, unit: sku.product.unit, quantity: quantity.get(sku.id)!, unitPrice: sku.sellingPrice, costPrice: sku.costPrice, lineTotal: Number(sku.sellingPrice) * quantity.get(sku.id)! })) },
         payments: { create: input.payments.map(payment => ({ method: payment.method, amount: payment.amount, reference: payment.reference })) } }, include: includeInvoice });
       if (input.creditAmount > 0) await tx.receivable.create({ data: { code: `REC-${date}-${Date.now().toString().slice(-7)}`, invoiceId: invoice.id, customerId: customer!.id, storeId: shift.storeId, totalAmount: input.creditAmount, dueDate: new Date(`${input.creditDueDate}T23:59:59.999`) } });
-      await tx.auditLog.create({ data: { actorId: user.id, action: 'invoice.create', targetId: invoice.id } }); return tx.invoice.findUniqueOrThrow({ where: { id: invoice.id }, include: includeInvoice });
-    }, { isolationLevel: 'Serializable' }); return presentInvoice(row);
+      await tx.auditLog.create({ data: { actorId: user.id, action: 'invoice.create', targetId: invoice.id } });
+      if (promoResult) {
+        await tx.auditLog.create({
+          data: {
+            actorId: user.id,
+            action: 'invoice.fefo_promo.applied',
+            targetId: invoice.id,
+            metadata: JSON.stringify({
+              invoiceCode: code,
+              warehouseId,
+              verifiedPromoDiscount: promoResult.totalDiscount,
+              appliedDiscount: input.discount,
+              formulaBasis: 'FEFO_POLICY_CONFIG',
+              promos: promoResult.promos,
+            }),
+          },
+        });
+      }
+      return tx.invoice.findUniqueOrThrow({ where: { id: invoice.id }, include: includeInvoice });
+    }, { isolationLevel: 'Serializable' }); publishInventoryUpdate(warehouseId, 'SALE'); return presentInvoice(row);
   } catch (error) { if (error instanceof AppError) throw error; if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2002' || error.code === 'P2034')) throw new AppError(409, 'INVOICE_CONFLICT', 'Giao dịch vừa thay đổi. Vui lòng thử lại.'); throw error; }
 }
 
@@ -187,7 +358,9 @@ export async function cancelInvoice(user: CurrentUser, id: string, input: z.infe
       await tx.inventoryTransaction.create({ data: { inventoryId: stock.id, warehouseId: current.warehouseId, skuId: item.skuId, type: 'SALE_CANCEL', quantity: item.quantity, beforeQuantity: stock.onHand, afterQuantity: stock.onHand + item.quantity, referenceType: 'INVOICE', referenceId: current.code, reason: `Hoàn tồn do hủy hóa đơn: ${input.reason}`, actorId: user.id } });
     }
     await tx.auditLog.create({ data: { actorId: user.id, action: 'invoice.cancel', targetId: id } }); return tx.invoice.findUniqueOrThrow({ where: { id }, include: includeInvoice });
-  }, { isolationLevel: 'Serializable' }); return presentInvoice(row);
+  }, { isolationLevel: 'Serializable' });
+  if (current.warehouseId) publishInventoryUpdate(current.warehouseId, 'SALE_CANCEL');
+  return presentInvoice(row);
 }
 
 export async function createSalesReturn(user: CurrentUser, invoiceId: string, input: z.infer<typeof createSalesReturnInput>) {
@@ -244,6 +417,7 @@ export async function createSalesReturn(user: CurrentUser, invoiceId: string, in
       await tx.auditLog.create({ data: { actorId: user.id, action: 'sales-return.create', targetId: salesReturn.id } });
       return tx.invoice.findUniqueOrThrow({ where: { id: invoiceId }, include: includeInvoice });
     }, { isolationLevel: 'Serializable' });
+    if (input.items.some(item => item.restock) && row.warehouseId) publishInventoryUpdate(row.warehouseId, 'SALE_RETURN');
     return presentInvoice(row);
   } catch (error) {
     if (error instanceof AppError) throw error;

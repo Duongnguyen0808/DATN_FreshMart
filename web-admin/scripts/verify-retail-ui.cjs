@@ -11,7 +11,7 @@ const path = require('node:path');
   const baseUrl = process.env.REVIEW_BASE_URL || 'http://localhost:3000';
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  const store = { id: 'store-review', code: 'CN001', name: 'Chi nhánh Ba Đình', active: true };
+  const store = { id: 'store-review', code: 'CN001', name: 'Chi nhánh Ba Đình', active: true, userCount: 1, warehouseCount: 1 };
   const warehouse = { id: 'warehouse-review', code: 'KHO001', name: 'Kho Ba Đình', store, storeId: store.id, active: true };
   const category = { id: 'category-review', code: 'DO_UONG_SUA', name: 'Sữa', active: true };
   const categories = [category, ...[
@@ -38,7 +38,7 @@ const path = require('node:path');
     else if (resource === 'stores') data = [store];
     else if (resource === 'categories') data = categories;
     else if (resource === 'payos/config') data = { enabled: false };
-    else if (resource === 'shifts') data = { items: [{ id: 'shift-review', code: 'CA-001', storeId: store.id, store, cashierId: 'review', cashier: { id: 'review', name: 'Quản trị viên' }, status: 'OPEN', posCode: 'POS-01' }], pagination, summary: { total: 1, open: 1, pendingReview: 0, closed: 0 } };
+    else if (resource === 'shifts') data = { items: [{ id: 'shift-review', code: 'CA-001', name: 'Ca sáng', storeId: store.id, store, cashierId: 'review', cashier: { id: 'review', name: 'Quản trị viên', email: 'review@example.test' }, status: 'OPEN', posCode: 'POS-01', openedAt: '2026-10-28T01:00:00Z', closedAt: null, openingCash: 1000000, cashRevenue: 350000, digitalRevenue: 120000, cashExpenses: 0, cashDiscrepancy: null, _count: { invoices: 3 } }], pagination, summary: { total: 1, open: 1, pendingReview: 0, closed: 0 } };
     else if (resource === 'inventory') data = { items: [stock], pagination: { ...pagination, total: 1 }, summary: { totalSku: 1, available: 1, low: 0, out: 0, stockValue: 288000 } };
     else if (resource === 'products') data = { items: [product], pagination: { ...pagination, total: 1 }, summary: { total: 1, active: 1, inactive: 0 } };
     else if (resource === 'dashboard') data = {
@@ -66,6 +66,7 @@ const path = require('node:path');
       ['orders', '/don-mua-hang', 'Đơn mua hàng'],
       ['receipts', '/nhap-hang', 'Nhập hàng'],
       ['invoices', '/hoa-don', 'Tra cứu hóa đơn bán hàng'],
+      ['shifts', '/ca-lam-viec', 'Quản lý ca làm việc'],
       ['inventory', '/ton-kho', 'Tồn kho toàn chuỗi'],
       ['customers', '/khach-hang', 'Quản lý khách hàng'],
       ['suppliers', '/nha-cung-cap', 'Hồ sơ nhà cung cấp'],
@@ -85,10 +86,10 @@ const path = require('node:path');
       ['payments', '/giao-dich', 'Tra cứu giao dịch thanh toán'],
       ['stocktakes', '/kiem-kho', 'Phiếu kiểm kho'],
       ['ledger', '/lich-su-ton-kho', 'Lịch sử biến động tồn kho'],
-      ['lots', '/lo-han-dung', 'Lô hàng & hạn sử dụng'],
+      ['lots', '/lo-han-dung', 'Lô hàng, Hạn sử dụng (FEFO) & Dự báo AI'],
       ['returns', '/tra-hang', 'Lịch sử trả hàng và hoàn tiền'],
       ['supplier-returns', '/tra-hang-ncc', 'Trả hàng nhà cung cấp'],
-      ['forecast', '/du-bao-nhu-cau', 'Dự báo nhu cầu sản phẩm'],
+      ['forecast', '/du-bao-nhu-cau', 'Dự báo nhu cầu & điều phối chuỗi'],
       ['ai-experiment', '/du-bao-nhu-cau/khao-sat', 'Khảo sát mô hình AI'],
       ['product-detail', '/san-pham/review', product.name],
       ['stock-detail', '/ton-kho/review', product.name],
@@ -131,7 +132,7 @@ const path = require('node:path');
         await expect(categoryTab).toHaveAttribute('aria-pressed', 'true');
         await expect(page.getByRole('button', { name: 'Bỏ lọc nhóm hàng' })).toBeVisible();
         const tabInk = await categoryTab.evaluate(node => getComputedStyle(node).color);
-        expect(await page.locator('.category-badge').first().evaluate(node => getComputedStyle(node).color)).toBe(tabInk);
+        await expect(page.locator('.category-badge').first()).toHaveCSS('color', tabInk);
         await page.getByRole('button', { name: 'Bỏ lọc nhóm hàng' }).click();
         await expect(page.locator('.product-active-filters')).toHaveCount(0);
         expect(await page.locator('.products-page th').first().evaluate(node => getComputedStyle(node).fontWeight)).toBe('600');
@@ -159,8 +160,10 @@ const path = require('node:path');
         await expect(page.locator('.commerce-task-total')).toHaveText('42');
         await expect(page.locator('.dashboard-kpi-grid .metric-card')).toHaveCount(4);
         await expect(page.locator('.dashboard-kpi-grid')).toContainText('158.666,7');
-        const colors = await page.locator('.dashboard-kpi-grid .metric-card-value').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color));
-        expect(new Set(colors).size).toBe(4);
+        const valueColors = await page.locator('.dashboard-kpi-grid .metric-card-value').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color));
+        expect(new Set(valueColors).size).toBe(1);
+        const iconColors = await page.locator('.dashboard-kpi-grid .metric-card-label > svg').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).color));
+        expect(new Set(iconColors).size).toBe(4);
         const expand = page.getByRole('button', { name: 'Mở rộng Quản lý kho', exact: true });
         await expand.focus();
         await page.keyboard.press('Enter');
@@ -234,7 +237,8 @@ const path = require('node:path');
         const scenarioSelect = page.getByRole('combobox', { name: 'Tình huống' });
         await scenarioSelect.selectOption('authorized');
         await expect(page.locator('.li-timeline-list li')).toHaveCount(6);
-        await expect(page.getByText('Thiết lập thiết bị, cửa và thẻ nhân viên')).toBeVisible();
+        await expect(page.getByRole('button', { name: /Gán thẻ nhân viên/ })).toBeVisible();
+        await expect(page.locator('.wde-access-log summary')).toContainText('Nhật ký cửa kho');
         await page.screenshot({ path: path.join(output, 'scene-access-desktop.png'), fullPage: true });
         await scenarioSelect.selectOption('unauthorized');
         await expect(page.locator('.li-timeline-list li')).toHaveCount(5);
@@ -302,7 +306,7 @@ const path = require('node:path');
     }
     if (!process.env.REVIEW_ONLY && !process.env.REVIEW_FROM) {
       // Every remaining route is an alias, or the unauthenticated login screen.
-      for (const url of ['/ca-lam-viec', '/canh-bao-thieu-hang', '/de-nghi-mua', '/de-nghi-mua-hang', '/de-xuat', '/du-bao-nhu-cau/review', '/kho/mo-hinh-3d/rfid', '/kho/giam-sat-cua']) {
+      for (const url of ['/canh-bao-thieu-hang', '/de-nghi-mua', '/de-nghi-mua-hang', '/de-xuat', '/du-bao-nhu-cau/review', '/kho/mo-hinh-3d/rfid', '/kho/giam-sat-cua']) {
         await page.goto(`${baseUrl}${url}`);
         await expect(page.locator('h1').first()).toBeVisible();
         console.log(`PASS redirect ${url} -> ${new URL(page.url()).pathname}`);

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../../common/database.js';
 import { AppError } from '../../common/app-error.js';
 import { authenticate, requirePermission } from '../../middleware/authenticate.js';
-import { saveUser, userInput, userUpdate, getUser, listUsers, listInput, changeUserStatus, statusInput, resetUserPassword, passwordInput } from './users.service.js';
+import { saveUser, userInput, userUpdate, getUser, listUsers, listInput, changeUserStatus, statusInput, resetUserPassword, passwordInput, deleteUser } from './users.service.js';
 
 export const adminRoutes = Router();
 adminRoutes.use(authenticate);
@@ -33,6 +33,10 @@ adminRoutes.post('/users', requirePermission('users.manage'), async (request, re
 });
 adminRoutes.put('/users/:id', requirePermission('users.manage'), async (request, response) => {
   response.json(ok(await saveUser(request.currentUser, userUpdate.parse(request.body), uuid.parse(request.params.id))));
+});
+adminRoutes.delete('/users/:id', requirePermission('users.manage'), async (request, response) => {
+  await deleteUser(request.currentUser, uuid.parse(request.params.id));
+  response.json(ok(null));
 });
 adminRoutes.get('/roles', requirePermission('roles.read'), async (_request, response) => {
   response.json(ok(await prisma.role.findMany({ include: { permissions: true, _count: { select: { users: true } } }, orderBy: { code: 'asc' } })));

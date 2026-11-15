@@ -3,7 +3,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 
 let confirmIotEvents: typeof import('./iot.service.js').confirmIotEvents;
 beforeAll(async () => {
-  process.env.DATABASE_URL ??= 'postgresql://localhost:5432/smart_store';
+  process.env.DATABASE_URL ??= 'sqlserver://localhost:14333;database=smart_store;user=sa;password=test;encrypt=false;trustServerCertificate=true';
   process.env.JWT_SECRET ??= 'test-only-secret-at-least-32-characters';
   ({ confirmIotEvents } = await import('./iot.service.js'));
 });

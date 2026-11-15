@@ -31,7 +31,7 @@ const presentStore = <T extends { _count: { users: number; warehouses: number } 
 export async function listStores(user: CurrentUser, input: z.infer<typeof storeListInput>) {
   const stores = await prisma.store.findMany({ where: {
     ...(user.globalAccess ? {} : { id: { in: scopeIds(user) } }), ...(input.active === 'all' ? {} : { active: input.active === 'true' }),
-    ...(input.region ? { region: input.region } : {}), ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' } }, { name: { contains: input.q, mode: 'insensitive' } }, { address: { contains: input.q, mode: 'insensitive' } }] } : {}),
+    ...(input.region ? { region: input.region } : {}), ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }, { address: { contains: input.q } }] } : {}),
   }, include: storeInclude, orderBy: { code: 'asc' } });
   return stores.map(presentStore);
 }
@@ -73,7 +73,7 @@ export async function listWarehouses(user: CurrentUser, input: z.infer<typeof wa
   return prisma.warehouse.findMany({ where: {
     ...(input.storeId ? { storeId: input.storeId } : user.globalAccess ? {} : { storeId: { in: scopeIds(user) } }),
     ...(input.active === 'all' ? {} : { active: input.active === 'true' }),
-    ...(input.q ? { OR: [{ code: { contains: input.q, mode: 'insensitive' } }, { name: { contains: input.q, mode: 'insensitive' } }, { address: { contains: input.q, mode: 'insensitive' } }] } : {}),
+    ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }, { address: { contains: input.q } }] } : {}),
   }, include: { store: { select: { id: true, code: true, name: true, active: true } } }, orderBy: [{ store: { code: 'asc' } }, { code: 'asc' }] });
 }
 export async function createWarehouse(user: CurrentUser, input: z.infer<typeof warehouseInput>) {

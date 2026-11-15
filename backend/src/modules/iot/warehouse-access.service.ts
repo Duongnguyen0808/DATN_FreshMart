@@ -5,12 +5,14 @@ import { AppError } from '../../common/app-error.js';
 import { env } from '../../config/env.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import { publishWarehouseAccess } from './iot.realtime.js';
+import { toJson, parseJson } from '../../common/json-field.js';
 
 export type PhysicalSource = 'IOT_DEVICE' | 'SIMULATION';
 type RfidInput = { eventId: string; deviceId: string; warehouseId: string; uid: string; timestamp: string };
 type DoorInput = { eventId: string; deviceId: string; warehouseId: string; doorId: string; state: 'OPEN' | 'CLOSED'; timestamp: string };
 const recent = (seconds: number, now = new Date()) => new Date(now.getTime() - seconds * 1000);
-const eventPayload = (value: object): Prisma.InputJsonValue => value as Prisma.InputJsonValue;
+const eventPayload = (value: object): string => toJson(value);
+const presentAccessEvent = <T extends { payload: unknown }>(row: T) => ({ ...row, payload: parseJson<Record<string, unknown>>(row.payload) ?? {} });
 export const SIMULATED_DEVICE_PREFIX = 'SIM-ACCESS-';
 export const SIMULATED_CARD_UID = 'D00C330C';
 
@@ -67,6 +69,10 @@ export async function registerAccessDoor(user: CurrentUser, input: { code: strin
 
 export async function assignAccessCard(user: CurrentUser, input: { uid: string; employeeId: string; warehouseId: string; status: 'ACTIVE' | 'REVOKED' }) {
   const warehouse = await visibleWarehouse(user, input.warehouseId);
+  const existingCard = await prisma.warehouseAccessCard.findUnique({ where: { uid: input.uid } });
+  if (existingCard && existingCard.warehouseId !== input.warehouseId) {
+    throw new AppError(409, 'CARD_ALREADY_ASSIGNED', 'Thẻ đã được gán ở kho khác. Thu hồi thẻ tại kho cũ trước khi gán lại.');
+  }
   const employee = await prisma.user.findUnique({ where: { id: input.employeeId }, include: { stores: true, roles: { include: { role: { include: { permissions: true } } } } } });
   if (!employee || !employee.active || (!employee.roles.some(row => row.role.code === 'OWNER') && (!employee.stores.some(row => row.storeId === warehouse.storeId) || !employee.roles.some(row => row.role.permissions.some(permission => ['inventory.read', 'warehouses.manage'].includes(permission.permissionCode)))))) {
     throw new AppError(400, 'EMPLOYEE_NOT_IN_WAREHOUSE', 'Nhân viên không hoạt động hoặc chưa có quyền vào kho của chi nhánh.');
@@ -90,31 +96,6 @@ export async function assignAccessCard(user: CurrentUser, input: { uid: string; 
   return updated;
 }
 
-export async function createWarehouseEmployee(user: CurrentUser, input: { name: string; email?: string; warehouseId: string }) {
-  const warehouse = await visibleWarehouse(user, input.warehouseId);
-  const cleanName = input.name.trim();
-  if (cleanName.length < 2) throw new AppError(400, 'INVALID_EMPLOYEE_NAME', 'Tên nhân viên kho phải có ít nhất 2 ký tự.');
-  const slug = cleanName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '.').replace(/^\.+|\.+$/g, '').toLowerCase() || 'nhanvien';
-  const email = (input.email?.trim() || `${slug}.${Date.now().toString(36)}@freshmart.local`).toLowerCase();
-  let role = await prisma.role.findFirst({ where: { permissions: { some: { permissionCode: 'inventory.read' } } }, orderBy: { code: 'asc' } });
-  if (!role) {
-    role = await prisma.role.findFirst();
-  }
-  const created = await prisma.user.create({
-    data: {
-      name: cleanName,
-      email,
-      passwordHash: '$2b$10$demoWarehouseEmployeeHashPlaceholder000000000000000000',
-      active: true,
-      stores: { create: [{ storeId: warehouse.storeId }] },
-      ...(role ? { roles: { create: [{ roleId: role.id }] } } : {}),
-    },
-    select: { id: true, name: true, email: true },
-  });
-  publishWarehouseAccess(input.warehouseId, { employee: created });
-  return created;
-}
-
 export async function monitorWarehouseAccess(user: CurrentUser, warehouseId: string) {
   const warehouse = await visibleWarehouse(user, warehouseId);
   const [devices, doors, cards, events, alerts, employees] = await Promise.all([
@@ -126,7 +107,7 @@ export async function monitorWarehouseAccess(user: CurrentUser, warehouseId: str
     prisma.user.findMany({ where: { active: true, stores: { some: { storeId: warehouse.storeId } }, roles: { some: { role: { permissions: { some: { permissionCode: { in: ['inventory.read', 'warehouses.manage'] } } } } } } }, select: { id: true, name: true, email: true }, orderBy: { name: 'asc' } }),
   ]);
   const now = Date.now();
-  return { accessWindowSeconds: env.ACCESS_WINDOW_SECONDS, maxDoorOpenSeconds: env.MAX_DOOR_OPEN_SECONDS, simulationDoorOpenSeconds: Math.min(10, env.MAX_DOOR_OPEN_SECONDS), devices: devices.map(device => ({ ...device, online: !!device.lastSeenAt && now - device.lastSeenAt.getTime() < 60_000 })), doors, cards, events, alerts, employees, mode: devices.some(device => device.lastSeenAt && now - device.lastSeenAt.getTime() < 60_000) ? 'REAL_IOT' : 'SIMULATION' };
+  return { accessWindowSeconds: env.ACCESS_WINDOW_SECONDS, maxDoorOpenSeconds: env.MAX_DOOR_OPEN_SECONDS, simulationDoorOpenSeconds: Math.min(10, env.MAX_DOOR_OPEN_SECONDS), devices: devices.map(device => ({ ...device, online: !!device.lastSeenAt && now - device.lastSeenAt.getTime() < 60_000 })), doors, cards, events: events.map(presentAccessEvent), alerts, employees, mode: devices.some(device => device.active && !device.code.startsWith(SIMULATED_DEVICE_PREFIX)) ? 'REAL_IOT' : 'SIMULATION' };
 }
 
 export function isAfterHours(now: Date) {
@@ -140,10 +121,12 @@ export async function ingestAccessRfid(input: RfidInput, source: PhysicalSource 
   const now = new Date();
   const prior = await prisma.warehouseAccessEvent.findUnique({ where: { deviceId_eventId: { deviceId: device.id, eventId: input.eventId } } });
   if (prior) return { duplicate: true, event: prior };
-  const repeated = await prisma.warehouseAccessEvent.findFirst({ where: { deviceId: device.id, eventType: 'RFID_SCAN', occurredAt: { gte: recent(source === 'IOT_DEVICE' ? 1 : 3, now) }, payload: { path: ['uid'], equals: input.uid } }, orderBy: { occurredAt: 'desc' } });
+  const recentScans = await prisma.warehouseAccessEvent.findMany({ where: { deviceId: device.id, eventType: 'RFID_SCAN', occurredAt: { gte: recent(1, now) } }, orderBy: { occurredAt: 'desc' } });
+  const repeated = recentScans.find(row => parseJson<{ uid?: string }>(row.payload)?.uid === input.uid);
   if (repeated) {
-    if (source === 'IOT_DEVICE') publishWarehouseAccess(input.warehouseId, { event: repeated });
-    return { duplicate: true, event: repeated };
+    const out = presentAccessEvent(repeated);
+    if (source === 'IOT_DEVICE') publishWarehouseAccess(input.warehouseId, { event: out });
+    return { duplicate: true, event: out };
   }
   const simulatedReader = source === 'SIMULATION' && device.code.startsWith(SIMULATED_DEVICE_PREFIX);
   const warehouse = await prisma.warehouse.findUniqueOrThrow({ where: { id: input.warehouseId } });
@@ -163,8 +146,9 @@ export async function ingestAccessRfid(input: RfidInput, source: PhysicalSource 
       }
       return event;
     });
-    publishWarehouseAccess(input.warehouseId, { event: result });
-    return { duplicate: false, event: result };
+    const out = presentAccessEvent(result);
+    publishWarehouseAccess(input.warehouseId, { event: out });
+    return { duplicate: false, event: out };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return { duplicate: true, event: await prisma.warehouseAccessEvent.findUnique({ where: { deviceId_eventId: { deviceId: device.id, eventId: input.eventId } } }) };
     throw error;
@@ -181,7 +165,7 @@ export async function ingestAccessDoor(input: DoorInput, source: PhysicalSource 
   const now = new Date();
   if (door.state === input.state) return { duplicate: true, event: null };
   if (door.lastStateChangedAt && now.getTime() - door.lastStateChangedAt.getTime() < 500) throw new AppError(409, 'DOOR_DEBOUNCE_RETRY', 'Cảm biến cửa đổi trạng thái quá nhanh; gửi lại sau 0,5 giây.');
-  const grant = input.state === 'OPEN' ? await prisma.warehouseAccessEvent.findFirst({ where: { deviceId: device.id, doorId: door.id, eventType: 'ACCESS_GRANTED', consumedAt: null, occurredAt: { gte: recent(env.ACCESS_WINDOW_SECONDS, now) } }, orderBy: { occurredAt: 'desc' } }) : null;
+  const grant = input.state === 'OPEN' ? await prisma.warehouseAccessEvent.findFirst({ where: { deviceId: device.id, doorId: door.id, eventType: 'ACCESS_GRANTED', source, consumedAt: null, occurredAt: { gte: recent(env.ACCESS_WINDOW_SECONDS, now) } }, orderBy: { occurredAt: 'desc' } }) : null;
   const authorized = !!grant;
   try {
     const result = await prisma.$transaction(async tx => {
@@ -196,19 +180,16 @@ export async function ingestAccessDoor(input: DoorInput, source: PhysicalSource 
           const alert = await tx.warehouseSecurityAlert.create({ data: { warehouseId: input.warehouseId, doorId: door.id, type: 'UNAUTHORIZED_ACCESS', severity: 'CRITICAL', message: `Cửa ${door.name} mở khi không có thẻ hợp lệ trong ${env.ACCESS_WINDOW_SECONDS} giây trước đó.` } });
           await tx.warehouseAccessEvent.create({ data: { eventId: `${input.eventId}:alert`, deviceId: device.id, warehouseId: input.warehouseId, doorId: door.id, eventType: 'ALERT_CREATED', source: 'BACKEND_RULE', occurredAt: now, payload: eventPayload({ alertId: alert.id, type: alert.type }) } });
         }
-        if (source === 'IOT_DEVICE' && isAfterHours(now)) {
-          await tx.warehouseAccessEvent.create({ data: { eventId: `${input.eventId}:after-hours`, deviceId: device.id, warehouseId: input.warehouseId, doorId: door.id, employeeId: grant?.employeeId, eventType: 'AFTER_HOURS_ACCESS', source, occurredAt: now, payload: eventPayload({ localHour: 'Asia/Ho_Chi_Minh' }) } });
-          const alert = await tx.warehouseSecurityAlert.create({ data: { warehouseId: input.warehouseId, doorId: door.id, employeeId: grant?.employeeId, type: 'AFTER_HOURS_ACCESS', severity: 'WARNING', message: `Cửa ${door.name} mở ngoài giờ kho.` } });
-          await tx.warehouseAccessEvent.create({ data: { eventId: `${input.eventId}:after-hours-alert`, deviceId: device.id, warehouseId: input.warehouseId, doorId: door.id, employeeId: grant?.employeeId, eventType: 'ALERT_CREATED', source: 'BACKEND_RULE', occurredAt: now, payload: eventPayload({ alertId: alert.id, type: alert.type }) } });
-        }
+
       } else {
         const resolved = await tx.warehouseSecurityAlert.updateMany({ where: { doorId: door.id, type: 'DOOR_OPEN_TOO_LONG', status: 'OPEN' }, data: { status: 'RESOLVED', resolvedAt: now } });
         if (resolved.count) await tx.warehouseAccessEvent.create({ data: { eventId: `${input.eventId}:alert-resolved`, deviceId: device.id, warehouseId: input.warehouseId, doorId: door.id, eventType: 'ALERT_RESOLVED', source: 'BACKEND_RULE', occurredAt: now, payload: eventPayload({ type: 'DOOR_OPEN_TOO_LONG', reason: 'DOOR_CLOSED' }) } });
       }
       return event;
     });
-    if (result) publishWarehouseAccess(input.warehouseId, { event: result, door: { ...door, state: input.state, lastStateChangedAt: now } });
-    return { duplicate: !result, event: result };
+    const out = result ? presentAccessEvent(result) : null;
+    if (out) publishWarehouseAccess(input.warehouseId, { event: out, door: { ...door, state: input.state, lastStateChangedAt: now } });
+    return { duplicate: !out, event: out };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return { duplicate: true, event: await prisma.warehouseAccessEvent.findUnique({ where: { deviceId_eventId: { deviceId: device.id, eventId: input.eventId } } }) };
     throw error;
@@ -225,13 +206,20 @@ export async function sweepOpenDoors() {
     const active = await prisma.warehouseSecurityAlert.findFirst({ where: { doorId: door.id, type: 'DOOR_OPEN_TOO_LONG', status: 'OPEN' } });
     if (active) continue;
     try {
-      const { alert, event } = await prisma.$transaction(async tx => {
+      const result = await prisma.$transaction(async tx => {
+        // Serialize with door closure so a stale sweep cannot create an alert
+        // after DOOR_CLOSED has already resolved this opening.
+        const locked = await tx.warehouseAccessDoor.updateMany({
+          where: { id: door.id, state: 'OPEN', openSince: door.openSince },
+          data: { openSince: door.openSince },
+        });
+        if (!locked.count || await tx.warehouseSecurityAlert.findFirst({ where: { doorId: door.id, type: 'DOOR_OPEN_TOO_LONG', status: 'OPEN' } })) return null;
         const alert = await tx.warehouseSecurityAlert.create({ data: { warehouseId: door.warehouseId, doorId: door.id, type: 'DOOR_OPEN_TOO_LONG', severity: 'WARNING', message: `Cửa ${door.name} mở quá ${threshold} giây.` } });
         const event = await tx.warehouseAccessEvent.create({ data: { eventId: randomUUID(), deviceId: door.deviceId, warehouseId: door.warehouseId, doorId: door.id, eventType: 'DOOR_OPEN_TOO_LONG', source: 'BACKEND_RULE', payload: eventPayload({ openSince: door.openSince?.toISOString() }) } });
         await tx.warehouseAccessEvent.create({ data: { eventId: randomUUID(), deviceId: door.deviceId, warehouseId: door.warehouseId, doorId: door.id, eventType: 'ALERT_CREATED', source: 'BACKEND_RULE', payload: eventPayload({ alertId: alert.id, type: alert.type }) } });
         return { alert, event };
       });
-      publishWarehouseAccess(door.warehouseId, { event, alert });
+      if (result) publishWarehouseAccess(door.warehouseId, { event: presentAccessEvent(result.event), alert: result.alert });
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
     }
@@ -250,7 +238,7 @@ export async function resolveAccessAlert(user: CurrentUser, alertId: string) {
     const event = changed.count ? await tx.warehouseAccessEvent.create({ data: { eventId: randomUUID(), deviceId: door.deviceId, warehouseId: alert.warehouseId, doorId: alert.doorId, employeeId: alert.employeeId, eventType: 'ALERT_RESOLVED', source: 'BACKEND_RULE', payload: eventPayload({ alertId, type: alert.type, resolvedBy: user.id }) } }) : null;
     return { updated, event };
   });
-  if (event) publishWarehouseAccess(alert.warehouseId, { alert: updated, event });
+  if (event) publishWarehouseAccess(alert.warehouseId, { alert: updated, event: presentAccessEvent(event) });
   return updated;
 }
 

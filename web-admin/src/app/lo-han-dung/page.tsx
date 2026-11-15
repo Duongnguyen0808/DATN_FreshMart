@@ -1,54 +1,626 @@
 'use client';
 import { TableState } from '../../components/ui/table-state';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { api, errorMessage } from '../../lib/auth-api';
 import { getInventory, type Inventory } from '../../lib/inventory-api';
+import {
+  createFefoRiskTransfer,
+  getFefoExpiryRisks,
+  type FefoExpiryRiskItem,
+  type FefoExpiryRiskReport,
+} from '../../lib/forecasts-api';
 import { Protected, useAuth } from '../../components/auth-provider';
+import { MetricCard, MetricGrid } from '../../components/ui/metric-card';
+import { StatusBadge } from '../../components/ui/status-badge';
+import { useToast } from '../../components/ui/toast-provider';
 import './lots.css';
 
 type Disposal = { id: string; quantity: number; reason: string; status: string; evidence: string | null };
-type Lot = { id: string; inventoryId: string; code: string; expiresAt: string | null; quantity: number; status: string; expired: boolean; daysRemaining: number | null; zone: string; purchaseOrderItemId: string | null; inventory: Inventory; disposals: Disposal[]; movements: { id: string; quantity: number; referenceType: string; createdAt: string }[] };
+type Lot = {
+  id: string;
+  inventoryId: string;
+  code: string;
+  expiresAt: string | null;
+  quantity: number;
+  status: string;
+  expired: boolean;
+  daysRemaining: number | null;
+  zone: string;
+  purchaseOrderItemId: string | null;
+  inventory: Inventory;
+  disposals: Disposal[];
+  movements: { id: string; quantity: number; referenceType: string; createdAt: string }[];
+};
 type Product = Inventory['sku']['product'] & { purchaseUnit?: string | null; purchasePackSize?: number; leadTimeDays?: number | null };
 type Operation = { kind: 'classify' | 'quarantine' | 'count' | 'dispose' | 'complete'; lot?: Lot; disposal?: Disposal };
+
+const fmtNum = (v: number) => new Intl.NumberFormat('vi-VN').format(Math.round(v));
+const shortDateVn = (isoDate: string) => {
+  const [y, m, d] = isoDate.split('-');
+  return d && m && y ? `${d}/${m}/${y}` : isoDate;
+};
+
 function Lots() {
   const { user } = useAuth();
-  const can = (permission: string) => user?.permissions.includes(permission);
-  const [lots, setLots] = useState<Lot[]>([]), [stocks, setStocks] = useState<Inventory[]>([]);
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [search, setSearch] = useState(''), [filter, setFilter] = useState('ALL');
-  const [operation, setOperation] = useState<Operation | null>(null), [selected, setSelected] = useState('');
+  const { showToast } = useToast();
+  const can = (permission: string) => user?.permissions.includes(permission) || user?.permissions.includes('*');
+
+  const [lots, setLots] = useState<Lot[]>([]);
+  const [stocks, setStocks] = useState<Inventory[]>([]);
+  const [fefoAiReport, setFefoAiReport] = useState<FefoExpiryRiskReport | null>(null);
+  const [showAllAiLots, setShowAllAiLots] = useState(false);
+  const [transferringLotId, setTransferringLotId] = useState('');
+
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('ALL');
+  const [operation, setOperation] = useState<Operation | null>(null);
+  const [selected, setSelected] = useState('');
   const [procurement, setProcurement] = useState<Product | null>(null);
+
   const load = async () => {
-    const [rows, first] = await Promise.all([api<Lot[]>('inventory-lots'), getInventory({ pageSize: 100 })]);
-    const pages = await Promise.all(Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, n) => getInventory({ pageSize: 100, page: n + 2 })));
-    setLots(rows); setStocks([...first.items, ...pages.flatMap(page => page.items)]);
+    const [rows, first, fefoAi] = await Promise.all([
+      api<Lot[]>('inventory-lots'),
+      getInventory({ pageSize: 100 }),
+      getFefoExpiryRisks(undefined, 14).catch(() => null),
+    ]);
+    const pages = await Promise.all(
+      Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, n) => getInventory({ pageSize: 100, page: n + 2 }))
+    );
+    setLots(rows);
+    setStocks([...first.items, ...pages.flatMap(page => page.items)]);
+    if (fefoAi) setFefoAiReport(fefoAi);
   };
-  useEffect(() => { load().catch(e => setError(errorMessage(e))); }, []);
-  const run = async (work: () => Promise<unknown>) => { setBusy(true); setError(''); try { await work(); await load(); setOperation(null); setProcurement(null); } catch(e) { setError(errorMessage(e)); } finally { setBusy(false); } };
+
+  useEffect(() => {
+    load().catch(e => setError(errorMessage(e)));
+  }, []);
+
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await work();
+      await load();
+      setOperation(null);
+      setProcurement(null);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleFefoAiTransfer = async (item: FefoExpiryRiskItem) => {
+    if (!item.recommendedTransferBranch || transferringLotId) return;
+    setTransferringLotId(item.lotId);
+    setError('');
+    try {
+      const created = await createFefoRiskTransfer({
+        sourceWarehouseId: item.warehouseId,
+        destinationWarehouseId: item.recommendedTransferBranch.warehouseId,
+        skuId: item.skuId,
+        quantity: item.recommendedTransferBranch.absorbableQuantity,
+        lotCode: item.lotCode,
+      });
+      await load();
+      showToast(
+        created.alreadyExists
+          ? `Đã có sẵn phiếu điều chuyển ${created.code} cho lô ${item.lotCode}.`
+          : `Đã tạo phiếu điều chuyển ${created.code} (${item.recommendedTransferBranch.absorbableQuantity} ${item.unit} → ${item.recommendedTransferBranch.warehouseName}).`
+      );
+    } catch (e) {
+      const msg = errorMessage(e);
+      setError(msg);
+      showToast(msg, 'error');
+    } finally {
+      setTransferringLotId('');
+    }
+  };
+
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); const form = new FormData(event.currentTarget); if (!operation) return;
-    const quantity = Number(form.get('quantity')), reason = String(form.get('reason') ?? '');
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (!operation) return;
+    const quantity = Number(form.get('quantity'));
+    const reason = String(form.get('reason') ?? '');
     void run(() => {
-      if (operation.kind === 'classify') return api(`inventory/${selected}/lots/classify`, 'POST', { quantity, reason, code: form.get('code'), expiresAt: form.get('expiresAt') || null });
-      if (operation.kind === 'complete') return api(`lot-disposals/${operation.disposal!.id}/complete`, 'POST', { evidence: form.get('evidence') });
-      return api(`inventory-lots/${operation.lot!.id}/${operation.kind === 'dispose' ? 'disposals' : operation.kind}`, 'POST', operation.kind === 'quarantine' ? { reason } : { quantity, reason });
+      if (operation.kind === 'classify') {
+        return api(`inventory/${selected}/lots/classify`, 'POST', {
+          quantity,
+          reason,
+          code: form.get('code'),
+          expiresAt: form.get('expiresAt') || null,
+        });
+      }
+      if (operation.kind === 'complete') {
+        return api(`lot-disposals/${operation.disposal!.id}/complete`, 'POST', {
+          evidence: form.get('evidence'),
+        });
+      }
+      return api(
+        `inventory-lots/${operation.lot!.id}/${operation.kind === 'dispose' ? 'disposals' : operation.kind}`,
+        'POST',
+        operation.kind === 'quarantine' ? { reason } : { quantity, reason }
+      );
     });
   };
-  const visible = lots.filter(lot => `${lot.code} ${lot.inventory.sku.product.name} ${lot.inventory.warehouse.name}`.toLowerCase().includes(search.toLowerCase()) && (filter === 'ALL' || filter === 'EXPIRED' && lot.expired || filter === 'SOON' && lot.daysRemaining !== null && lot.daysRemaining >= 0 && lot.daysRemaining <= 30 || filter === 'HOLD' && (lot.status !== 'AVAILABLE' || lot.expired)));
+
+  const visible = lots.filter(lot => {
+    const term = `${lot.code} ${lot.inventory.sku.product.name} ${lot.inventory.warehouse.name}`.toLowerCase();
+    const matchesSearch = term.includes(search.toLowerCase());
+    const matchesFilter =
+      filter === 'ALL' ||
+      (filter === 'EXPIRED' && lot.expired) ||
+      (filter === 'SOON' && lot.daysRemaining !== null && lot.daysRemaining >= 0 && lot.daysRemaining <= 30) ||
+      (filter === 'HOLD' && (lot.status !== 'AVAILABLE' || lot.expired));
+    return matchesSearch && matchesFilter;
+  });
+
   const expiredCount = lots.filter(lot => lot.expired).length;
   const soonCount = lots.filter(lot => !lot.expired && lot.daysRemaining !== null && lot.daysRemaining >= 0 && lot.daysRemaining <= 30).length;
-  const heldCount = lots.filter(lot => lot.status !== 'AVAILABLE').length;
+  const aiRiskCount = fefoAiReport?.summary?.atRiskLotsCount ?? 0;
+
+  const visibleAiRows = useMemo(() => {
+    const all = fefoAiReport?.items ?? [];
+    if (showAllAiLots) return all.filter(i => i.daysRemaining <= 35 || i.atRiskQuantity > 0);
+    return all.filter(i => i.atRiskQuantity > 0);
+  }, [fefoAiReport, showAllAiLots]);
+
   const labels: Record<string, string> = { READY: 'Chờ xử lý thực tế', COMPLETED: 'Đã xử lý', REJECTED: 'Từ chối' };
-  return <main className="lots-screen"><header><div><div className="lots-eyebrow">HÀNG HÓA & KHO</div><h1>Lô hàng & hạn sử dụng</h1><p>Theo dõi số lượng theo từng lô, cảnh báo hàng sắp hết hạn và ưu tiên xuất lô hết hạn trước (FEFO).</p></div><Link className="lots-stock-link" href="/ton-kho">Xem tồn kho →</Link></header>
-    {error && <div className="ui-error" role="alert">{error}</div>}
-    <section className="lots-overview"><article><span>TỔNG SỐ LÔ</span><strong>{lots.length}</strong><small>Trong các kho được phép xem</small></article><article className={soonCount ? 'warning' : ''}><span>SẮP HẾT HẠN</span><strong>{soonCount}</strong><small>Trong 30 ngày tới</small></article><article className={expiredCount ? 'danger' : ''}><span>ĐÃ HẾT HẠN</span><strong>{expiredCount}</strong><small>Đã chặn xuất bán</small></article><article className={heldCount ? 'warning' : ''}><span>ĐANG CÁCH LY / CHỜ XÁC MINH</span><strong>{heldCount}</strong><small>Không được bán</small></article></section>
-    <section className="panel lots-toolbar"><label>Tìm theo mã lô, sản phẩm hoặc kho<input value={search} onChange={e => setSearch(e.target.value)} placeholder="Ví dụ: LOT-2026, sữa, Kho Ba Đình"/></label><label>Lọc trạng thái<select value={filter} onChange={e => setFilter(e.target.value)}><option value="ALL">Tất cả lô</option><option value="EXPIRED">Đã hết hạn</option><option value="SOON">Sắp hết hạn · 30 ngày</option><option value="HOLD">Cách ly / chờ xác minh</option></select></label><button disabled={busy} onClick={() => void run(load)}>Làm mới</button>{can('stocktakes.approve') && <button onClick={() => setOperation({ kind: 'classify' })}>Phân loại tồn cũ</button>}</section>
-    <details className="panel lots-settings"><summary>Quy cách nhập & thời gian cung ứng</summary><p>Mọi số tồn và số bán giữ theo đơn vị sản phẩm. Ví dụ 1 thùng nhập = 24 hộp bán. Thời gian cung ứng là số ngày kế hoạch, cần đối chiếu nhà cung cấp.</p><select aria-label="Chọn sản phẩm cấu hình nhập" defaultValue="" onChange={e => { const item = stocks.find(row => row.id === e.target.value); setProcurement(item?.sku.product as Product ?? null); }}><option value="">Chọn sản phẩm để xem/cấu hình</option>{stocks.filter((row, index, list) => list.findIndex(other => other.sku.product.id === row.sku.product.id) === index).map(row => <option key={row.id} value={row.id}>{row.sku.product.name} · đơn vị tồn/bán: {row.sku.product.unit}</option>)}</select>
-    {procurement && <form className="lots-toolbar" key={procurement.id} onSubmit={e => { e.preventDefault(); const data = new FormData(e.currentTarget); void run(() => api(`products/${procurement.id}/procurement`, 'PATCH', { purchaseUnit: data.get('purchaseUnit'), purchasePackSize: Number(data.get('pack')), leadTimeDays: data.get('lead') === '' ? null : Number(data.get('lead')) })); }}><label>Đơn vị nhập<input name="purchaseUnit" required defaultValue={procurement.purchaseUnit ?? procurement.unit}/></label><label>Số {procurement.unit} / đơn vị nhập<input name="pack" type="number" required min="1" max="100000" defaultValue={procurement.purchasePackSize ?? 1}/></label><label>Giao hàng dự kiến (ngày)<input name="lead" type="number" min="0" max="365" defaultValue={procurement.leadTimeDays ?? ''} placeholder="Chưa biết"/></label>{can('products.manage') && <button disabled={busy}>Lưu cấu hình</button>}</form>}</details>
-    <section className="panel lots-table-panel"><div className="lots-table-heading"><div><h2>Danh sách lô</h2><p>{visible.length} / {lots.length} lô · ưu tiên xem các lô cần xử lý trước</p></div><span className="lots-fefo"><b>FEFO</b> Hết hạn trước · xuất trước</span></div><div className="table-scroll"><table><thead><tr><th>Sản phẩm / kho</th><th>Mã lô / hạn sử dụng</th><th>Số lượng</th><th>Vị trí / trạng thái</th><th>Thao tác</th></tr></thead><tbody>{visible.map(lot => <tr key={lot.id}><td><strong>{lot.inventory.sku.product.name}</strong><small>{lot.inventory.warehouse.name}</small></td><td><strong className="lot-code">{lot.code}</strong><small>{lot.expiresAt ? `Hạn sử dụng: ${new Date(lot.expiresAt).toLocaleDateString('vi-VN', { timeZone: 'UTC' })}` : lot.status === 'LEGACY' ? 'Chưa xác minh hạn sử dụng' : 'Không khai báo hạn sử dụng'}</small></td><td><strong>{lot.quantity}</strong> {lot.inventory.sku.product.unit}</td><td><strong className={lot.expired ? 'lots-danger' : ''}>{lot.expired ? 'Đã hết hạn · chặn xuất bán' : lot.daysRemaining !== null && lot.daysRemaining <= 30 ? `Còn ${lot.daysRemaining} ngày` : lot.status === 'LEGACY' ? 'Tồn cũ chưa xác minh' : lot.status === 'QUARANTINE' ? 'Cách ly' : 'Còn sử dụng'}</strong><small>{lot.zone}</small></td><td><div className="lots-actions">{lot.quantity > 0 && can('stocktakes.create') && <><button disabled={busy} onClick={() => setOperation({ kind: 'quarantine', lot })}>Cách ly</button><button disabled={busy} onClick={() => setOperation({ kind: 'dispose', lot })}>Lập phiếu tiêu hủy</button></>}{can('stocktakes.approve') && <button disabled={busy} onClick={() => setOperation({ kind: 'count', lot })}>Kiểm đếm lô</button>}</div><details><summary>Lịch sử lô</summary>{lot.movements.map(row => <p key={row.id}>{new Date(row.createdAt).toLocaleString('vi-VN')} · {row.referenceType} · {row.quantity > 0 ? '+' : ''}{row.quantity}</p>)}</details></td></tr>)}{!visible.length && <tr><td colSpan={5}><TableState message="Chưa có lô phù hợp. Ghi mã lô và hạn sử dụng khi nhận hàng hoặc phân loại tồn cũ."/></td></tr>}</tbody></table></div></section>
-    <section className="panel"><h2>Phiếu xử lý hàng cách ly</h2><p>Lập phiếu chưa giảm tồn; không cần bước phê duyệt. Chỉ xác nhận hoàn tất sau khi xử lý hàng thực tế; ghi số biên bản hoặc đường dẫn bằng chứng.</p>{lots.flatMap(lot => lot.disposals.map(row => <article className="lots-disposal" key={row.id}><div><strong>{lot.code} · {row.quantity} {lot.inventory.sku.product.unit}</strong><p>{row.reason}</p><small>{labels[row.status]} · {row.id}{row.evidence && ` · ${row.evidence}`}</small></div>{can('stocktakes.approve') && row.status === 'READY' && <button disabled={busy} onClick={() => setOperation({ kind: 'complete', lot, disposal: row })}>Xác nhận đã xử lý</button>}</article>))}</section>
-    <p>Trả nhà cung cấp phải theo đơn mua hàng gốc, đúng lô và được nhà cung cấp chấp thuận; dùng luồng trả nhà cung cấp để xử lý công nợ. Phiếu tiêu hủy không tự tạo hoàn tiền.</p>
-    {operation && <div className="ui-modal"><form className="ui-modal-card" onSubmit={submit}><header><h2>{({ classify: 'Phân loại tồn cũ', quarantine: 'Đưa hàng vào khu cách ly', count: 'Kiểm đếm thực tế từng lô', dispose: 'Lập phiếu tiêu hủy', complete: 'Xác nhận đã xử lý thực tế' })[operation.kind]}</h2><button type="button" aria-label="Đóng" disabled={busy} onClick={() => setOperation(null)}>×</button></header>{error && <p role="alert" className="ui-error">{error}</p>}{operation.kind === 'classify' && <><label>Sản phẩm / kho<select required value={selected} onChange={e => setSelected(e.target.value)}><option value="">Chọn tồn kho</option>{stocks.map(row => <option key={row.id} value={row.id}>{row.sku.product.name} · {row.warehouse.name} · {row.onHand} {row.sku.product.unit}</option>)}</select></label><label>Mã lô<input name="code" required maxLength={100} placeholder="Mã trên bao bì / chứng từ NCC"/></label><label>Hạn sử dụng<input name="expiresAt" type="date"/><small>Bỏ trống nếu sản phẩm không quản lý hạn sử dụng. Tồn chưa phân loại bị chặn bán.</small></label></>}{!['quarantine', 'complete'].includes(operation.kind) && <label>{operation.kind === 'count' ? 'Số lượng thực đếm' : 'Số lượng'}<input type="number" name="quantity" min={operation.kind === 'count' ? 0 : 1} step="1" required defaultValue={operation.lot?.quantity}/></label>}{operation.kind === 'complete' ? <label>Số biên bản / đường dẫn bằng chứng<textarea name="evidence" required minLength={3} maxLength={2000}/></label> : <label>Lý do / căn cứ xác minh<textarea name="reason" required minLength={3} maxLength={500}/></label>}<footer><button type="button" disabled={busy} onClick={() => setOperation(null)}>Đóng</button><button disabled={busy}>{busy ? 'Đang xử lý…' : 'Xác nhận'}</button></footer></form></div>}
-  </main>;
+
+  return (
+    <main className="suite-page lots-screen">
+      <header className="suite-heading">
+        <div>
+          <div className="breadcrumb">Hàng hóa & Kho · FEFO × AI Forecast</div>
+          <h1>Lô hàng, Hạn sử dụng (FEFO) & Dự báo AI</h1>
+          <p>Quản lý hạn sử dụng theo từng lô (hết hạn trước xuất trước) và đối chiếu sức mua AI để phát hiện sớm lô cận hạn có nguy cơ tồn đọng.</p>
+        </div>
+        <div className="heading-actions">
+          <Link className="outline-button" href="/du-bao-nhu-cau">Dự báo nhu cầu AI →</Link>
+          <Link className="outline-button" href="/ton-kho">Tồn kho →</Link>
+        </div>
+      </header>
+
+      {error && <div className="ui-error" role="alert">{error}</div>}
+
+      <MetricGrid label="Tổng quan lô hàng">
+        <MetricCard tone="blue" label="Tổng số lô" value={fmtNum(lots.length)} caption="Đang quản lý trong kho" />
+        <MetricCard tone={soonCount ? 'amber' : 'teal'} label="Sắp hết hạn (≤ 30 ngày)" value={fmtNum(soonCount)} caption="Ưu tiên xuất bán FEFO" />
+        <MetricCard
+          tone={aiRiskCount ? 'red' : 'green'}
+          label="Nguy cơ dư (AI × FEFO)"
+          value={`${fmtNum(aiRiskCount)} lô`}
+          caption={aiRiskCount ? `${fmtNum(fefoAiReport?.summary?.totalAtRiskUnits ?? 0)} đv · Vốn ${fmtNum(fefoAiReport?.summary?.totalAtRiskValue ?? 0)} đ` : 'Tốc độ bán kịp trước hạn'}
+        />
+        <MetricCard tone={expiredCount ? 'red' : 'teal'} label="Đã hết hạn" value={fmtNum(expiredCount)} caption="Chặn xuất bán tự động" />
+      </MetricGrid>
+
+      {fefoAiReport && fefoAiReport.items.length > 0 && (
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <h2>Mô phỏng phân bổ FEFO × Dự báo nhu cầu AI (14 ngày) & Quy tắc gợi ý xử lý</h2>
+              <p className="panel-meta">
+                <b>(1) Mô phỏng FEFO × AI:</b> Phân bổ nhu cầu dự báo 14 ngày (giả định phân bổ đều theo ngày trong tầm nhìn dự báo) cho các lô theo thứ tự hạn dùng tăng dần, không tính trùng nhu cầu giữa các lô và không ngoại suy ngoài 14 ngày.{' '}
+                <b>(2) Quy tắc nghiệp vụ cấu hình:</b> Khi phát hiện nguy cơ dư trong 14 ngày tới, hệ thống gợi ý có điều kiện các phương án vận hành (giảm giá theo bậc, cân nhắc chương trình mua kèm/Mua 1 tặng 1, điều chuyển nội bộ hoặc khóa lô hết hạn).
+              </p>
+            </div>
+            <div className="lots-actions">
+              <button type="button" className="outline-button" onClick={() => setShowAllAiLots(v => !v)}>
+                {showAllAiLots ? `Chỉ xem lô nguy cơ (${aiRiskCount})` : `Xem tất cả lô (${fefoAiReport.items.filter(i => i.daysRemaining <= 35 || i.atRiskQuantity > 0).length})`}
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, padding: '0 18px 14px' }}>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#fff1f2', border: '1px solid #fecdd3', borderLeft: '4px solid #e11d48' }}>
+              <strong style={{ display: 'block', fontSize: 12.5, color: '#9f1239' }}>🎁 Quy tắc 1: Gợi ý Mua kèm / Mua 1 Tặng 1 (Có điều kiện)</strong>
+              <small style={{ color: '#475569', fontSize: 11.5 }}>Tham số cấu hình: gợi ý cân nhắc khi <b>còn ≤ 10 ngày</b> hoặc <b>tỷ lệ dư dự kiến ≥ 45%</b> (trong tầm nhìn 14 ngày). Là đề xuất chính sách bán hàng, không tự giả định tốc độ bán tăng gấp đôi.</small>
+            </div>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '4px solid #d97706' }}>
+              <strong style={{ display: 'block', fontSize: 12.5, color: '#92400e' }}>🏷️ Quy tắc 2: Bậc giảm giá tham khảo 10%–35%</strong>
+              <small style={{ color: '#475569', fontSize: 11.5 }}>Tham số cấu hình theo hạn còn lại (≤7 ngày: 35%, ≤14 ngày: 25%, ≤21 ngày: 15%). Hỗ trợ quản lý cửa hàng tham khảo mức chiết khấu xả lô cận hạn.</small>
+            </div>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', borderLeft: '4px solid #2563eb' }}>
+              <strong style={{ display: 'block', fontSize: 12.5, color: '#1e40af' }}>🚚 Quy tắc 3: Điều chuyển nội bộ (Cân bằng tồn & FEFO)</strong>
+              <small style={{ color: '#475569', fontSize: 11.5 }}>Xét phần vượt tồn an toàn kho nguồn, trừ <b>2 ngày vận chuyển</b> và trừ <b>các lô FEFO cạnh tranh tại kho nhận</b>, chỉ đề xuất khi kho nhận có tốc độ cầu dự báo ≥ max(2, 1.4× kho nguồn).</small>
+            </div>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#f8fafc', border: '1px solid #cbd5e1', borderLeft: '4px solid #475569' }}>
+              <strong style={{ display: 'block', fontSize: 12.5, color: '#1e293b' }}>🛑 Quy tắc 4: Chặn xuất POS & Cách ly tiêu hủy</strong>
+              <small style={{ color: '#475569', fontSize: 11.5 }}>Khi <b>quá hạn (&lt; 0 ngày)</b> hoặc đang cách ly, Backend POS tự động chặn xuất bán lô này trong giao dịch Serializable và yêu cầu lập biên bản hủy.</small>
+            </div>
+          </div>
+          {visibleAiRows.length > 0 ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Sản phẩm / Kho</th>
+                    <th>Mã lô / Hạn dùng</th>
+                    <th>Tồn lô / Phân bổ FEFO</th>
+                    <th>Đánh giá nguy cơ dư (14 ngày)</th>
+                    <th>Đề xuất xử lý (Tách biệt AI Forecast & Quy tắc)</th>
+                    <th>Thao tác</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleAiRows.map(item => {
+                    const unsoldRatio = item.unsoldRatio ?? (item.lotQuantity > 0 ? item.atRiskQuantity / item.lotQuantity : 0);
+                    const recommendBogo =
+                      item.conditionalComboSuggestion ??
+                      (item.daysRemaining >= 0 &&
+                        !item.beyondHorizon &&
+                        item.atRiskQuantity > 0 &&
+                        (item.daysRemaining <= 10 || unsoldRatio >= 0.45));
+                    return (
+                    <tr key={item.lotId}>
+                      <td>
+                        <strong>{item.productName}</strong>
+                        <small>{item.warehouseName}</small>
+                      </td>
+                      <td>
+                        <span className="lot-code" title={item.lotCode}>{item.lotCode}</span>
+                        <small className={item.daysRemaining <= 14 ? 'lots-danger' : undefined}>
+                          {item.daysRemaining < 0
+                            ? `Quá hạn ${Math.abs(item.daysRemaining)} ngày`
+                            : item.daysRemaining === 0
+                              ? 'Hết hạn cuối ngày hôm nay'
+                              : `Còn ${item.daysRemaining} ngày`}{' '}
+                          ({shortDateVn(item.expiresAt)})
+                        </small>
+                      </td>
+                      <td>
+                        <strong>{fmtNum(item.lotQuantity)} {item.unit}</strong>
+                        {item.allocationStatus === 'NO_FORECAST_RUN' || item.allocationStatus === 'NO_SALES_HISTORY' ? (
+                          <small className="lots-plan-muted">Chưa có dự báo hợp lệ</small>
+                        ) : (
+                          <small>
+                            Dự kiến bán: {fmtNum(item.projectedSoldBeforeExpiry)} {item.unit} ({item.dailyForecastRate}/ngày)
+                            {(item.priorConsumedDemand ?? 0) > 0 ? ` · Đã trừ ${item.priorConsumedDemand} đv cho lô hạn sớm hơn` : ''}
+                          </small>
+                        )}
+                      </td>
+                      <td>
+                        {item.daysRemaining < 0 || item.allocationStatus === 'EXPIRED_OR_QUARANTINED' ? (
+                          <StatusBadge tone="red">Hết hạn / Khóa ({fmtNum(item.lotQuantity)} {item.unit})</StatusBadge>
+                        ) : item.allocationStatus === 'NO_FORECAST_RUN' || item.allocationStatus === 'NO_SALES_HISTORY' ? (
+                          <StatusBadge tone="neutral">Chưa đủ dữ liệu dự báo</StatusBadge>
+                        ) : item.beyondHorizon || item.allocationStatus === 'BEYOND_FORECAST_HORIZON' ? (
+                          <>
+                            <StatusBadge tone="neutral">Ngoài tầm nhìn {item.horizonDays} ngày</StatusBadge>
+                            <small style={{ display: 'block', marginTop: 3, color: '#64748b' }}>
+                              Không ngoại suy ngoài {item.horizonDays} ngày
+                            </small>
+                          </>
+                        ) : item.atRiskQuantity > 0 ? (
+                          <>
+                            <StatusBadge tone={item.riskLevel === 'CRITICAL' ? 'red' : 'amber'}>
+                              Nguy cơ dư {fmtNum(item.atRiskQuantity)} {item.unit} ({Math.round(unsoldRatio * 100)}%)
+                            </StatusBadge>
+                            <small className="lots-danger" style={{ display: 'block', marginTop: 3 }}>
+                              Giá vốn lượng dư: {fmtNum(item.atRiskValue)} đ
+                            </small>
+                          </>
+                        ) : (
+                          <StatusBadge tone="green">An toàn trong hạn</StatusBadge>
+                        )}
+                      </td>
+                      <td>
+                        {item.daysRemaining < 0 || item.allocationStatus === 'EXPIRED_OR_QUARANTINED' ? (
+                          <div className="lots-plan-list"><span>🛑 [Quy tắc kho]: Đã chặn bán FEFO tại POS · Cách ly & Lập phiếu tiêu hủy</span></div>
+                        ) : item.allocationStatus === 'NO_FORECAST_RUN' || item.allocationStatus === 'NO_SALES_HISTORY' ? (
+                          <div className="lots-plan-list"><span className="lots-plan-muted">ℹ️ Chưa chạy dự báo AI hoặc chưa có lịch sử bán (không tự tạo dự báo giả)</span></div>
+                        ) : item.beyondHorizon || item.allocationStatus === 'BEYOND_FORECAST_HORIZON' ? (
+                          <div className="lots-plan-list">
+                            <span className="lots-plan-muted">
+                              ℹ️ Còn {item.daysRemaining} ngày (&gt; tầm nhìn dự báo {item.horizonDays} ngày). Dự kiến tiêu thụ {item.projectedSoldBeforeExpiry}/{item.lotQuantity} {item.unit} trong {item.horizonDays} ngày đầu; tiếp tục theo dõi định kỳ.
+                            </span>
+                          </div>
+                        ) : item.atRiskQuantity > 0 ? (
+                          <div className="lots-plan-list">
+                            <span>
+                              🏷️ <b>[Gợi ý quy tắc]:</b> Tham khảo giảm {item.suggestedDiscountPercent}% (giá sau giảm {fmtNum(item.discountedPrice)} đ/{item.unit}, thu hồi tối đa ~{fmtNum(item.recoverableValue)} đ nếu bán hết lượng dư)
+                            </span>
+                            {recommendBogo && (
+                              <span className="lots-plan-sub" style={{ color: '#be123c', fontWeight: 600 }}>
+                                🎁 <b>[Gợi ý có điều kiện]:</b> Cân nhắc chương trình Mua kèm / Mua 1 tặng 1 nếu biên lợi nhuận cho phép (tham số cấu hình: ≤10 ngày hoặc dư ≥45%)
+                              </span>
+                            )}
+                            {item.recommendedTransferBranch && (
+                              <span className="lots-plan-sub">
+                                🚚 <b>[Cân bằng điều chuyển]:</b> Chuyển {item.recommendedTransferBranch.absorbableQuantity} {item.unit} → {item.recommendedTransferBranch.warehouseName} (cầu dự báo {item.recommendedTransferBranch.dailyDemandRate}/ngày, đã trừ 2 ngày vận chuyển & tồn FEFO cạnh tranh tại kho nhận)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="lots-plan-list"><span className="lots-plan-muted">✅ [AI × FEFO]: Sức mua dự báo đủ hấp thụ hết trước hạn</span></div>
+                        )}
+                      </td>
+                      <td>
+                        <div className="lots-actions">
+                          {item.pendingTransfer ? (
+                            <Link className="outline-button" href={`/dieu-chuyen/${item.pendingTransfer.id}`}>
+                              Phiếu {item.pendingTransfer.code} →
+                            </Link>
+                          ) : item.atRiskQuantity > 0 && item.recommendedTransferBranch && can('transfers.create') ? (
+                            <button
+                              type="button"
+                              className="primary-button"
+                              disabled={transferringLotId === item.lotId}
+                              onClick={() => void handleFefoAiTransfer(item)}
+                            >
+                              {transferringLotId === item.lotId
+                                ? 'Đang tạo…'
+                                : `Chuyển → ${item.recommendedTransferBranch.warehouseName}`}
+                            </button>
+                          ) : item.atRiskQuantity > 0 ? (
+                            <Link className="outline-button" href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`FEFO-${item.lotCode.toUpperCase()}`)}`}>
+                              🏷️ Bán POS · Mã FEFO-{item.lotCode.toUpperCase()} →
+                            </Link>
+                          ) : (
+                            <span className="lots-plan-muted">—</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );})}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <TableState message="Không có lô cận hạn nào có nguy cơ dư thừa trong tầm nhìn dự báo 14 ngày." />
+          )}
+        </section>
+      )}
+
+      <section className="panel lots-toolbar">
+        <label>Tìm theo mã lô, sản phẩm hoặc kho
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Ví dụ: LOT-CP, sữa, Kho Ba Đình" />
+        </label>
+        <label>Lọc trạng thái
+          <select value={filter} onChange={e => setFilter(e.target.value)}>
+            <option value="ALL">Tất cả lô</option>
+            <option value="EXPIRED">Đã hết hạn</option>
+            <option value="SOON">Sắp hết hạn · 30 ngày</option>
+            <option value="HOLD">Cách ly / chờ xác minh</option>
+          </select>
+        </label>
+        <button className="outline-button" disabled={busy} onClick={() => void run(load)}>Làm mới</button>
+        {can('stocktakes.approve') && (
+          <button className="primary-button" onClick={() => setOperation({ kind: 'classify' })}>Phân loại tồn cũ</button>
+        )}
+      </section>
+
+      <details className="panel lots-settings">
+        <summary>Quy cách nhập & thời gian cung ứng</summary>
+        <p>Mọi số tồn và số bán giữ theo đơn vị sản phẩm. Ví dụ 1 thùng nhập = 24 hộp bán. Thời gian cung ứng là số ngày kế hoạch, cần đối chiếu nhà cung cấp.</p>
+        <select
+          aria-label="Chọn sản phẩm cấu hình nhập"
+          defaultValue=""
+          onChange={e => {
+            const item = stocks.find(row => row.id === e.target.value);
+            setProcurement((item?.sku.product as Product) ?? null);
+          }}
+        >
+          <option value="">Chọn sản phẩm để xem/cấu hình</option>
+          {stocks
+            .filter((row, index, list) => list.findIndex(other => other.sku.product.id === row.sku.product.id) === index)
+            .map(row => (
+              <option key={row.id} value={row.id}>
+                {row.sku.product.name} · đơn vị tồn/bán: {row.sku.product.unit}
+              </option>
+            ))}
+        </select>
+        {procurement && (
+          <form
+            className="lots-toolbar"
+            key={procurement.id}
+            onSubmit={e => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              void run(() =>
+                api(`products/${procurement.id}/procurement`, 'PATCH', {
+                  purchaseUnit: data.get('purchaseUnit'),
+                  purchasePackSize: Number(data.get('pack')),
+                  leadTimeDays: data.get('lead') === '' ? null : Number(data.get('lead')),
+                })
+              );
+            }}
+          >
+            <label>Đơn vị nhập
+              <input name="purchaseUnit" required defaultValue={procurement.purchaseUnit ?? procurement.unit} />
+            </label>
+            <label>Số {procurement.unit} / đơn vị nhập
+              <input name="pack" type="number" required min="1" max="100000" defaultValue={procurement.purchasePackSize ?? 1} />
+            </label>
+            <label>Giao hàng dự kiến (ngày)
+              <input name="lead" type="number" min="0" max="365" defaultValue={procurement.leadTimeDays ?? ''} placeholder="Chưa biết" />
+            </label>
+            {can('products.manage') && <button className="primary-button" disabled={busy}>Lưu cấu hình</button>}
+          </form>
+        )}
+      </details>
+
+      <section className="panel lots-table-panel">
+        <div className="lots-table-heading">
+          <div>
+            <h2>Danh sách lô tồn kho vật lý</h2>
+            <p>{visible.length} / {lots.length} lô · ưu tiên xem các lô cần xử lý trước</p>
+          </div>
+          <span className="lots-fefo"><b>FEFO</b> Hết hạn trước · xuất trước</span>
+        </div>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Sản phẩm / kho</th>
+                <th>Mã lô / hạn sử dụng</th>
+                <th>Số lượng</th>
+                <th>Vị trí / trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(lot => (
+                <tr key={lot.id}>
+                  <td><strong>{lot.inventory.sku.product.name}</strong><small>{lot.inventory.warehouse.name}</small></td>
+                  <td>
+                    <span className="lot-code" title={lot.code}>{lot.code}</span>
+                    <small>
+                      {lot.expiresAt
+                        ? `Hạn sử dụng: ${new Date(lot.expiresAt).toLocaleDateString('vi-VN', { timeZone: 'UTC' })}`
+                        : lot.status === 'LEGACY'
+                        ? 'Chưa xác minh hạn sử dụng'
+                        : 'Không khai báo hạn sử dụng'}
+                    </small>
+                  </td>
+                  <td><strong>{lot.quantity}</strong> {lot.inventory.sku.product.unit}</td>
+                  <td>
+                    <strong className={lot.expired ? 'lots-danger' : ''}>
+                      {lot.expired
+                        ? 'Đã hết hạn · chặn xuất bán'
+                        : lot.daysRemaining !== null && lot.daysRemaining <= 30
+                        ? `Còn ${lot.daysRemaining} ngày`
+                        : lot.status === 'LEGACY'
+                        ? 'Tồn cũ chưa xác minh'
+                        : lot.status === 'QUARANTINE'
+                        ? 'Cách ly'
+                        : 'Còn sử dụng'}
+                    </strong>
+                    <small>{lot.zone}</small>
+                  </td>
+                  <td>
+                    <div className="lots-actions">
+                      {lot.quantity > 0 && can('stocktakes.create') && (
+                        <>
+                          <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'quarantine', lot })}>Cách ly</button>
+                          <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'dispose', lot })}>Lập phiếu tiêu hủy</button>
+                        </>
+                      )}
+                      {can('stocktakes.approve') && (
+                        <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'count', lot })}>Kiểm đếm lô</button>
+                      )}
+                    </div>
+                    <details>
+                      <summary>Lịch sử lô</summary>
+                      {lot.movements.map(row => (
+                        <p key={row.id}>
+                          {new Date(row.createdAt).toLocaleString('vi-VN')} · {row.referenceType} · {row.quantity > 0 ? '+' : ''}{row.quantity}
+                        </p>
+                      ))}
+                    </details>
+                  </td>
+                </tr>
+              ))}
+              {!visible.length && (
+                <tr>
+                  <td colSpan={5}><TableState message="Chưa có lô phù hợp. Ghi mã lô và hạn sử dụng khi nhận hàng hoặc phân loại tồn cũ." /></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Phiếu xử lý hàng cách ly</h2>
+            <p className="panel-meta">Chỉ xác nhận hoàn tất sau khi xử lý hàng thực tế và ghi số biên bản hoặc đường dẫn bằng chứng.</p>
+          </div>
+        </div>
+        {lots.flatMap(lot =>
+          lot.disposals.map(row => (
+            <article className="lots-disposal" key={row.id}>
+              <div>
+                <strong>{lot.code} · {row.quantity} {lot.inventory.sku.product.unit}</strong>
+                <p>{row.reason}</p>
+                <small>{labels[row.status]} · {row.id}{row.evidence && ` · ${row.evidence}`}</small>
+              </div>
+              {can('stocktakes.approve') && row.status === 'READY' && (
+                <button className="primary-button" disabled={busy} onClick={() => setOperation({ kind: 'complete', lot, disposal: row })}>
+                  Xác nhận đã xử lý
+                </button>
+              )}
+            </article>
+          ))
+        )}
+      </section>
+
+      <p className="lots-footnote">Trả nhà cung cấp phải theo đơn mua hàng gốc, đúng lô và được nhà cung cấp chấp thuận; phiếu tiêu hủy không tự tạo hoàn tiền.</p>
+
+      {operation && (
+        <div className="ui-modal">
+          <form className="ui-modal-card" onSubmit={submit}>
+            <header>
+              <h2>
+                {
+                  ({
+                    classify: 'Phân loại tồn cũ',
+                    quarantine: 'Đưa hàng vào khu cách ly',
+                    count: 'Kiểm đếm thực tế từng lô',
+                    dispose: 'Lập phiếu tiêu hủy',
+                    complete: 'Xác nhận đã xử lý thực tế',
+                  })[operation.kind]
+                }
+              </h2>
+              <button type="button" aria-label="Đóng" disabled={busy} onClick={() => setOperation(null)}>×</button>
+            </header>
+            {error && <p role="alert" className="ui-error">{error}</p>}
+            {operation.kind === 'classify' && (
+              <>
+                <label>Sản phẩm / kho
+                  <select required value={selected} onChange={e => setSelected(e.target.value)}>
+                    <option value="">Chọn tồn kho</option>
+                    {stocks.map(row => (
+                      <option key={row.id} value={row.id}>
+                        {row.sku.product.name} · {row.warehouse.name} · {row.onHand} {row.sku.product.unit}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>Mã lô
+                  <input name="code" required maxLength={100} placeholder="Mã trên bao bì / chứng từ NCC" />
+                </label>
+                <label>Hạn sử dụng
+                  <input name="expiresAt" type="date" />
+                  <small>Bỏ trống nếu sản phẩm không quản lý hạn sử dụng. Tồn chưa phân loại bị chặn bán.</small>
+                </label>
+              </>
+            )}
+            {!['quarantine', 'complete'].includes(operation.kind) && (
+              <label>
+                {operation.kind === 'count' ? 'Số lượng thực đếm' : 'Số lượng'}
+                <input type="number" name="quantity" min={operation.kind === 'count' ? 0 : 1} step="1" required defaultValue={operation.lot?.quantity} />
+              </label>
+            )}
+            {operation.kind === 'complete' ? (
+              <label>Số biên bản / đường dẫn bằng chứng
+                <textarea name="evidence" required minLength={3} maxLength={2000} />
+              </label>
+            ) : (
+              <label>Lý do / căn cứ xác minh
+                <textarea name="reason" required minLength={3} maxLength={500} />
+              </label>
+            )}
+            <footer>
+              <button type="button" className="outline-button" disabled={busy} onClick={() => setOperation(null)}>Đóng</button>
+              <button className="primary-button" disabled={busy}>{busy ? 'Đang xử lý…' : 'Xác nhận'}</button>
+            </footer>
+          </form>
+        </div>
+      )}
+    </main>
+  );
 }
-export default function Page() { return <Protected permission="inventory.read"><Lots/></Protected>; }
+
+export default function Page() {
+  return (
+    <Protected permission="inventory.read">
+      <Lots />
+    </Protected>
+  );
+}

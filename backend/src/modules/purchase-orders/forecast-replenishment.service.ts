@@ -6,6 +6,7 @@ import type { CurrentUser } from '../auth/auth.repository.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { getShortageAlerts } from '../forecasts/forecasts.service.js';
 import { createPurchaseOrder, getPurchaseOrder } from './purchase-orders.service.js';
+import { toJson, parseJson } from '../../common/json-field.js';
 
 export const forecastOrderInput = z.object({
   requestId: z.string().uuid(), warehouseId: z.string().uuid(), supplierId: z.string().uuid(), forecastRunId: z.string().uuid(),
@@ -51,7 +52,7 @@ export async function createForecastReplenishment(user: CurrentUser, input: Inpu
   const previous = async () => {
     const row = await prisma.auditLog.findUnique({ where: { id: input.requestId } });
     if (!row) return null;
-    const metadata = row.metadata as { fingerprint?: string } | null;
+    const metadata = parseJson<{ fingerprint?: string }>(row.metadata);
     if (row.action !== 'purchase_order.forecast_create' || row.actorId !== user.id || metadata?.fingerprint !== fingerprint || !row.targetId) throw new AppError(409, 'ORDER_REQUEST_REUSED', 'Yêu cầu tạo đơn đã được sử dụng. Tải lại danh sách trước khi đặt tiếp.');
     return getPurchaseOrder(user, row.targetId);
   };
@@ -70,7 +71,7 @@ export async function createForecastReplenishment(user: CurrentUser, input: Inpu
             if (!advice || item.quantity > uncoveredShortage(advice.shortageQuantity, advice.incomingPurchase, pending.get(item.skuId) ?? 0)) throw new AppError(409, 'REPLENISHMENT_CHANGED', 'Hàng đã được đặt mua hoặc số lượng vượt nhu cầu còn thiếu. Tải lại gợi ý để tránh đặt trùng.');
           }
         },
-        afterCreate: async (tx, id) => { await tx.auditLog.create({ data: { id: input.requestId, actorId: user.id, action: 'purchase_order.forecast_create', targetId: id, metadata: { fingerprint, forecastRunId: input.forecastRunId } } }); },
+        afterCreate: async (tx, id) => { await tx.auditLog.create({ data: { id: input.requestId, actorId: user.id, action: 'purchase_order.forecast_create', targetId: id, metadata: toJson({ fingerprint, forecastRunId: input.forecastRunId }) } }); },
       });
     } catch (error) {
       const replay = await previous(); if (replay) return replay;

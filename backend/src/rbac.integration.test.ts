@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 
 const suite = process.env.TEST_DATABASE_URL ? describe : describe.skip;
-suite('RBAC and branch scope on PostgreSQL', () => {
+suite('RBAC and branch scope on SQL Server', () => {
   let db: typeof import('./common/database.js').prisma;
   let app: ReturnType<typeof import('./app.js').createApp>;
   const run = randomUUID();

@@ -17,7 +17,20 @@ const fs = require('node:fs');
   const sampleParcel = { id: 'p1', tagId: 'QR-TEST-DANISA-01', palletCode: 'PAL-01', deviceId: 'FRESHMART-CAMERA-IN-01', skuId: 'sku1', quantity: 50, lotCode: 'LOT-01', expiresAt: null, noExpiry: false, status: 'READY', purchaseOrderId: 'po1', purchaseOrderItemId: 'poi1', purchaseOrderCode: 'PO-20261011-0001', purchaseOrderStatus: 'OPEN', product: { name: 'Bánh Quy DaNiSa', unit: 'Hộp' }, goodsReceiptId: null };
   const events = [], alerts = [], actions = [], iotEvents = [];
   let scenario = 'authorized', openedAt = 0, serial = 0, realMode = false;
-  const addEvent = (eventType, person = null) => { const event = { id: String(++serial), eventType, employee: person, source: 'SIMULATION', occurredAt: new Date().toISOString() }; events.unshift(event); return event; };
+  const addEvent = (eventType, person = null) => {
+    const event = {
+      id: String(++serial),
+      doorId: door.id,
+      deviceId: realMode ? 'ESP32-WH01' : device.code,
+      eventType,
+      employee: person,
+      source: realMode ? 'IOT_DEVICE' : 'SIMULATION',
+      payload: { uid: card.uid },
+      occurredAt: new Date().toISOString()
+    };
+    events.unshift(event);
+    return event;
+  };
   await page.route('**/api/v1/**', async route => {
     const req = route.request(), url = new URL(req.url()), resource = url.pathname.split('/api/v1/')[1];
     let data;
@@ -29,9 +42,9 @@ const fs = require('node:fs');
     else if (resource === 'iot/events') data = iotEvents;
     else if (resource === 'iot/access/monitor') {
       if (!realMode && scenario === 'open-too-long' && door.state === 'OPEN' && Date.now() - openedAt > 2500 && !alerts.some(a => a.type === 'DOOR_OPEN_TOO_LONG')) {
-        alerts.unshift({ id: 'long1', type: 'DOOR_OPEN_TOO_LONG', message: 'Cửa mở quá lâu.', status: 'OPEN', createdAt: new Date().toISOString() }); addEvent('DOOR_OPEN_TOO_LONG');
+        alerts.unshift({ id: 'long1', doorId: door.id, type: 'DOOR_OPEN_TOO_LONG', message: 'Cửa mở quá lâu.', status: 'OPEN', createdAt: new Date().toISOString() }); addEvent('DOOR_OPEN_TOO_LONG');
       }
-      data = { mode: realMode ? 'REAL_IOT' : 'SIMULATION', accessWindowSeconds: 1, maxDoorOpenSeconds: 30, simulationDoorOpenSeconds: 2, devices: [{ ...device, code: realMode ? 'ESP32-WH01' : device.code, online: realMode }], doors: [realMode ? { ...door, device: { code: 'ESP32-WH01' } } : door], cards: [card], employees: [employee], events, alerts };
+      data = { mode: realMode ? 'REAL_IOT' : 'SIMULATION', accessWindowSeconds: 10, maxDoorOpenSeconds: 30, simulationDoorOpenSeconds: 2, devices: [{ ...device, code: realMode ? 'ESP32-WH01' : device.code, online: realMode }], doors: [realMode ? { ...door, device: { code: 'ESP32-WH01' } } : door], cards: [card], employees: [employee], events, alerts };
     } else if (resource === 'iot/access/simulate' && req.method() === 'POST') {
       const body = req.postDataJSON(); actions.push(body.action + (body.state ? ':' + body.state : ''));
       if (body.action === 'RFID') { addEvent('RFID_SCAN', employee); data = { duplicate: false, event: addEvent('ACCESS_GRANTED', employee) }; }
@@ -105,7 +118,7 @@ const fs = require('node:fs');
     await page.locator('.live-scene-status').screenshot({ path: path.join(output, 'status-granted.png') });
     await expect(scene).toContainText('Nhân viên đang vào kho', { timeout: 30000 });
     await page.locator('canvas').screenshot({ path: path.join(output, 'door-entry.png') });
-    await expect(scene).toContainText('Hoàn tất luồng', { timeout: 30000 });
+    await expect(scene).toContainText('Hoàn tất phiên', { timeout: 30000 });
     expect(actions).toEqual(['RFID', 'DOOR:OPEN', 'DOOR:CLOSED']);
     console.log('PASS normal: animation advances and events travel through simulated API');
     scenario = 'unauthorized'; alerts.length = 0; actions.length = 0;
@@ -120,10 +133,14 @@ const fs = require('node:fs');
     await expect(scene).toContainText('Cảnh báo cửa kho', { timeout: 40000 });
     expect(actions).toEqual(['RFID', 'DOOR:OPEN']);
     await page.getByRole('button', { name: 'Đóng cửa kết thúc' }).click();
+    await expect(scene).toContainText('Hoàn tất phiên', { timeout: 20000 });
     expect(actions).toEqual(['RFID', 'DOOR:OPEN', 'DOOR:CLOSED']);
     expect(alerts[0].status).toBe('RESOLVED');
     expect(errors).toEqual([]);
     console.log('PASS long-open: backend warning and closure resolution; no browser errors');
+    const closeBtn = page.getByRole('button', { name: 'Đóng', exact: true });
+    if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) await closeBtn.click();
+    await page.waitForTimeout(500);
     realMode = true; events.length = 0; alerts.length = 0; actions.length = 0;
     await expect(page.getByText('● REAL IOT', { exact: true }).first()).toBeVisible({ timeout: 10000 });
     await expect(scenarioSelect).toBeDisabled();
@@ -134,7 +151,7 @@ const fs = require('node:fs');
     await expect(scene).toContainText('Nhân viên đang vào kho', { timeout: 20000 });
     expect(actions).toEqual([]);
     door.state = 'CLOSED'; door.openSince = null; addEvent('DOOR_CLOSED');
-    await expect(scene).toContainText('Hoàn tất luồng', { timeout: 20000 });
+    await expect(scene).toContainText('Hoàn tất phiên', { timeout: 20000 });
     expect(actions).toEqual([]);
     console.log('PASS real-device event playback: no simulation POSTs');
   } catch (error) { console.error('Browser errors:', errors); await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => { }); throw error; }

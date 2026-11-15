@@ -11,7 +11,7 @@ import type { CurrentUser } from '../auth/auth.repository.js';
 const state = vi.hoisted(() => ({ tx: null as unknown as Prisma.TransactionClient }));
 vi.mock('../../common/database.js', () => ({ prisma: new Proxy({}, { get: (_, key) => key === '$transaction' ? (fn: (tx: Prisma.TransactionClient) => unknown) => fn(state.tx) : state.tx[key as keyof typeof state.tx] }) }));
 
-describe.skipIf(process.env.RUN_RFID_DB_TEST !== '1')('RFID receiving and transfer on PostgreSQL (rolled back)', () => {
+describe.skipIf(process.env.RUN_RFID_DB_TEST !== '1')('RFID receiving and transfer on SQL Server (rolled back)', () => {
   it.each(['RFID_DETECTED', 'CAMERA_CODE_DETECTED'])('%s persists one receipt and ignores repeat scans', async (eventType) => {
     const { prisma } = await vi.importActual<{ prisma: PrismaClient }>('../../common/database.js');
     const { createPurchaseOrder } = await import('../purchase-orders/purchase-orders.service.js');
@@ -76,7 +76,7 @@ describe.skipIf(process.env.RUN_RFID_DB_TEST !== '1')('RFID receiving and transf
           expect(await tx.goodsReceipt.count({ where: { purchaseOrderId: order.id } })).toBe(0);
         }
         const mapping = await tx.iotTagMapping.findUniqueOrThrow({ where: { tagId } });
-        const scan = () => tx.iotEvent.create({ data: { eventId: randomUUID(), deviceId, tagId, warehouseId: source.id, eventType, timestamp: new Date(), payload: {}, source: 'DEVICE', tagMappingId: mapping.id, mappedSkuId: skuId, inboundParcelId: parcel.id, automationStatus: 'PENDING' } });
+        const scan = () => tx.iotEvent.create({ data: { eventId: randomUUID(), deviceId, tagId, warehouseId: source.id, eventType, timestamp: new Date(), payload: '{}', source: 'DEVICE', tagMappingId: mapping.id, mappedSkuId: skuId, inboundParcelId: parcel.id, automationStatus: 'PENDING' } });
         const event = await scan();
         const detected = await processInboundEvent(event.id);
         expect(detected.automationStatus, detected.automationMessage ?? '').toBe('WAITING_CONFIRMATION');
@@ -138,5 +138,5 @@ describe.skipIf(process.env.RUN_RFID_DB_TEST !== '1')('RFID receiving and transf
       }, { timeout: 30000 });
     } catch (error) { if (error !== rollback) throw error; }
     finally { await prisma.$disconnect(); }
-  });
+  }, 60000);
 });

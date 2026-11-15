@@ -3,7 +3,7 @@ import { prisma } from '../src/common/database.js';
 
 try {
   const result = await prisma.$transaction(async tx => {
-    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    // All operations below are read-only SELECTs on SQL Server.
     const inventory = await tx.inventory.findMany({ select: { onHand: true, reserved: true, incoming: true, inTransfer: true, lots: { select: { quantity: true } } } });
     const payable = await tx.payable.findMany({ select: { totalAmount: true, paidAmount: true, payments: { select: { amount: true } } } });
     const receivable = await tx.receivable.findMany({ select: { totalAmount: true, paidAmount: true, payments: { select: { amount: true } } } });

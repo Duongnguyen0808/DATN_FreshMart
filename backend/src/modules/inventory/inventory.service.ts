@@ -1,7 +1,9 @@
 import { requireUntrackedAdjustment, expired } from '../inventory/lot-stock.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
+import { toJson } from '../../common/json-field.js';
 import { AppError } from '../../common/app-error.js';
+import { publishInventoryUpdate } from '../iot/iot.realtime.js';
 import type { CurrentUser } from '../auth/auth.repository.js';
 import type { z } from 'zod';
 import type { inventoryListInput, transactionListInput } from './inventory.schemas.js';
@@ -15,12 +17,12 @@ const scopeWhere = (user: CurrentUser): Prisma.InventoryWhereInput => ({
   ...(user.globalAccess ? {} : { warehouse: { storeId: { in: scopeIds(user) } } }),
 });
 const includeInventory = { lots: true, warehouse: { include: { store: { select: { id: true, code: true, name: true } } } }, sku: { include: { product: { include: { category: true } } } } };
-const present = <T extends { onHand: number; reserved: number; lots?: { quantity: number; status: string; expiresAt: Date | null }[]; sku: { costPrice: unknown } }>(row: T) => ({ ...row, available: Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)), stockValue: row.onHand * Number(row.sku.costPrice), status: Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)) <= 0 ? 'OUT' : Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status !== "AVAILABLE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)) <= (row as T & { safetyStock: number }).safetyStock ? 'LOW' : 'AVAILABLE' });
+const present = <T extends { onHand: number; reserved: number; lots?: { quantity: number; status: string; expiresAt: Date | null }[]; sku: { costPrice: unknown } }>(row: T) => ({ ...row, available: Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status === "QUARANTINE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)), stockValue: row.onHand * Number(row.sku.costPrice), status: Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status === "QUARANTINE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)) <= 0 ? 'OUT' : Math.max(0, row.onHand - row.reserved - (row.lots ?? []).filter(lot => lot.status === "QUARANTINE" || expired(lot.expiresAt)).reduce((sum, lot) => sum + lot.quantity, 0)) <= (row as T & { safetyStock: number }).safetyStock ? 'LOW' : 'AVAILABLE' });
 
 export async function listInventory(user: CurrentUser, input: z.infer<typeof inventoryListInput>) {
   if (input.storeId) assertStoreScope(user, input.storeId);
   if (input.warehouseId) { const warehouse = await prisma.warehouse.findUnique({ where: { id: input.warehouseId }, select: { storeId: true } }); if (!warehouse) throw new AppError(404, 'WAREHOUSE_NOT_FOUND', 'Không tìm thấy kho.'); assertStoreScope(user, warehouse.storeId); }
-  const where: Prisma.InventoryWhereInput = { ...scopeWhere(user), ...(input.storeId ? { warehouse: { storeId: input.storeId } } : {}), ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}), ...(input.categoryId ? { sku: { product: { categoryId: input.categoryId } } } : {}), ...(input.q ? { OR: [{ sku: { code: { contains: input.q, mode: 'insensitive' } } }, { sku: { barcode: { contains: input.q } } }, { sku: { product: { name: { contains: input.q, mode: 'insensitive' } } } }, { warehouse: { name: { contains: input.q, mode: 'insensitive' } } }] } : {}) };
+  const where: Prisma.InventoryWhereInput = { ...scopeWhere(user), ...(input.storeId ? { warehouse: { storeId: input.storeId } } : {}), ...(input.warehouseId ? { warehouseId: input.warehouseId } : {}), ...(input.categoryId ? { sku: { product: { categoryId: input.categoryId } } } : {}), ...(input.q ? { OR: [{ sku: { code: { contains: input.q } } }, { sku: { barcode: { contains: input.q } } }, { sku: { product: { name: { contains: input.q } } } }, { warehouse: { name: { contains: input.q } } }] } : {}) };
   const rows = await prisma.inventory.findMany({ where, include: includeInventory, orderBy: [{ lastReceivedAt: { sort: 'desc', nulls: 'last' } }, { warehouse: { name: 'asc' } }, { sku: { code: 'asc' } }] });
   const presented = rows.map(present).filter(row => input.status === 'all' || row.status === input.status); const skip = (input.page - 1) * input.pageSize;
   const all = (await prisma.inventory.findMany({ where: scopeWhere(user), include: { lots: true, sku: { select: { costPrice: true } } } })).map(present);
@@ -35,15 +37,17 @@ export async function setSafetyStock(user: CurrentUser, id: string, safetyStock:
   const current = await prisma.inventory.findUnique({ where: { id }, include: { warehouse: true } });
   if (!current) throw new AppError(404, 'INVENTORY_NOT_FOUND', 'Không tìm thấy tồn kho SKU.');
   assertStoreScope(user, current.warehouse.storeId);
-  return prisma.$transaction(async tx => {
+  const result = await prisma.$transaction(async tx => {
     const updated = await tx.inventory.update({ where: { id }, data: { safetyStock }, include: includeInventory });
-    await tx.auditLog.create({ data: { actorId: user.id, action: 'inventory.safety_stock.update', targetId: id, metadata: { before: current.safetyStock, after: safetyStock } } });
+    await tx.auditLog.create({ data: { actorId: user.id, action: 'inventory.safety_stock.update', targetId: id, metadata: toJson({ before: current.safetyStock, after: safetyStock }) } });
     return present(updated);
   });
+  publishInventoryUpdate(current.warehouseId, 'SAFETY_STOCK');
+  return result;
 }
 
 export async function adjustStock(user: CurrentUser, id: string, actualQuantity: number, reason: string) {
-  try { return await prisma.$transaction(async tx => {
+  try { const result = await prisma.$transaction(async tx => {
     const current = await tx.inventory.findUnique({ where: { id }, include: { warehouse: true } });
     if (!current) throw new AppError(404, 'INVENTORY_NOT_FOUND', 'Không tìm thấy tồn kho SKU.');
     assertStoreScope(user, current.warehouse.storeId);
@@ -61,9 +65,12 @@ export async function adjustStock(user: CurrentUser, id: string, actualQuantity:
       beforeQuantity: current.onHand, afterQuantity: actualQuantity,
       referenceType: 'STOCK_ADJUSTMENT', referenceId: id, reason, actorId: user.id,
     } });
-    await tx.auditLog.create({ data: { actorId: user.id, action: 'inventory.adjust', targetId: id, metadata: { before: current.onHand, after: actualQuantity, reason, transactionId: transaction.id } } });
+    await tx.auditLog.create({ data: { actorId: user.id, action: 'inventory.adjust', targetId: id, metadata: toJson({ before: current.onHand, after: actualQuantity, reason, transactionId: transaction.id }) } });
     return present(await tx.inventory.findUniqueOrThrow({ where: { id }, include: includeInventory }));
-  }, { isolationLevel: 'Serializable' }); }
+  }, { isolationLevel: 'Serializable' });
+    publishInventoryUpdate(result.warehouseId, 'STOCK_ADJUSTMENT');
+    return result;
+  }
   catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') throw new AppError(409, 'STOCK_CHANGED', 'Tồn kho vừa thay đổi; hãy tải lại và thử lại.');
     throw error;
@@ -79,11 +86,11 @@ export async function listTransactions(user: CurrentUser, input: z.infer<typeof 
     ...(input.skuId ? { skuId: input.skuId } : {}),
     ...(input.type === 'all' ? {} : { type: input.type }),
     ...(input.q ? { OR: [
-      { sku: { code: { contains: input.q, mode: 'insensitive' } } },
+      { sku: { code: { contains: input.q } } },
       { sku: { barcode: { contains: input.q } } },
-      { sku: { product: { name: { contains: input.q, mode: 'insensitive' } } } },
-      { referenceId: { contains: input.q, mode: 'insensitive' } },
-      { reason: { contains: input.q, mode: 'insensitive' } },
+      { sku: { product: { name: { contains: input.q } } } },
+      { referenceId: { contains: input.q } },
+      { reason: { contains: input.q } },
     ] } : {}),
   };
   const skip = (input.page - 1) * input.pageSize;
