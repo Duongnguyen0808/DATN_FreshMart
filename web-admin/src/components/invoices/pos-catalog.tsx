@@ -10,6 +10,7 @@ import { extractInvoiceReturnTarget, type InvoiceReturnTarget } from '../../lib/
 import { ProductImage } from '../ui/product-image';
 import { Icon } from '../ui/icon';
 import type { Inventory } from '../../lib/inventory-api';
+import type { FefoPromoCodeItem } from '../../lib/invoices-api';
 import { categoryTheme } from '../../lib/category-theme';
 import { CategoryBadge } from '../products/category-badge';
 import { api } from '../../lib/auth-api';
@@ -79,13 +80,15 @@ export function PosQuantity({ name, value, max, onChange }: { name: string; valu
   </div>;
 }
 
-export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onBarcodeScanned, onInvoiceReturnScanned, quantities, promoBadges }: {
+export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onAddBogo, onBarcodeScanned, onInvoiceReturnScanned, quantities, promoBadges, promoBySku }: {
   rows: Inventory[]; ready: boolean; loading: boolean; query: string;
   onQuery: (value: string) => void; onAdd: (stock: Inventory) => void;
+  onAddBogo?: (stock: Inventory, promo: FefoPromoCodeItem) => void;
   onBarcodeScanned?: (code: string, resolvedSkuId?: string | null) => boolean | Promise<boolean>;
   onInvoiceReturnScanned?: (target: InvoiceReturnTarget) => void | Promise<void>;
   quantities: Record<string, number>;
   promoBadges?: Record<string, { label: string; isBogo: boolean }>;
+  promoBySku?: Record<string, FefoPromoCodeItem>;
 }) {
   const [category, setCategory] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -399,8 +402,42 @@ export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onBarc
     }
     return Array.from(map.values());
   }, [rows]);
-  const selectedCategory = categories.some(item => item.id === category) ? category : '';
-  const shown = useMemo(() => (selectedCategory ? rows.filter(row => row.sku.product.category?.id === selectedCategory) : rows), [rows, selectedCategory]);
+
+  const bogoRowsCount = useMemo(
+    () => rows.filter(r => promoBySku?.[r.skuId]?.bogoEligible && r.available >= 2).length,
+    [rows, promoBySku],
+  );
+  const fefoRowsCount = useMemo(
+    () => rows.filter(r => Boolean(promoBySku?.[r.skuId]) && r.available >= 1).length,
+    [rows, promoBySku],
+  );
+
+  const selectedCategory =
+    category === '__bogo' && bogoRowsCount > 0
+      ? '__bogo'
+      : category === '__fefo' && fefoRowsCount > 0
+        ? '__fefo'
+        : categories.some(item => item.id === category)
+          ? category
+          : '';
+
+  const shown = useMemo(() => {
+    if (selectedCategory === '__bogo') {
+      return rows.filter(row => promoBySku?.[row.skuId]?.bogoEligible && row.available >= 2);
+    }
+    if (selectedCategory === '__fefo') {
+      return rows.filter(row => Boolean(promoBySku?.[row.skuId]) && row.available >= 1);
+    }
+    const base = selectedCategory ? rows.filter(row => row.sku.product.category?.id === selectedCategory) : rows;
+    // Pin BOGO & near-expiry items to the top so cashiers spot them immediately!
+    return [...base].sort((a, b) => {
+      const pa = promoBySku?.[a.skuId];
+      const pb = promoBySku?.[b.skuId];
+      const scoreA = pa ? (pa.bogoEligible && a.available >= 2 ? 2 : 1) : 0;
+      const scoreB = pb ? (pb.bogoEligible && b.available >= 2 ? 2 : 1) : 0;
+      return scoreB - scoreA;
+    });
+  }, [rows, selectedCategory, promoBySku]);
 
   const handleSearchKeyDown = async (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;
@@ -529,24 +566,117 @@ export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onBarc
         </div>
       </section>
     )}
-    {ready && <div className="pos-categories" aria-label="Nhóm sản phẩm"><button type="button" className="category-filter" style={categoryTheme().style} aria-pressed={!selectedCategory} onClick={() => setCategory('')}><Icon name="grid" size={16}/>Tất cả <span>{rows.length}</span></button>{categories.map(item => <button type="button" className="category-filter" style={categoryTheme(item).style} aria-pressed={item.id === selectedCategory} key={item.id} onClick={() => setCategory(item.id)}><Icon name={categoryTheme(item).icon} size={16}/>{item.name}</button>)}</div>}
+    {ready && (
+      <div className="pos-categories" aria-label="Nhóm sản phẩm">
+        <button type="button" className="category-filter" style={categoryTheme().style} aria-pressed={!selectedCategory} onClick={() => setCategory('')}>
+          <Icon name="grid" size={16}/>Tất cả <span>{rows.length}</span>
+        </button>
+        {bogoRowsCount > 0 && (
+          <button
+            type="button"
+            className="category-filter pos-filter-bogo"
+            aria-pressed={selectedCategory === '__bogo'}
+            onClick={() => setCategory(selectedCategory === '__bogo' ? '' : '__bogo')}
+          >
+            🎁 Mua 1 Tặng 1 <span>{bogoRowsCount}</span>
+          </button>
+        )}
+        {fefoRowsCount > 0 && (
+          <button
+            type="button"
+            className="category-filter pos-filter-fefo"
+            aria-pressed={selectedCategory === '__fefo'}
+            onClick={() => setCategory(selectedCategory === '__fefo' ? '' : '__fefo')}
+          >
+            🏷️ Xả cận hạn <span>{fefoRowsCount}</span>
+          </button>
+        )}
+        {categories.map(item => (
+          <button type="button" className="category-filter" style={categoryTheme(item).style} aria-pressed={item.id === selectedCategory} key={item.id} onClick={() => setCategory(item.id)}>
+            <Icon name={categoryTheme(item).icon} size={16}/>{item.name}
+          </button>
+        ))}
+      </div>
+    )}
+    {ready && fefoRowsCount > 0 && (
+      <div className="pos-cashier-promo-hint" role="note">
+        <span>
+          <strong>Ưu đãi tự động tại quầy:</strong>{' '}
+          {bogoRowsCount > 0 && <>Có <b>{bogoRowsCount} sản phẩm Mua 1 Tặng 1</b> · </>}
+          <b>{fefoRowsCount} sản phẩm xả cận hạn</b> — chỉ cần chọn món, hệ thống tự động trừ tiền ưu đãi vào hóa đơn.
+        </span>
+        {bogoRowsCount > 0 && selectedCategory !== '__bogo' && (
+          <button type="button" onClick={() => setCategory('__bogo')}>
+            Xem món 1 Tặng 1 →
+          </button>
+        )}
+      </div>
+    )}
     {!ready ? <div className="pos-empty"><Icon name="store" size={40}/><h3>Bắt đầu phiên bán hàng</h3><p>Chọn ca làm việc và kho ở phía trên.<br/>Sản phẩm có trong kho sẽ xuất hiện tại đây.</p><Link href="/ca-lam-viec">Quản lý ca làm việc →</Link></div>
       : loading ? <div className="pos-product-grid" role="status" aria-label="Đang tải sản phẩm">{Array.from({ length: 8 }, (_, index) => <div className="pos-product-skeleton" key={index}/>)}</div>
       : !shown.length ? <div className="pos-empty"><Icon name="search" size={36}/><h3>{query ? 'Không tìm thấy sản phẩm' : 'Kho chưa có sản phẩm'}</h3><p>{query ? 'Thử tên khác hoặc kiểm tra lại mã vạch.' : 'Kiểm tra kho đã chọn hoặc nhập hàng trước khi bán.'}</p>{query && <button type="button" onClick={() => onQuery('')}>Xóa tìm kiếm</button>}</div>
       : <><div className="pos-product-grid">{shown.map(stock => {
         const quantity = quantities[stock.skuId] ?? 0;
         const badgeCategory = stock.sku.product.category;
+        const promo = promoBySku?.[stock.skuId];
+        const isBogo = Boolean(promo?.bogoEligible && stock.available >= 2);
         const promoBadge = promoBadges?.[stock.skuId];
-        return <button type="button" className="pos-product" style={badgeCategory ? categoryTheme(badgeCategory).style : undefined} key={stock.id} disabled={stock.available <= quantity} onClick={() => onAdd(stock)} aria-label={`Thêm ${stock.sku.product.name}`}>
-          <div className="pos-product-image">
-            <ProductImage src={stock.sku.product.imageUrl} name={stock.sku.product.name} size="md"/>
-            {promoBadge && <span className={`pos-promo-pill${promoBadge.isBogo ? ' is-bogo' : ''}`}>{promoBadge.label}</span>}
-            {quantity > 0 && <span key={quantity} className="pos-added">{quantity} trong giỏ</span>}
+        const canAddMore = stock.available > quantity;
+        const canAddBogoPair = isBogo && promo && onAddBogo && stock.available >= Math.max(2, quantity + (quantity % 2 === 1 ? 1 : 2));
+        return (
+          <div
+            key={stock.id}
+            role="button"
+            tabIndex={canAddMore ? 0 : -1}
+            aria-disabled={!canAddMore}
+            aria-label={`Thêm ${stock.sku.product.name}`}
+            className={`pos-product${isBogo ? ' is-bogo-card' : promo ? ' is-fefo-card' : ''}${!canAddMore ? ' is-disabled' : ''}`}
+            style={badgeCategory ? categoryTheme(badgeCategory).style : undefined}
+            onClick={() => { if (canAddMore) onAdd(stock); }}
+            onKeyDown={e => {
+              if (canAddMore && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                onAdd(stock);
+              }
+            }}
+          >
+            <div className="pos-product-image">
+              <ProductImage src={stock.sku.product.imageUrl} name={stock.sku.product.name} size="md"/>
+              {promoBadge && <span className={`pos-promo-pill${promoBadge.isBogo ? ' is-bogo' : ''}`}>{promoBadge.label}</span>}
+              {quantity > 0 && <span key={quantity} className="pos-added">{quantity} trong giỏ</span>}
+            </div>
+            {badgeCategory && <CategoryBadge category={badgeCategory}/>}
+            <span className="pos-product-name">{stock.sku.product.name}</span>
+            <small>
+              {stock.sku.product.unit} · {stock.available > 0 ? `Còn ${stock.available}` : 'Hết hàng'}
+              {promo ? ` · Hạn còn ${promo.daysRemaining} ngày` : ''}
+            </small>
+            <div className="pos-product-bottom">
+              <div>
+                <strong>{new Intl.NumberFormat('vi-VN').format(stock.sku.sellingPrice)}<small>đ</small></strong>
+                {promo && !isBogo && (
+                  <span className="pos-fefo-subprice">
+                    Còn {new Intl.NumberFormat('vi-VN').format(Math.round(stock.sku.sellingPrice * (1 - promo.discountPercent / 100)))}đ
+                  </span>
+                )}
+              </div>
+              <span aria-hidden="true">+</span>
+            </div>
+            {isBogo && promo && onAddBogo && (
+              <button
+                type="button"
+                className="pos-card-bogo-btn"
+                disabled={!canAddBogoPair}
+                onClick={event => {
+                  event.stopPropagation();
+                  onAddBogo(stock, promo);
+                }}
+              >
+                🎁 {quantity === 1 ? 'Thêm +1 tặng miễn phí' : 'Bán 1 Tặng 1 (2 món)'}
+              </button>
+            )}
           </div>
-          {badgeCategory && <CategoryBadge category={badgeCategory}/>}
-          <span className="pos-product-name">{stock.sku.product.name}</span><small>{stock.sku.product.unit} · {stock.available > 0 ? `Còn ${stock.available}` : 'Hết hàng'}</small>
-          <div className="pos-product-bottom"><strong>{new Intl.NumberFormat('vi-VN').format(stock.sku.sellingPrice)}<small>đ</small></strong><span aria-hidden="true">+</span></div>
-        </button>;
-      })}</div><p className="pos-catalog-foot">Đang hiển thị {shown.length} sản phẩm · Bấm vào sản phẩm hoặc quét Barcode/QR để thêm vào giỏ</p></>}
+        );
+      })}</div><p className="pos-catalog-foot">Đang hiển thị {shown.length} sản phẩm · Bấm vào sản phẩm hoặc quét Barcode/QR để thêm vào giỏ (ưu đãi cận hạn & 1 Tặng 1 tự động áp dụng)</p></>}
   </div>;
 }

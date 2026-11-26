@@ -1460,25 +1460,188 @@
 
   body.retail-ui .pos-promo-pill {
     position: absolute;
-    left: 5px;
-    bottom: 5px;
-    padding: 3px 6px;
-    border-radius: 5px;
+    left: 6px;
+    top: 6px;
+    bottom: auto;
+    padding: 4px 8px;
+    border-radius: 6px;
     background: #fef3c7;
-    border: 1px solid #fcd34d;
+    border: 1px solid #f59e0b;
     color: #92400e;
-    font-size: 10px;
-    font-weight: 700;
+    font-size: 10.5px;
+    font-weight: 800;
     line-height: 1.2;
-    max-width: calc(100% - 10px);
+    max-width: calc(100% - 12px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1);
+    z-index: 2;
   }
   body.retail-ui .pos-promo-pill.is-bogo {
-    background: #ffe4e6;
-    border-color: #fda4af;
+    background: linear-gradient(135deg, #e11d48, #be123c);
+    border-color: #be123c;
+    color: #ffffff;
+  }
+
+  body.retail-ui .pos-categories .category-filter.pos-filter-bogo {
+    background: #fff1f2 !important;
+    border: 1px solid #fda4af !important;
+    color: #be123c !important;
+    font-weight: 700 !important;
+  }
+  body.retail-ui .pos-categories .category-filter.pos-filter-bogo[aria-pressed=true] {
+    background: #e11d48 !important;
+    border-color: #e11d48 !important;
+    color: #ffffff !important;
+  }
+  body.retail-ui .pos-categories .category-filter.pos-filter-fefo {
+    background: #fffbeb !important;
+    border: 1px solid #fcd34d !important;
+    color: #b45309 !important;
+    font-weight: 700 !important;
+  }
+  body.retail-ui .pos-categories .category-filter.pos-filter-fefo[aria-pressed=true] {
+    background: #d97706 !important;
+    border-color: #d97706 !important;
+    color: #ffffff !important;
+  }
+
+  body.retail-ui .pos-cashier-promo-hint {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 9px 14px;
+    margin: 0 0 12px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #fff1f2 0%, #fffbeb 55%, #f0fdfa 100%);
+    border: 1px solid #fecdd3;
+    color: #1e293b;
+    font-size: 12.5px;
+  }
+  body.retail-ui .pos-cashier-promo-hint strong {
     color: #be123c;
+  }
+  body.retail-ui .pos-cashier-promo-hint button {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #e11d48;
+    color: #ffffff;
+    font-size: 11.5px;
+    font-weight: 700;
+    border: 0;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  body.retail-ui .pos-product {
+    cursor: pointer;
+    user-select: none;
+  }
+  body.retail-ui .pos-product.is-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  body.retail-ui .pos-product.is-bogo-card {
+    border-color: #fda4af !important;
+    background: linear-gradient(180deg, #fffafb 0%, #ffffff 36%) !important;
+  }
+  body.retail-ui .pos-product.is-fefo-card {
+    border-color: #fcd34d !important;
+  }
+  body.retail-ui .pos-fefo-subprice {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    color: #0d9488;
+  }
+  body.retail-ui .pos-card-bogo-btn {
+    margin-top: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 7px;
+    background: #fff1f2;
+    border: 1px solid #fda4af;
+    color: #be123c;
+    font-size: 11.5px;
+    font-weight: 750;
+    text-align: center;
+    cursor: pointer;
+    transition: background 140ms ease, color 140ms ease;
+  }
+  body.retail-ui .pos-card-bogo-btn:hover:not(:disabled) {
+    background: #e11d48;
+    border-color: #e11d48;
+    color: #ffffff;
+  }
+  body.retail-ui .pos-card-bogo-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  body.retail-ui .pos-line-promo {
+    margin-top: 5px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    line-height: 1.35;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  body.retail-ui .pos-line-promo.is-bogo {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    color: #9f1239;
+  }
+  body.retail-ui .pos-line-promo.is-fefo {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #065f46;
+  }
+  body.retail-ui .pos-line-promo-btns {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  body.retail-ui .pos-line-promo-btns button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 650;
+    text-decoration: underline;
+    color: inherit;
+    opacity: 0.85;
+    cursor: pointer;
+  }
+  body.retail-ui .pos-line-bogo-upsell {
+    margin-top: 5px;
+    padding: 4px 9px;
+    border-radius: 6px;
+    background: #fff1f2;
+    border: 1px dashed #fb7185;
+    color: #be123c;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  body.retail-ui .pos-line-bogo-upsell:hover {
+    background: #ffe4e6;
+  }
+  body.retail-ui .pos-line-bogo-upsell.is-restore {
+    background: #f0fdfa;
+    border-color: #5eead4;
+    color: #0f766e;
+  }
+  body.retail-ui .sale-bill-promo-row strong {
+    color: #059669 !important;
+    font-weight: 750 !important;
   }
 
   body.retail-ui .pos-smart-promo-banner {

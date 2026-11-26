@@ -34,6 +34,8 @@ import { extractBarcodeQueryFromText } from '../../../lib/pos-camera-scanner';
 
 type CartLine = { stock: Inventory; quantity: number };
 
+type PromoOverrideMode = 'AUTO' | 'BOGO' | 'DISCOUNT' | 'NONE';
+
 type PosOrderTab = {
   id: string;
   seq: number;
@@ -43,6 +45,7 @@ type PosOrderTab = {
   discountMode: 'amount' | 'percent';
   fefoPromoInput: string;
   appliedFefoPromos: FefoPromoVerifyItem[];
+  promoModeOverrides?: Record<string, PromoOverrideMode>;
   cashPayment: string | null;
   cashTendered?: string | null;
   qrPayment: string;
@@ -90,6 +93,7 @@ function createEmptyOrderTab(seq: number): PosOrderTab {
     discountMode: 'amount',
     fefoPromoInput: '',
     appliedFefoPromos: [],
+    promoModeOverrides: {},
     cashPayment: null,
     cashTendered: null,
     qrPayment: '0',
@@ -102,10 +106,13 @@ function createEmptyOrderTab(seq: number): PosOrderTab {
 function computeTabTotal(tab: PosOrderTab): { itemCount: number; subtotal: number; total: number } {
   const itemCount = tab.cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = tab.cart.reduce((sum, line) => sum + line.quantity * line.stock.sku.sellingPrice, 0);
-  const discountAmount =
+  const fefoDiscount = (tab.appliedFefoPromos ?? []).reduce((sum, p) => sum + p.discountAmount, 0);
+  const afterFefo = Math.max(0, subtotal - fefoDiscount);
+  const manualDiscount =
     tab.discountMode === 'percent'
-      ? Math.round((subtotal * Math.max(0, Math.min(100, Number(tab.discount.replace(',', '.')) || 0))) / 100)
+      ? Math.round((afterFefo * Math.max(0, Math.min(100, Number(tab.discount.replace(',', '.')) || 0))) / 100)
       : parseCurrency(tab.discount);
+  const discountAmount = Math.min(subtotal, fefoDiscount + manualDiscount);
   return { itemCount, subtotal, total: Math.max(0, subtotal - discountAmount) };
 }
 
@@ -482,8 +489,8 @@ function NewInvoicePage() {
     cart,
     discount,
     discountMode,
-    fefoPromoInput,
     appliedFefoPromos,
+    promoModeOverrides = {},
     cashPayment,
     cashTendered = null,
     qrPayment,
@@ -492,15 +499,24 @@ function NewInvoicePage() {
     payosSelected,
   } = activeTab;
 
+  // Earliest near-expiry promo option per SKU in the active warehouse
+  const promoBySku = useMemo(() => {
+    const map: Record<string, FefoPromoCodeItem> = {};
+    for (const opt of fefoPromoOptions) {
+      if (!map[opt.skuId]) map[opt.skuId] = opt;
+    }
+    return map;
+  }, [fefoPromoOptions]);
+
   // Promo badges shown directly on POS product catalog cards
   const catalogPromoBadges = useMemo(() => {
     const badges: Record<string, { label: string; isBogo: boolean }> = {};
     for (const opt of fefoPromoOptions) {
       if (badges[opt.skuId]) continue;
       if (opt.bogoEligible) {
-        badges[opt.skuId] = { label: `🎁 1 Tặng 1 · -${opt.discountPercent}%`, isBogo: true };
+        badges[opt.skuId] = { label: '🎁 MUA 1 TẶNG 1', isBogo: true };
       } else {
-        badges[opt.skuId] = { label: `🏷️ Xả FEFO -${opt.discountPercent}%`, isBogo: false };
+        badges[opt.skuId] = { label: `🏷️ XẢ CẬN HẠN -${opt.discountPercent}%`, isBogo: false };
       }
     }
     return badges;
@@ -518,34 +534,21 @@ function NewInvoicePage() {
     return map;
   }, [orderTabs, activeTab.id]);
 
-  // Smart unapplied AI/FEFO suggestions for items already in the active cart
-  const cartPromoSuggestions = useMemo(() => {
-    if (!cart.length || !fefoPromoOptions.length) return [];
-    const appliedLots = new Set(appliedFefoPromos.map(p => p.lotCode.toUpperCase()));
-    const seenSku = new Set<string>();
-    const list: { option: FefoPromoCodeItem; line: CartLine }[] = [];
-    for (const line of cart) {
-      if (seenSku.has(line.stock.skuId)) continue;
-      const opt = fefoPromoOptions.find(
-        o => o.skuId === line.stock.skuId && !appliedLots.has(o.lotCode.toUpperCase()),
-      );
-      if (opt) {
-        seenSku.add(line.stock.skuId);
-        list.push({ option: opt, line });
-      }
-    }
-    return list;
-  }, [cart, fefoPromoOptions, appliedFefoPromos]);
-
   const subtotal = useMemo(() => cart.reduce((sum, line) => sum + line.quantity * line.stock.sku.sellingPrice, 0), [cart]);
-  const discountAmount =
+  const fefoDiscountAmount = useMemo(
+    () => appliedFefoPromos.reduce((sum, p) => sum + p.discountAmount, 0),
+    [appliedFefoPromos],
+  );
+  const afterFefoSubtotal = Math.max(0, subtotal - fefoDiscountAmount);
+  const manualDiscountAmount =
     discountMode === 'percent'
-      ? Math.round((subtotal * Math.max(0, Math.min(100, Number(discount.replace(',', '.')) || 0))) / 100)
+      ? Math.round((afterFefoSubtotal * Math.max(0, Math.min(100, Number(discount.replace(',', '.')) || 0))) / 100)
       : parseCurrency(discount);
   const discountInvalid =
     discountMode === 'percent'
       ? (Number(discount.replace(',', '.')) || 0) > 100 || (Number(discount.replace(',', '.')) || 0) < 0
-      : discountAmount > subtotal;
+      : manualDiscountAmount > afterFefoSubtotal;
+  const discountAmount = Math.min(subtotal, fefoDiscountAmount + manualDiscountAmount);
 
   const total = Math.max(0, subtotal - discountAmount);
   const cashAmount = parseCurrency(cashPayment ?? String(total));
@@ -594,61 +597,39 @@ function NewInvoicePage() {
     }));
   };
 
-  const applyFefoPromoCode = useCallback(
-    async (overrideCode?: string, customCart?: CartLine[], targetTabId?: string) => {
-      const tabIdToUpdate = targetTabId ?? activeTab.id;
-      const effectiveCart = customCart ?? cart;
-      const rawCode = (overrideCode ?? fefoPromoInput).trim().toUpperCase();
-      if (!warehouseId || !rawCode) return;
-      if (!effectiveCart.length) {
-        setFefoPromoError('Vui lòng thêm sản phẩm của lô cận hạn vào giỏ hàng trước khi áp mã.');
-        return;
-      }
-      const existingCodes = (orderTabs.find(t => t.id === tabIdToUpdate)?.appliedFefoPromos ?? []).map(p => p.promoCode);
-      const nextCodes = [...new Set([...existingCodes, rawCode])];
-      setFefoPromoBusy(true);
-      setFefoPromoError('');
-      try {
-        const result = await verifyFefoPromo({
-          warehouseId,
-          promoCodes: nextCodes,
-          items: effectiveCart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })),
-        });
-        updateTabById(tabIdToUpdate, tab => ({
-          ...tab,
-          cart: customCart ?? tab.cart,
-          appliedFefoPromos: result.promos,
-          discountMode: 'amount',
-          discount: String(result.totalDiscount),
-          fefoPromoInput: '',
-        }));
-        const isBogo = rawCode.startsWith('BOGO-');
-        showToast(
-          isBogo
-            ? `🎁 Đã áp dụng Mua 1 Tặng 1 (${rawCode}): giảm ${money(result.totalDiscount)} từ lô cận hạn.`
-            : `🏷️ Đã xác minh & áp mã xả FEFO (${rawCode}): giảm ${money(result.totalDiscount)}.`,
+  const handleAddBogoPair = useCallback(
+    (stock: Inventory, promo: FefoPromoCodeItem) => {
+      if (stock.available < 2) return;
+      updateActiveTab(tab => {
+        const existing = tab.cart.find(line => line.stock.skuId === stock.skuId);
+        const currentQty = existing?.quantity ?? 0;
+        const targetQty = Math.min(
+          stock.available,
+          currentQty === 0 ? 2 : currentQty % 2 === 1 ? currentQty + 1 : currentQty + 2,
         );
-      } catch (reason) {
-        setFefoPromoError(errorMessage(reason));
-      } finally {
-        setFefoPromoBusy(false);
-      }
+        const nextCart = existing
+          ? tab.cart.map(line => (line.stock.skuId === stock.skuId ? { ...line, stock, quantity: targetQty } : line))
+          : [...tab.cart, { stock, quantity: targetQty }];
+        return {
+          ...tab,
+          cart: nextCart,
+          promoModeOverrides: { ...(tab.promoModeOverrides ?? {}), [stock.skuId]: 'BOGO' },
+        };
+      });
+      showToast(`🎁 Đã chọn Mua 1 Tặng 1 cho "${stock.sku.product.name}" (lô ${promo.lotCode} · tự động miễn phí 1 ${stock.sku.product.unit}).`);
     },
-    [activeTab.id, cart, fefoPromoInput, orderTabs, showToast, updateTabById, warehouseId],
+    [showToast, updateActiveTab],
   );
 
-  const handleQuickApplySuggestion = async (opt: FefoPromoCodeItem, mode: 'DISCOUNT' | 'BOGO') => {
-    const code = mode === 'BOGO' ? opt.bogoPromoCode ?? `BOGO-${opt.lotCode}` : opt.promoCode;
-    let nextCart = cart;
-    if (mode === 'BOGO') {
-      const existing = cart.find(l => l.stock.skuId === opt.skuId);
-      if (existing && existing.quantity < 2 && existing.stock.available >= 2) {
-        nextCart = cart.map(l => (l.stock.skuId === opt.skuId ? { ...l, quantity: 2 } : l));
-        updateActiveTab(tab => ({ ...tab, cart: nextCart }));
-      }
-    }
-    await applyFefoPromoCode(code, nextCart, activeTab.id);
-  };
+  const setSkuPromoMode = useCallback(
+    (skuId: string, mode: PromoOverrideMode) => {
+      updateActiveTab(tab => ({
+        ...tab,
+        promoModeOverrides: { ...(tab.promoModeOverrides ?? {}), [skuId]: mode },
+      }));
+    },
+    [updateActiveTab],
+  );
 
   // Auto-handle deep link from AI Forecast / FEFO Lots page (?fefoPromo=...&skuId=...)
   useEffect(() => {
@@ -683,12 +664,8 @@ function NewInvoicePage() {
         }
       }
 
-      if (!matchedStock || matchedStock.available < minQty) {
-        updateActiveTab(tab => ({ ...tab, fefoPromoInput: pending.promoCode }));
-        return;
-      }
+      if (!matchedStock || matchedStock.available < minQty) return;
 
-      // Never overwrite an existing held customer's cart — open a dedicated new tab if needed!
       let targetId = activeTab.id;
       let baseCart = activeTab.cart;
       if (activeTab.cart.length > 0 && !activeTab.cart.some(l => l.stock.skuId === matchedStock!.skuId) && orderTabs.length < MAX_POS_TABS) {
@@ -708,57 +685,80 @@ function NewInvoicePage() {
           )
         : [...baseCart, { stock: matchedStock, quantity: Math.min(minQty, matchedStock.available) }];
 
-      updateTabById(targetId, tab => ({ ...tab, cart: nextCart, fefoPromoInput: pending.promoCode }));
-      await applyFefoPromoCode(pending.promoCode, nextCart, targetId);
+      updateTabById(targetId, tab => ({
+        ...tab,
+        cart: nextCart,
+        promoModeOverrides: { ...(tab.promoModeOverrides ?? {}), [matchedStock!.skuId]: isBogo ? 'BOGO' : 'DISCOUNT' },
+      }));
     })();
-  }, [warehouseId, user?.id, stockRows, stockLoading, fefoPromoOptions, activeTab, orderTabs.length, applyFefoPromoCode, updateActiveTab, updateTabById]);
+  }, [warehouseId, user?.id, stockRows, stockLoading, fefoPromoOptions, activeTab, orderTabs.length, updateTabById]);
 
-  // Keep applied FEFO / BOGO discount synchronized whenever cart quantities change
+  // 100% Automatic FEFO & Mua 1 Tặng 1 Engine: verifies & applies promos whenever cart items/quantities change
+  const desiredPromoCodes = useMemo(() => {
+    if (!cart.length || !fefoPromoOptions.length) return [];
+    const codes: string[] = [];
+    for (const line of cart) {
+      const opt = promoBySku[line.stock.skuId];
+      if (!opt) continue;
+      const pref = promoModeOverrides[line.stock.skuId] ?? 'AUTO';
+      if (pref === 'NONE') continue;
+      if (pref === 'DISCOUNT') {
+        codes.push(opt.promoCode);
+      } else if (opt.bogoEligible && opt.bogoPromoCode && line.quantity >= 2) {
+        // Both 'AUTO' and 'BOGO' automatically activate Mua 1 Tặng 1 when >= 2 units are in cart
+        codes.push(opt.bogoPromoCode);
+      } else {
+        codes.push(opt.promoCode);
+      }
+    }
+    return [...new Set(codes)];
+  }, [cart, fefoPromoOptions.length, promoBySku, promoModeOverrides]);
+
   const cartSignature = useMemo(() => cart.map(l => `${l.stock.skuId}:${l.quantity}`).join('|'), [cart]);
+  const desiredCodesKey = desiredPromoCodes.join(',');
   const lastVerifiedSigRef = useRef<string>('');
+
   useEffect(() => {
-    if (!warehouseId || !appliedFefoPromos.length) {
-      lastVerifiedSigRef.current = `${activeTab.id}::${cartSignature}`;
+    const targetTabId = activeTab.id;
+    if (!warehouseId || !cart.length || !desiredPromoCodes.length) {
+      lastVerifiedSigRef.current = `${targetTabId}::${cartSignature}::`;
+      if (appliedFefoPromos.length > 0) {
+        updateTabById(targetTabId, tab => ({ ...tab, appliedFefoPromos: [] }));
+      }
       return;
     }
-    const compositeSig = `${activeTab.id}::${cartSignature}::${appliedFefoPromos.map(p => p.promoCode).join(',')}`;
+
+    const compositeSig = `${targetTabId}::${cartSignature}::${desiredCodesKey}`;
     if (lastVerifiedSigRef.current === compositeSig) return;
     lastVerifiedSigRef.current = compositeSig;
 
-    const cartQtyBySku = new Map(cart.map(l => [l.stock.skuId, l.quantity]));
-    const stillApplicable = appliedFefoPromos.filter(p => {
-      const qty = cartQtyBySku.get(p.skuId) ?? 0;
-      return p.mode === 'BOGO' || p.promoCode.startsWith('BOGO-') ? qty >= 2 : qty >= 1;
-    });
-
-    if (!stillApplicable.length) {
-      updateActiveTab(tab => ({ ...tab, appliedFefoPromos: [], discount: '' }));
-      return;
-    }
-
     let active = true;
+    setFefoPromoBusy(true);
+    setFefoPromoError('');
     void verifyFefoPromo({
       warehouseId,
-      promoCodes: stillApplicable.map(p => p.promoCode),
+      promoCodes: desiredPromoCodes,
       items: cart.map(l => ({ skuId: l.stock.skuId, quantity: l.quantity })),
     })
       .then(res => {
         if (!active) return;
-        updateActiveTab(tab => ({
+        updateTabById(targetTabId, tab => ({
           ...tab,
           appliedFefoPromos: res.promos,
-          discountMode: 'amount',
-          discount: String(res.totalDiscount),
         }));
       })
-      .catch(() => {
+      .catch(reason => {
         if (!active) return;
-        updateActiveTab(tab => ({ ...tab, appliedFefoPromos: [], discount: '' }));
+        setFefoPromoError(errorMessage(reason));
+        updateTabById(targetTabId, tab => ({ ...tab, appliedFefoPromos: [] }));
+      })
+      .finally(() => {
+        if (active) setFefoPromoBusy(false);
       });
     return () => {
       active = false;
     };
-  }, [activeTab.id, cartSignature, warehouseId]);
+  }, [activeTab.id, appliedFefoPromos.length, cart, cartSignature, desiredCodesKey, desiredPromoCodes, updateTabById, warehouseId]);
 
   const handleBarcodeScanned = async (rawCode: string, resolvedSkuId?: string | null): Promise<boolean> => {
     const clean = extractBarcodeQueryFromText(rawCode);
@@ -885,32 +885,7 @@ function NewInvoicePage() {
     router.push(`/thanh-toan/payos?checkoutId=${checkoutId}`);
   };
 
-  const removeFefoPromoCode = async (promoCode: string) => {
-    const remaining = appliedFefoPromos.filter(p => p.promoCode !== promoCode).map(p => p.promoCode);
-    setFefoPromoError('');
-    if (!remaining.length || !warehouseId || !cart.length) {
-      updateActiveTab(tab => ({ ...tab, appliedFefoPromos: [], discount: '' }));
-      return;
-    }
-    setFefoPromoBusy(true);
-    try {
-      const result = await verifyFefoPromo({
-        warehouseId,
-        promoCodes: remaining,
-        items: cart.map(line => ({ skuId: line.stock.skuId, quantity: line.quantity })),
-      });
-      updateActiveTab(tab => ({
-        ...tab,
-        appliedFefoPromos: result.promos,
-        discountMode: 'amount',
-        discount: String(result.totalDiscount),
-      }));
-    } catch (reason) {
-      setFefoPromoError(errorMessage(reason));
-    } finally {
-      setFefoPromoBusy(false);
-    }
-  };
+  // Unused manual removeFefoPromoCode replaced by per-SKU setSkuPromoMode
 
   const completeSale = async () => {
     if (!validateSale()) return;
@@ -1125,10 +1100,12 @@ function NewInvoicePage() {
             query={query}
             onQuery={setQuery}
             onAdd={add}
+            onAddBogo={handleAddBogoPair}
             onBarcodeScanned={handleBarcodeScanned}
             onInvoiceReturnScanned={handleInvoiceReturnScanned}
             quantities={Object.fromEntries(cart.map(line => [line.stock.skuId, line.quantity]))}
             promoBadges={catalogPromoBadges}
+            promoBySku={promoBySku}
           />
         </section>
 
@@ -1164,6 +1141,17 @@ function NewInvoicePage() {
                   {cart.map(line => {
                     const heldElsewhere = otherTabsReservedBySku[line.stock.skuId] ?? 0;
                     const overHeldAcrossTabs = line.quantity + heldElsewhere > line.stock.available;
+                    const promoOpt = promoBySku[line.stock.skuId];
+                    const appliedPromo = appliedFefoPromos.find(p => p.skuId === line.stock.skuId);
+                    const isAppliedBogo = Boolean(
+                      appliedPromo && (appliedPromo.mode === 'BOGO' || appliedPromo.promoCode.startsWith('BOGO-')),
+                    );
+                    const skuPref = promoModeOverrides[line.stock.skuId] ?? 'AUTO';
+                    const canBumpForBogo =
+                      Boolean(promoOpt?.bogoEligible) &&
+                      line.stock.available >= Math.max(2, line.quantity + 1) &&
+                      (line.quantity === 1 || (isAppliedBogo && line.quantity % 2 === 1 && line.quantity + 1 <= (promoOpt?.lotQuantity ?? 0)));
+
                     return (
                       <article key={line.stock.skuId}>
                         <div className="sale-cart-product">
@@ -1180,6 +1168,60 @@ function NewInvoicePage() {
                               <small style={{ display: 'block', color: '#b45309', fontWeight: 600 }}>
                                 Lưu ý: Các đơn tạm khác đang giữ thêm {heldElsewhere} {line.stock.sku.product.unit} (tồn kho: {line.stock.available})
                               </small>
+                            )}
+                            {appliedPromo && (
+                              <div className={`pos-line-promo${isAppliedBogo ? ' is-bogo' : ' is-fefo'}`}>
+                                <span>
+                                  {isAppliedBogo ? (
+                                    <>
+                                      🎁 <strong>1 Tặng 1</strong> · Tặng {appliedPromo.freeQuantity} {appliedPromo.unit} (lô {appliedPromo.lotCode} ·{' '}
+                                      <b>-{money(appliedPromo.discountAmount)}</b>)
+                                    </>
+                                  ) : (
+                                    <>
+                                      🏷️ <strong>Xả cận hạn -{appliedPromo.discountPercent}%</strong> · Lô {appliedPromo.lotCode} còn {appliedPromo.daysRemaining}d (
+                                      <b>-{money(appliedPromo.discountAmount)}</b>)
+                                    </>
+                                  )}
+                                </span>
+                                <div className="pos-line-promo-btns">
+                                  {isAppliedBogo ? (
+                                    <button type="button" onClick={() => setSkuPromoMode(line.stock.skuId, 'DISCOUNT')}>
+                                      Đổi sang -{promoOpt?.discountPercent ?? 35}%
+                                    </button>
+                                  ) : (
+                                    promoOpt?.bogoEligible &&
+                                    line.quantity >= 2 && (
+                                      <button type="button" onClick={() => setSkuPromoMode(line.stock.skuId, 'BOGO')}>
+                                        Đổi sang 1 Tặng 1
+                                      </button>
+                                    )
+                                  )}
+                                  <button type="button" onClick={() => setSkuPromoMode(line.stock.skuId, 'NONE')}>
+                                    Bỏ ưu đãi
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {!appliedPromo && promoOpt && skuPref === 'NONE' && (
+                              <button
+                                type="button"
+                                className="pos-line-bogo-upsell is-restore"
+                                onClick={() => setSkuPromoMode(line.stock.skuId, 'AUTO')}
+                              >
+                                ↺ Bật lại ưu đãi lô cận hạn
+                              </button>
+                            )}
+                            {canBumpForBogo && promoOpt && skuPref !== 'NONE' && (
+                              <button
+                                type="button"
+                                className="pos-line-bogo-upsell"
+                                onClick={() => handleAddBogoPair(line.stock, promoOpt)}
+                              >
+                                🎁 {line.quantity === 1
+                                  ? `Khách lấy thêm 1 ${line.stock.sku.product.unit} miễn phí (Mua 1 Tặng 1)`
+                                  : `+ Thêm 1 ${line.stock.sku.product.unit} tặng miễn phí nữa`}
+                              </button>
                             )}
                           </span>
                         </div>
@@ -1201,10 +1243,15 @@ function NewInvoicePage() {
                           <ActionButton
                             tone="danger"
                             onClick={() =>
-                              updateActiveTab(tab => ({
-                                ...tab,
-                                cart: tab.cart.filter(item => item.stock.skuId !== line.stock.skuId),
-                              }))
+                              updateActiveTab(tab => {
+                                const nextOverrides = { ...(tab.promoModeOverrides ?? {}) };
+                                delete nextOverrides[line.stock.skuId];
+                                return {
+                                  ...tab,
+                                  cart: tab.cart.filter(item => item.stock.skuId !== line.stock.skuId),
+                                  promoModeOverrides: nextOverrides,
+                                };
+                              })
                             }
                           >
                             Xóa
@@ -1223,144 +1270,14 @@ function NewInvoicePage() {
               )}
             </div>
 
-            {/* Banner tự động phát hiện & gợi ý 1-click áp khuyến mãi AI × FEFO / Mua 1 Tặng 1 ngay khi quét món */}
-            {cartPromoSuggestions.length > 0 && (
-              <div className="pos-smart-promo-banner" role="region" aria-label="Gợi ý khuyến mãi lô cận hạn AI × FEFO">
-                <div className="pos-smart-promo-title">
-                  Phát hiện ưu đãi xả hàng cận hạn cho sản phẩm trong giỏ:
-                </div>
-                {cartPromoSuggestions.map(({ option, line }) => (
-                  <div key={option.lotId} className="pos-smart-promo-item">
-                    <div className="pos-smart-promo-info">
-                      <strong>{option.productName}</strong>
-                      <small>
-                        Lô <code>{option.lotCode}</code> · còn {option.daysRemaining} ngày ({option.lotQuantity} {option.unit})
-                      </small>
-                    </div>
-                    <div className="pos-smart-promo-actions">
-                      <button
-                        type="button"
-                        className="pos-smart-btn is-discount"
-                        disabled={fefoPromoBusy}
-                        onClick={() => void handleQuickApplySuggestion(option, 'DISCOUNT')}
-                      >
-                        🏷️ Giảm -{option.discountPercent}%
-                      </button>
-                      {option.bogoEligible && option.bogoPromoCode && line.stock.available >= 2 && (
-                        <button
-                          type="button"
-                          className="pos-smart-btn is-bogo"
-                          disabled={fefoPromoBusy}
-                          onClick={() => void handleQuickApplySuggestion(option, 'BOGO')}
-                          title={
-                            line.quantity < 2
-                              ? 'Tự động nâng số lượng lên 2 (1 tính tiền + 1 tặng miễn phí) và trừ tồn lô FEFO'
-                              : 'Áp dụng Mua 1 Tặng 1 trên số cặp sản phẩm trong giỏ'
-                          }
-                        >
-                          🎁 1 Tặng 1 {line.quantity < 2 ? '(+1 tặng)' : ''}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {fefoPromoError && <p className="negative" style={{ fontSize: 12, margin: 0 }}>{fefoPromoError}</p>}
 
-            <details className="pos-discount" open={appliedFefoPromos.length > 0 || Boolean(fefoPromoInput)}>
+            <details className="pos-discount">
               <summary>
-                Chiết khấu & Mã xả cận hạn FEFO / 1 Tặng 1 <span>{money(discountAmount)}</span>
+                Chiết khấu thêm cho hóa đơn <span>{money(manualDiscountAmount)}</span>
               </summary>
-              <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
-                <label>
-                  Mã xả cận hạn FEFO hoặc Mua 1 Tặng 1 (xác minh theo lô thực tế)
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {fefoPromoOptions.length > 0 && (
-                      <select
-                        value=""
-                        disabled={!warehouseId || fefoPromoBusy}
-                        onChange={event => {
-                          const chosen = event.target.value;
-                          if (!chosen) return;
-                          updateActiveTab(tab => ({ ...tab, fefoPromoInput: chosen }));
-                          void applyFefoPromoCode(chosen);
-                        }}
-                        style={{ flex: '1 1 180px' }}
-                      >
-                        <option value="">Chọn nhanh ưu đãi lô cận hạn tại kho ({fefoPromoOptions.length})</option>
-                        {fefoPromoOptions.flatMap(opt => {
-                          const items = [
-                            <option key={opt.promoCode} value={opt.promoCode}>
-                              {opt.promoCode} · {opt.productName} · còn {opt.daysRemaining}d · Giảm -{opt.discountPercent}% ({opt.lotQuantity} {opt.unit})
-                            </option>,
-                          ];
-                          if (opt.bogoEligible && opt.bogoPromoCode) {
-                            items.push(
-                              <option key={opt.bogoPromoCode} value={opt.bogoPromoCode}>
-                                {opt.bogoPromoCode} · {opt.productName} · còn {opt.daysRemaining}d · 🎁 Mua 1 Tặng 1
-                              </option>,
-                            );
-                          }
-                          return items;
-                        })}
-                      </select>
-                    )}
-                    <input
-                      value={fefoPromoInput}
-                      disabled={!warehouseId || fefoPromoBusy}
-                      onChange={event => updateActiveTab(tab => ({ ...tab, fefoPromoInput: event.target.value }))}
-                      placeholder="VD: FEFO-LOT-... hoặc BOGO-LOT-..."
-                      style={{ flex: '1 1 140px' }}
-                    />
-                    <button
-                      type="button"
-                      className="outline-button"
-                      disabled={!warehouseId || !fefoPromoInput.trim() || fefoPromoBusy}
-                      onClick={() => void applyFefoPromoCode()}
-                    >
-                      {fefoPromoBusy ? 'Đang kiểm tra…' : 'Áp mã'}
-                    </button>
-                  </div>
-                </label>
-                {fefoPromoError && <p className="negative">{fefoPromoError}</p>}
-                {appliedFefoPromos.map(promo => {
-                  const isBogo = promo.mode === 'BOGO' || promo.promoCode.startsWith('BOGO-');
-                  return (
-                    <div
-                      key={promo.promoCode}
-                      style={{
-                        fontSize: 12,
-                        padding: '6px 8px',
-                        borderRadius: 6,
-                        background: isBogo ? '#fff1f2' : '#ecfdf5',
-                        border: `1px solid ${isBogo ? '#fecdd3' : '#a7f3d0'}`,
-                        color: isBogo ? '#9f1239' : '#065f46',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 8,
-                      }}
-                    >
-                      <span>
-                        <strong>{promo.promoCode}</strong> · Lô <code>{promo.lotCode}</code> còn {promo.daysRemaining} ngày ·{' '}
-                        {isBogo
-                          ? `🎁 Mua 1 Tặng 1 (miễn phí ${promo.freeQuantity ?? Math.floor(promo.eligibleQuantity / 2)}/${promo.eligibleQuantity} ${promo.unit})`
-                          : `giảm ${promo.discountPercent}% trên ${promo.eligibleQuantity} ${promo.unit}`}{' '}
-                        = <strong>-{money(promo.discountAmount)}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        className="outline-button"
-                        onClick={() => void removeFefoPromoCode(promo.promoCode)}
-                      >
-                        Gỡ
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
               <label>
-                Chiết khấu
+                Hình thức chiết khấu thêm
                 <select
                   value={discountMode}
                   onChange={event =>
@@ -1373,7 +1290,7 @@ function NewInvoicePage() {
                 {discountMode === 'amount' ? (
                   <CurrencyInput
                     min={0}
-                    max={subtotal}
+                    max={afterFefoSubtotal}
                     value={discount}
                     onChange={val => updateActiveTab(tab => ({ ...tab, discount: val }))}
                   />
@@ -1397,9 +1314,17 @@ function NewInvoicePage() {
                 <span>Tiền hàng</span>
                 <strong>{money(subtotal)}</strong>
               </div>
+              {fefoDiscountAmount > 0 && (
+                <div className="sale-bill-promo-row">
+                  <span>
+                    Ưu đãi cận hạn / 1 Tặng 1 {fefoPromoBusy ? '(đang tính…)' : '(tự động)'}
+                  </span>
+                  <strong>-{money(fefoDiscountAmount)}</strong>
+                </div>
+              )}
               <div>
-                <span>Chiết khấu</span>
-                <strong>{money(discountAmount)}</strong>
+                <span>{fefoDiscountAmount > 0 ? 'Chiết khấu thêm' : 'Chiết khấu'}</span>
+                <strong>{manualDiscountAmount > 0 ? `-${money(manualDiscountAmount)}` : '0 đ'}</strong>
               </div>
               <div className="sale-bill-total">
                 <span>Tổng tiền</span>
@@ -1570,9 +1495,15 @@ function NewInvoicePage() {
                 <span>Tiền hàng</span>
                 <strong>{money(subtotal)}</strong>
               </div>
+              {fefoDiscountAmount > 0 && (
+                <div className="sale-bill-promo-row">
+                  <span>Ưu đãi cận hạn / 1 Tặng 1 (tự động)</span>
+                  <strong>-{money(fefoDiscountAmount)}</strong>
+                </div>
+              )}
               <div>
-                <span>Chiết khấu</span>
-                <strong>{money(discountAmount)}</strong>
+                <span>{fefoDiscountAmount > 0 ? 'Chiết khấu thêm' : 'Chiết khấu'}</span>
+                <strong>{manualDiscountAmount > 0 ? `-${money(manualDiscountAmount)}` : '0 đ'}</strong>
               </div>
               <div className="sale-bill-total">
                 <span>Tổng tiền</span>
