@@ -1,8 +1,7 @@
 /*
- * FreshMart Lively Brand Theme (OFFIO-inspired architecture using FreshMart primary teal palette)
- * - Full-width vibrant teal topbar with pill quick-search & frosted glass controls
- * - Soft mint-white left sidebar with pill active states & tinted module icon badges
- * - Airy mint-tinted workspace canvas (#edf7f4) with crisp 18px white cards & soft mint wave accents
+ * FreshMart Lively Brand Content Theme (OFFIO-inspired workspace cards & dashboard)
+ * - Keeps the original clean Sidebar, Topbar, and TabBar 100% intact
+ * - Adds lively OFFIO-style Dashboard Hero, 4x2 Quick Tiles, Promo Strip, and Brand-Teal card accents
  * - Preserves 100% left-aligned tables, single-row 5-column filter bars, and single-border inputs.
  */
 @media screen {
@@ -11,568 +10,14 @@
     --fm-teal-800: #0b645d;
     --fm-teal-700: #0d7a73;
     --fm-teal-600: #0f8e85;
-    --fm-teal-500: #14a398;
-    --fm-mint-200: #cdeee7;
-    --fm-mint-150: #dcf4ef;
-    --fm-mint-100: #eaf8f5;
-    --fm-mint-50: #f3fbf9;
-    --fm-canvas: #edf7f4;
-    --fm-border: #d5eae4;
-    --fm-border-strong: #bce0d7;
+    --fm-border: #d6ebe5;
     --fm-shadow-sm: 0 4px 14px rgba(11, 88, 82, 0.05);
-    --fm-shadow-md: 0 10px 28px rgba(11, 88, 82, 0.075);
-    --primary: #0d7a73;
-    --brand: #0f8e85;
-    --brand-hover: #0b645d;
-    --bg: #edf7f4;
-    background: linear-gradient(180deg, #ebf6f3 0%, #f1f9f7 100%) !important;
-    color: #102a28 !important;
+    --fm-shadow-md: 0 10px 26px rgba(11, 88, 82, 0.075);
+    background: linear-gradient(180deg, #eef7f4 0%, #f4faf8 100%) !important;
   }
 
   /* ==========================================================================
-     1. FULL-WIDTH VIBRANT BRAND TOPBAR + SIDEBAR BELOW TOPBAR (OFFIO SHELL)
-     ========================================================================== */
-  body.retail-ui .commerce-shell.offio-shell {
-    --commerce-sidebar: 242px;
-    --offio-topbar-h: 64px;
-    padding-top: var(--offio-topbar-h) !important;
-  }
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed {
-    --commerce-sidebar: 74px;
-  }
-
-  body.retail-ui .commerce-shell.offio-shell > .offio-topbar {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    height: var(--offio-topbar-h) !important;
-    z-index: 85 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 20px !important;
-    padding: 0 22px !important;
-    background: linear-gradient(92deg, #11998b 0%, #0d7a73 54%, #0b615b 100%) !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.16) !important;
-    box-shadow: 0 4px 18px rgba(8, 66, 61, 0.16) !important;
-    color: #ffffff !important;
-  }
-
-  body.retail-ui .offio-brand-cluster {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    flex: 0 0 auto !important;
-    min-width: 0 !important;
-  }
-
-  body.retail-ui .offio-header-brand {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 11px !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    border: 0 !important;
-    color: #ffffff !important;
-    text-decoration: none !important;
-  }
-
-  body.retail-ui .offio-logo-badge {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 12px !important;
-    background: rgba(255, 255, 255, 0.95) !important;
-    border: 1px solid rgba(255, 255, 255, 0.5) !important;
-    box-shadow: 0 4px 10px rgba(6, 52, 48, 0.18) !important;
-    display: grid !important;
-    place-items: center !important;
-    padding: 5px !important;
-    flex-shrink: 0 !important;
-  }
-
-  body.retail-ui .offio-logo-badge img {
-    width: 100% !important;
-    height: 100% !important;
-    object-fit: contain !important;
-  }
-
-  body.retail-ui .offio-brand-copy {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 1px !important;
-    line-height: 1.18 !important;
-  }
-
-  body.retail-ui .offio-brand-copy strong {
-    font-size: 16.5px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.02em !important;
-    color: #ffffff !important;
-  }
-
-  body.retail-ui .offio-brand-copy small {
-    font-size: 11.5px !important;
-    font-weight: 400 !important;
-    color: rgba(236, 253, 250, 0.84) !important;
-    margin: 0 !important;
-    white-space: nowrap !important;
-  }
-
-  /* Center Pill Search Bar — strictly 1 clean pill surface, NO nested input border */
-  body.retail-ui .offio-search-center {
-    position: relative !important;
-    flex: 1 1 540px !important;
-    max-width: 560px !important;
-    margin-inline: auto !important;
-  }
-
-  body.retail-ui .offio-search-pill {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    height: 42px !important;
-    padding: 0 8px 0 16px !important;
-    border-radius: 999px !important;
-    background: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.92) !important;
-    box-shadow: 0 4px 14px rgba(7, 56, 52, 0.14) !important;
-    color: #5e7d78 !important;
-    transition: box-shadow 150ms ease, transform 150ms ease !important;
-  }
-
-  body.retail-ui .offio-search-pill:focus-within {
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.32), 0 6px 18px rgba(7, 56, 52, 0.18) !important;
-  }
-
-  body.retail-ui .offio-search-pill > svg {
-    color: #0d7a73 !important;
-    flex-shrink: 0 !important;
-  }
-
-  body.retail-ui .offio-search-pill > input {
-    flex: 1 1 auto !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    height: 100% !important;
-    border: 0 !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    font-size: 13.5px !important;
-    font-weight: 450 !important;
-    color: #102a28 !important;
-  }
-
-  body.retail-ui .offio-search-pill > input::placeholder {
-    color: #7b9691 !important;
-  }
-
-  body.retail-ui .offio-search-scan {
-    width: 30px !important;
-    height: 30px !important;
-    border-radius: 999px !important;
-    display: grid !important;
-    place-items: center !important;
-    color: #4b6b66 !important;
-    background: #f1faf8 !important;
-    flex-shrink: 0 !important;
-    transition: background 140ms ease, color 140ms ease !important;
-  }
-
-  body.retail-ui .offio-search-scan:hover {
-    background: #dcf4ef !important;
-    color: #0d7a73 !important;
-  }
-
-  body.retail-ui .offio-search-dropdown {
-    position: absolute !important;
-    top: calc(100% + 8px) !important;
-    left: 0 !important;
-    right: 0 !important;
-    background: #ffffff !important;
-    border: 1px solid #cde8e1 !important;
-    border-radius: 16px !important;
-    box-shadow: 0 18px 42px rgba(9, 64, 59, 0.18) !important;
-    padding: 8px !important;
-    z-index: 120 !important;
-    display: grid !important;
-    gap: 3px !important;
-  }
-
-  body.retail-ui .offio-search-option {
-    display: flex !important;
-    align-items: center !important;
-    gap: 11px !important;
-    width: 100% !important;
-    padding: 9px 12px !important;
-    border-radius: 11px !important;
-    background: transparent !important;
-    border: 0 !important;
-    color: #102a28 !important;
-    text-align: left !important;
-  }
-
-  body.retail-ui .offio-search-option:hover {
-    background: #ecf9f6 !important;
-    color: #0b645d !important;
-  }
-
-  body.retail-ui .offio-search-opt-icon {
-    width: 30px !important;
-    height: 30px !important;
-    border-radius: 9px !important;
-    background: #e1f6f1 !important;
-    color: #0d7a73 !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-  }
-
-  body.retail-ui .offio-search-opt-copy {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 1px !important;
-  }
-
-  body.retail-ui .offio-search-opt-copy strong {
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    color: #102a28 !important;
-  }
-
-  body.retail-ui .offio-search-opt-copy small {
-    font-size: 11.5px !important;
-    color: #64827d !important;
-  }
-
-  /* Right Frosted Glass Pills in Topbar */
-  body.retail-ui .offio-topbar-right {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    flex: 0 0 auto !important;
-    margin-left: 0 !important;
-  }
-
-  body.retail-ui .offio-glass-pill {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    height: 36px !important;
-    padding: 0 14px !important;
-    border-radius: 999px !important;
-    background: rgba(255, 255, 255, 0.16) !important;
-    border: 1px solid rgba(255, 255, 255, 0.28) !important;
-    color: #ffffff !important;
-    font-size: 12.5px !important;
-    backdrop-filter: blur(8px) !important;
-  }
-
-  body.retail-ui .offio-topbar .scope-brand-name,
-  body.retail-ui .offio-topbar .scope-separator {
-    color: rgba(236, 253, 250, 0.82) !important;
-    font-size: 12px !important;
-  }
-
-  body.retail-ui .offio-topbar .scope-page-name {
-    color: #ffffff !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
-  }
-
-  body.retail-ui .offio-glass-pill select {
-    color: #ffffff !important;
-    border: 0 !important;
-    background: transparent !important;
-    font-weight: 600 !important;
-  }
-  body.retail-ui .offio-glass-pill select option {
-    color: #102a28 !important;
-    background: #ffffff !important;
-  }
-
-  body.retail-ui .offio-glass-icon {
-    width: 36px !important;
-    height: 36px !important;
-    border-radius: 999px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    background: rgba(255, 255, 255, 0.16) !important;
-    border: 1px solid rgba(255, 255, 255, 0.28) !important;
-    color: #ffffff !important;
-    transition: background 140ms ease !important;
-  }
-
-  body.retail-ui .offio-glass-icon:hover {
-    background: rgba(255, 255, 255, 0.26) !important;
-  }
-
-  body.retail-ui .offio-account-pill {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-    height: 36px !important;
-    padding: 3px 13px 3px 4px !important;
-    border-radius: 999px !important;
-    background: rgba(255, 255, 255, 0.18) !important;
-    border: 1px solid rgba(255, 255, 255, 0.32) !important;
-    color: #ffffff !important;
-  }
-
-  body.retail-ui .offio-account-pill:hover {
-    background: rgba(255, 255, 255, 0.28) !important;
-  }
-
-  body.retail-ui .offio-account-pill .avatar {
-    width: 28px !important;
-    height: 28px !important;
-    border-radius: 999px !important;
-    background: #ffffff !important;
-    color: #0d7a73 !important;
-    border: 0 !important;
-  }
-
-  body.retail-ui .offio-account-pill .account-copy {
-    text-align: left !important;
-  }
-
-  body.retail-ui .offio-account-pill .account-copy strong {
-    color: #ffffff !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
-    white-space: nowrap !important;
-  }
-
-  body.retail-ui .offio-topbar .account-popover {
-    background: #ffffff !important;
-    border: 1px solid #cde7e0 !important;
-    border-radius: 14px !important;
-    box-shadow: 0 18px 40px rgba(8, 56, 52, 0.18) !important;
-    color: #102a28 !important;
-    padding: 14px !important;
-  }
-  body.retail-ui .offio-topbar .account-popover strong {
-    color: #0c3b37 !important;
-    font-size: 13.5px !important;
-  }
-  body.retail-ui .offio-topbar .account-popover p {
-    color: #5b7a74 !important;
-    font-size: 12px !important;
-  }
-  body.retail-ui .offio-topbar .account-popover :is(button, a) {
-    border-radius: 10px !important;
-    background: #eef9f6 !important;
-    color: #0b645d !important;
-    font-weight: 600 !important;
-    padding: 9px 12px !important;
-  }
-  body.retail-ui .offio-topbar .account-popover :is(button, a):hover {
-    background: #dcf4ef !important;
-  }
-
-  /* Left Sidebar Below Topbar */
-  body.retail-ui .commerce-sidebar.offio-sidebar {
-    top: var(--offio-topbar-h) !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    width: var(--commerce-sidebar) !important;
-    background: linear-gradient(180deg, #f5fcfa 0%, #edf8f5 100%) !important;
-    border-right: 1px solid #d4eae3 !important;
-    padding: 12px 12px 14px !important;
-    z-index: 65 !important;
-    transition: width 180ms ease, transform 180ms ease !important;
-  }
-
-  body.retail-ui .offio-sidebar-collapse-row {
-    display: flex !important;
-    justify-content: flex-end !important;
-    padding: 2px 6px 10px !important;
-  }
-
-  body.retail-ui .offio-collapse-btn {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    padding: 5px 10px !important;
-    border-radius: 999px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    color: #496a65 !important;
-    background: transparent !important;
-  }
-
-  body.retail-ui .offio-collapse-btn:hover {
-    background: #dff3ee !important;
-    color: #0b645d !important;
-  }
-
-  body.retail-ui .commerce-sidebar.offio-sidebar nav {
-    margin-top: 0 !important;
-    padding-right: 2px !important;
-  }
-
-  body.retail-ui .offio-nav-primary {
-    display: grid !important;
-    gap: 4px !important;
-    padding-bottom: 10px !important;
-    border-bottom: 1px solid #dceee9 !important;
-    margin-bottom: 12px !important;
-  }
-
-  body.retail-ui .commerce-sidebar.offio-sidebar nav > p.offio-nav-section-title {
-    padding: 4px 12px 8px !important;
-    margin: 0 !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.06em !important;
-    color: #5d7e78 !important;
-    text-transform: uppercase !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group {
-    position: relative !important;
-    margin-bottom: 3px !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group > a {
-    display: flex !important;
-    align-items: center !important;
-    gap: 11px !important;
-    min-height: 42px !important;
-    padding: 7px 14px !important;
-    border-radius: 999px !important;
-    color: #1f3f3b !important;
-    font-size: 13.5px !important;
-    font-weight: 550 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group > a:hover:not(.selected) {
-    background: #dff4ef !important;
-    color: #095852 !important;
-  }
-
-  /* Active Pill Highlight — exact OFFIO "Trang chủ" teal pill! */
-  body.retail-ui .offio-sidebar .commerce-nav-group > a.selected {
-    background: linear-gradient(135deg, #119688 0%, #0d7a73 100%) !important;
-    color: #ffffff !important;
-    font-weight: 650 !important;
-    border-radius: 999px !important;
-    box-shadow: 0 6px 16px rgba(13, 122, 115, 0.25) !important;
-  }
-
-  body.retail-ui .offio-nav-icon {
-    width: 28px !important;
-    height: 28px !important;
-    border-radius: 9px !important;
-    display: inline-grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-    background: transparent !important;
-    color: inherit !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group.is-category-module > a:not(.selected) .offio-nav-icon {
-    background: #dcf3ed !important;
-    color: #0d7a73 !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group > a.offio-pos-shortcut:not(.selected) .offio-nav-icon {
-    background: #dcf3ed !important;
-    color: #0d7a73 !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group > a.selected .offio-nav-icon {
-    background: rgba(255, 255, 255, 0.2) !important;
-    color: #ffffff !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-expand {
-    position: absolute !important;
-    right: 8px !important;
-    top: 7px !important;
-    width: 28px !important;
-    height: 28px !important;
-    border-radius: 999px !important;
-    color: #5b7b75 !important;
-    display: grid !important;
-    place-items: center !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-nav-group:has(> a.selected) > .commerce-nav-expand {
-    color: #ffffff !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-subnav {
-    border-left: 2px solid #cbe6df !important;
-    margin: 5px 0 8px 26px !important;
-    padding-left: 10px !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-subnav a {
-    border-radius: 10px !important;
-    padding: 7px 11px !important;
-    font-size: 12.5px !important;
-    color: #3f615c !important;
-    font-weight: 500 !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-subnav a:hover {
-    background: #e2f5f0 !important;
-    color: #0b645d !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-subnav a.selected {
-    background: #d7f1ea !important;
-    color: #08544e !important;
-    font-weight: 650 !important;
-  }
-
-  body.retail-ui .offio-sidebar .commerce-sidebar-foot {
-    border-top: 1px solid #d7ece6 !important;
-    color: #2f544e !important;
-    padding: 12px 10px 2px !important;
-  }
-
-  /* Collapsed Sidebar support */
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .offio-collapse-label,
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .offio-nav-section-title,
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .commerce-nav-group > a > span:not(.offio-nav-icon),
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .commerce-nav-expand,
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .commerce-subnav-wrap,
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .commerce-sidebar-foot > span {
-    display: none !important;
-  }
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .offio-sidebar-collapse-row {
-    justify-content: center !important;
-  }
-  body.retail-ui .commerce-shell.offio-shell.sidebar-collapsed .commerce-nav-group > a {
-    justify-content: center !important;
-    padding-inline: 0 !important;
-  }
-
-  body.retail-ui .commerce-shell.offio-shell > .workspace {
-    margin-left: var(--commerce-sidebar) !important;
-    min-height: calc(100dvh - var(--offio-topbar-h)) !important;
-    background: transparent !important;
-  }
-
-  body.retail-ui .commerce-shell.offio-shell .main-content {
-    max-width: 1460px !important;
-    margin-inline: auto !important;
-    padding: 20px 24px 40px !important;
-  }
-
-  /* ==========================================================================
-     2. OFFIO DASHBOARD SHOWCASE (PROMO BANNER + HERO + 4x2 QUICK TILES + STRIP)
+     1. OFFIO DASHBOARD SHOWCASE (PROMO BANNER + HERO + 4x2 QUICK TILES + STRIP)
      ========================================================================== */
   body.retail-ui .offio-dashboard {
     display: flex !important;
@@ -587,9 +32,9 @@
     gap: 16px !important;
     padding: 13px 20px !important;
     border-radius: 16px !important;
-    background: linear-gradient(94deg, #169f90 0%, #0e7f76 58%, #0b645d 100%) !important;
+    background: linear-gradient(94deg, #159c8d 0%, #0e7f76 58%, #0b645d 100%) !important;
     color: #ffffff !important;
-    box-shadow: 0 8px 22px rgba(13, 122, 115, 0.18) !important;
+    box-shadow: 0 8px 22px rgba(13, 122, 115, 0.16) !important;
   }
 
   body.retail-ui .offio-promo-copy {
@@ -668,7 +113,6 @@
     isolation: isolate !important;
   }
 
-  /* Soft OFFIO mint wave in bottom-right corner */
   body.retail-ui .offio-hero-card::after {
     content: '' !important;
     position: absolute !important;
@@ -752,7 +196,6 @@
     box-shadow: 0 8px 20px rgba(11, 93, 86, 0.3) !important;
   }
 
-  /* Clean geometric visual sheet on right side of Hero card (like OFFIO PDF sheet) */
   body.retail-ui .offio-hero-visual {
     flex: 0 0 auto !important;
     padding-right: 6px !important;
@@ -878,7 +321,7 @@
     line-height: 1.3 !important;
   }
 
-  /* Feature Strip (OFFIO ID-Photo Studio horizontal card with right mint wave) */
+  /* Feature Strip (OFFIO horizontal card with right mint wave) */
   body.retail-ui .offio-feature-strip {
     position: relative !important;
     overflow: hidden !important;
@@ -983,9 +426,8 @@
   }
 
   /* ==========================================================================
-     3. GLOBAL CARDS, INNER PAGE HEADERS, TABLES & BUTTONS IN BRAND TEAL
+     2. LIVELY CARDS, INNER PAGE HEADERS, TABLES & BRAND-TEAL ACCENTS
      ========================================================================== */
-  /* Lively inner page headers: crisp white card with soft mint right wave */
   body.retail-ui .commerce-shell .main-content :is(
     .suite-heading,
     .detail-heading,
@@ -1000,7 +442,7 @@
   ):not(.dashboard-heading):not(.product-detail-hero) {
     background: linear-gradient(108deg, #ffffff 0%, #ffffff 64%, #e3f6f1 100%) !important;
     border: 1px solid #d5eae4 !important;
-    border-radius: 16px !important;
+    border-radius: 14px !important;
     padding: 18px 22px !important;
     margin: 0 0 18px 0 !important;
     box-shadow: var(--fm-shadow-sm) !important;
@@ -1021,15 +463,13 @@
     font-weight: 750 !important;
   }
 
-  /* Product Detail Hero (/san-pham/[id]) keeps left 124px image + right info, upgraded to soft mint wave card */
   body.retail-ui .product-detail-page .detail-heading.product-detail-hero {
     background: linear-gradient(108deg, #ffffff 0%, #ffffff 66%, #e4f7f2 100%) !important;
     border: 1px solid #d3eae3 !important;
-    border-radius: 18px !important;
+    border-radius: 16px !important;
     box-shadow: var(--fm-shadow-sm) !important;
   }
 
-  /* Elevated White Panels & Cards */
   body.retail-ui :is(
     .panel,
     .suite-panel,
@@ -1047,7 +487,7 @@
   ) {
     background: #ffffff !important;
     border: 1px solid #d6ebe5 !important;
-    border-radius: 16px !important;
+    border-radius: 14px !important;
     box-shadow: var(--fm-shadow-sm) !important;
   }
 
@@ -1061,13 +501,11 @@
     font-weight: 700 !important;
   }
 
-  /* Cohesive Brand-Teal KPI Metric Cards (zero rainbow borders) */
   body.retail-ui :is(.metric-card, .kpi-card, .inventory-kpi, .lots-overview article, .supplier-kpis article, .network-kpis article) {
     background: #ffffff !important;
     border: 1px solid #d6ebe5 !important;
-    border-radius: 16px !important;
+    border-radius: 14px !important;
     box-shadow: var(--fm-shadow-sm) !important;
-    transition: transform 140ms ease, box-shadow 140ms ease !important;
   }
 
   body.retail-ui .dashboard-kpi-grid > .metric-card.dashboard-kpi-featured {
@@ -1099,7 +537,7 @@
     color: #ffffff !important;
   }
 
-  /* Framed Tables — keep 100% left-aligned th/td, upgrade header to soft mint */
+  /* Framed Tables — keep 100% left-aligned th/td, soft mint table header */
   body.retail-ui .table-scroll {
     border: 1px solid #d6ebe5 !important;
     border-radius: 12px !important;
@@ -1118,86 +556,13 @@
     background: #f4fbf9 !important;
   }
 
-  /* Tabs & Pill Buttons */
-  body.retail-ui .ui-tabbar > .ui-tab:not(.category-filter) {
-    border-radius: 999px !important;
-  }
-
-  body.retail-ui .ui-tabbar > .ui-tab:not(.category-filter)[aria-pressed=true] {
-    background: #dcf4ef !important;
-    color: #095c55 !important;
-    border-color: #b2e2d7 !important;
-    font-weight: 700 !important;
-  }
-
-  body.retail-ui .primary-button,
-  body.retail-ui .action-create {
-    background: linear-gradient(135deg, #119184 0%, #0d746d 100%) !important;
-    border: 1px solid #0d746d !important;
-    border-radius: 999px !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-    padding-inline: 18px !important;
-    box-shadow: 0 4px 12px rgba(13, 122, 115, 0.2) !important;
-  }
-
-  body.retail-ui .primary-button:hover:not(:disabled),
-  body.retail-ui .action-create:hover:not(:disabled) {
-    background: linear-gradient(135deg, #0e7d72 0%, #095c56 100%) !important;
-    border-color: #095c56 !important;
-    box-shadow: 0 6px 16px rgba(13, 122, 115, 0.28) !important;
-  }
-
-  body.retail-ui .outline-button,
-  body.retail-ui .live-inbound .li-top-btn,
-  body.retail-ui .live-inbound button.li-top-btn {
-    border-radius: 999px !important;
-    border-color: #c5e2db !important;
-    color: #144944 !important;
-    background: #ffffff !important;
-  }
-
-  body.retail-ui .outline-button:hover:not(:disabled),
-  body.retail-ui .live-inbound .li-top-btn:hover {
-    background: #eef9f6 !important;
-    border-color: #0d7a73 !important;
-    color: #0d7a73 !important;
-  }
-
-  /* Responsive adjustments */
   @media (max-width: 1120px) {
     body.retail-ui .offio-hero-showcase {
       grid-template-columns: 1fr !important;
     }
-    body.retail-ui .offio-brand-copy small {
-      display: none !important;
-    }
   }
 
   @media (max-width: 820px) {
-    body.retail-ui .commerce-shell.offio-shell > .workspace {
-      margin-left: 0 !important;
-    }
-    body.retail-ui .commerce-sidebar.offio-sidebar {
-      transform: translateX(-100%) !important;
-      width: 256px !important;
-    }
-    body.retail-ui .commerce-shell.offio-shell.navigation-open .commerce-sidebar.offio-sidebar {
-      transform: translateX(0) !important;
-      box-shadow: 0 20px 50px rgba(7, 45, 41, 0.28) !important;
-    }
-    body.retail-ui .commerce-shell.offio-shell.navigation-open .commerce-nav-backdrop {
-      display: block !important;
-      position: fixed !important;
-      inset: var(--offio-topbar-h) 0 0 0 !important;
-      background: rgba(8, 42, 39, 0.42) !important;
-      z-index: 60 !important;
-      border: 0 !important;
-    }
-    body.retail-ui .offio-search-center,
-    body.retail-ui .offio-topbar .scope-label {
-      display: none !important;
-    }
     body.retail-ui .offio-quick-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
