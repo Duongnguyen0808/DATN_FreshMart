@@ -1,34 +1,11 @@
 /*
- * FreshMart WareHouse POS Theme (DreamsPOS Warehouse Management Tailwind Architecture × FreshMart Brand Teal)
- * - 2-Row Dark Charcoal/Teal Aurora Header (#hmHeader.hm) with multi-column Mega-Menu dropdowns (no left sidebar)
- * - Full-width 1640px responsive workspace canvas
- * - Animated Warehouse Hero Banner + Dock Doors + Orbital Network Hub + Stock Health Donut + Conveyor Pipeline + Top Sellers
- * - Preserves 100% left-aligned tables, single-row 5-column filter bars, and strictly single-border inputs.
+ * FreshMart Horizontal Shell (Header + Mega-Menu + Footer Only)
+ * - Keeps 2-row horizontal Header (#hmHeader.hm) & Footer (.wm-footer) in FreshMart's signature Light Mint-Teal palette
+ * - Leaves 100% of inner page & dashboard content in its original FreshMart styling (turquoise-theme.css / polish.css)
  */
 @media screen {
-  body.retail-ui {
-    --wm-p-50: #f0fdfa;
-    --wm-p-100: #ccfbf1;
-    --wm-p-200: #99f6e4;
-    --wm-p-300: #5eead4;
-    --wm-p-400: #2dd4bf;
-    --wm-p-500: #14b8a6;
-    --wm-p-600: #0d9488;
-    --wm-p-700: #0d7a73;
-    --wm-p-800: #0b5f59;
-    --wm-p-900: #084440;
-    --wm-dark-950: #081211;
-    --wm-dark-900: #0c1918;
-    --wm-dark-800: #132624;
-    --primary: #0d7a73;
-    --brand: #0d9488;
-    --brand-hover: #0b5f59;
-    background: radial-gradient(60% 45% at 50% 0%, #e4f6f2 0%, #f3f7f6 65%, #f6f8f8 100%) !important;
-    color: #0f172a !important;
-  }
-
   /* ==========================================================================
-     1. HORIZONTAL SHELL RESET (NO LEFT SIDEBAR — FULL WIDTH WORKSPACE)
+     1. HORIZONTAL SHELL LAYOUT (NO LEFT SIDEBAR — ORIGINAL PAGE CONTENT)
      ========================================================================== */
   body.retail-ui .commerce-shell.wm-horizontal {
     --commerce-sidebar: 0px !important;
@@ -40,11 +17,13 @@
 
   body.retail-ui .commerce-shell.wm-horizontal > .workspace {
     margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
     flex: 1 1 auto !important;
     display: flex !important;
     flex-direction: column !important;
     min-height: 0 !important;
-    background: transparent !important;
+    background: var(--bg, #f6f9f8) !important;
   }
 
   body.retail-ui .commerce-shell.wm-horizontal .main-content {
@@ -53,15 +32,26 @@
     margin-inline: auto !important;
     padding: 22px 24px 36px !important;
     flex: 1 1 auto !important;
+    background: transparent !important;
+    border: 0 !important;
   }
 
+  /* Keep POS right ticket below the 2-row sticky header */
+  body.retail-ui .commerce-shell.wm-horizontal .pos-ticket {
+    top: 124px !important;
+  }
+
+  /* Light Mint-Teal Footer */
   body.retail-ui .wm-footer {
-    border-top: 1px solid #dde8e5 !important;
-    background: rgba(255, 255, 255, 0.85) !important;
+    border-top: 1px solid #bfe5dd !important;
+    background: linear-gradient(120deg, #e4f8f4 0%, #f2fcfa 50%, #dbf4ef 100%) !important;
     padding: 14px 24px !important;
     text-align: center !important;
-    font-size: 12px !important;
-    color: #64748b !important;
+    font-size: 12.5px !important;
+    color: #3d6662 !important;
+  }
+  body.retail-ui .wm-footer p {
+    margin: 0 !important;
   }
   body.retail-ui .wm-footer strong {
     color: #0d7a73 !important;
@@ -69,49 +59,46 @@
   }
 
   /* ==========================================================================
-     2. WAREHOUSE POS 2-ROW FRESHMART TEAL HEADER (#hmHeader.hm)
+     2. 2-ROW LIGHT MINT-TEAL HEADER (#hmHeader.hm — MÀU XANH NHẠT CỦA BÀI)
      ========================================================================== */
-  @keyframes wmAurora {
-    0% { background-position: 0% 0%; }
-    100% { background-position: 100% 100%; }
-  }
-
   body.retail-ui header.hm {
     position: sticky !important;
     top: 0 !important;
     z-index: 80 !important;
-    color: #f0fdfa !important;
-    background:
-      radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.09) 1px, transparent 0) 0 0 / 18px 18px,
-      linear-gradient(115deg, #0b6b64 0%, #0d7a73 42%, #129188 76%, #0d7a73 100%) !important;
-    box-shadow: 0 10px 28px -12px rgba(8, 76, 71, 0.42) !important;
-  }
-
-  body.retail-ui header.hm::before {
-    content: '' !important;
-    position: absolute !important;
-    inset: 0 !important;
-    pointer-events: none !important;
-    background:
-      radial-gradient(40% 120% at 12% -30%, rgba(153, 246, 228, 0.28), transparent 70%),
-      radial-gradient(36% 110% at 88% -30%, rgba(45, 212, 191, 0.24), transparent 70%) !important;
-    background-size: 135% 135% !important;
-    animation: wmAurora 16s ease-in-out infinite alternate !important;
+    color: #0f2928 !important;
+    background: linear-gradient(120deg, #dcf6f1 0%, #eafbf8 46%, #cff1ea 100%) !important;
+    border-bottom: 1px solid #b7e2d9 !important;
+    box-shadow: 0 6px 20px -10px rgba(13, 122, 115, 0.16) !important;
   }
 
   body.retail-ui .hm-bar {
     position: relative !important;
     height: 64px !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-bottom: 1px solid rgba(13, 122, 115, 0.12) !important;
+  }
+
+  body.retail-ui .hm-bar::after {
+    content: '' !important;
+    position: absolute !important;
+    inset: auto 220px 0 auto !important;
+    width: 220px !important;
+    height: 63px !important;
+    background: url('/freshmart-leaves.svg') center / contain no-repeat !important;
+    opacity: 0.42 !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
   }
 
   body.retail-ui .hm-menu {
     position: relative !important;
     height: 46px !important;
-    background: rgba(6, 62, 58, 0.22) !important;
+    background: rgba(255, 255, 255, 0.58) !important;
+    backdrop-filter: blur(8px) !important;
   }
 
   body.retail-ui .hm-in {
+    position: relative !important;
+    z-index: 1 !important;
     display: flex !important;
     align-items: center !important;
     gap: 12px !important;
@@ -126,14 +113,14 @@
     width: 36px !important;
     height: 36px !important;
     border-radius: 10px !important;
-    color: #f0fdfa !important;
+    color: #0d7a73 !important;
     place-items: center !important;
-    background: transparent !important;
-    border: 0 !important;
+    background: rgba(255, 255, 255, 0.78) !important;
+    border: 1px solid #bbe3db !important;
   }
   body.retail-ui .hm-burger:hover {
-    background: rgba(255, 255, 255, 0.16) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    color: #085e58 !important;
   }
 
   body.retail-ui .hm-brand {
@@ -149,10 +136,11 @@
     height: 38px !important;
     border-radius: 11px !important;
     background: #ffffff !important;
+    border: 1px solid #bce4dc !important;
     padding: 4px !important;
     display: grid !important;
     place-items: center !important;
-    box-shadow: 0 4px 12px rgba(5, 52, 48, 0.24) !important;
+    box-shadow: 0 3px 10px rgba(13, 122, 115, 0.12) !important;
   }
   body.retail-ui .hm-brand-logo img {
     width: 100% !important;
@@ -169,18 +157,17 @@
     font-size: 18px !important;
     font-weight: 800 !important;
     letter-spacing: -0.025em !important;
-    color: #ffffff !important;
+    color: #0f2928 !important;
   }
   body.retail-ui .hm-brand-text em {
     font-style: normal !important;
-    font-size: 11px !important;
+    font-size: 10.5px !important;
     font-weight: 800 !important;
     letter-spacing: 0.06em !important;
     padding: 2px 7px !important;
     border-radius: 6px !important;
-    background: #ffffff !important;
-    color: #0b6b64 !important;
-    box-shadow: 0 2px 6px rgba(5, 52, 48, 0.18) !important;
+    background: linear-gradient(135deg, #0d9488, #0d7a73) !important;
+    color: #ffffff !important;
   }
 
   /* Hub Location Pill */
@@ -192,16 +179,17 @@
     padding: 0 12px !important;
     margin-left: 6px !important;
     border-radius: 12px !important;
-    background: rgba(255, 255, 255, 0.13) !important;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22) !important;
+    background: rgba(255, 255, 255, 0.78) !important;
+    border: 1px solid #bce4dc !important;
+    box-shadow: 0 2px 6px rgba(13, 122, 115, 0.05) !important;
     white-space: nowrap !important;
-    color: #ccfbf1 !important;
+    color: #0d7a73 !important;
   }
   body.retail-ui .hm-loc-t small {
     display: block !important;
     font-size: 10.5px !important;
     line-height: 1.1 !important;
-    color: #ccfbf1 !important;
+    color: #527370 !important;
   }
   body.retail-ui .hm-loc-t b,
   body.retail-ui .hm-loc-t select {
@@ -209,14 +197,14 @@
     font-size: 12.5px !important;
     font-weight: 700 !important;
     line-height: 1.25 !important;
-    color: #ffffff !important;
+    color: #0f2928 !important;
     background: transparent !important;
     border: 0 !important;
     padding: 0 !important;
     outline: none !important;
   }
   body.retail-ui .hm-loc-t select option {
-    color: #0f172a !important;
+    color: #0f2928 !important;
     background: #ffffff !important;
   }
   body.retail-ui .hm-loc-tag {
@@ -225,9 +213,9 @@
     gap: 5px !important;
     padding: 2px 8px !important;
     border-radius: 999px !important;
-    background: rgba(255, 255, 255, 0.18) !important;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3) !important;
-    color: #ecfdf5 !important;
+    background: #dcfce7 !important;
+    border: 1px solid #86efac !important;
+    color: #065f46 !important;
     font-size: 10px !important;
     font-weight: 800 !important;
     letter-spacing: 0.05em !important;
@@ -236,15 +224,14 @@
     width: 6px !important;
     height: 6px !important;
     border-radius: 50% !important;
-    background: #6ee7b7 !important;
-    box-shadow: 0 0 6px #6ee7b7 !important;
+    background: #10b981 !important;
   }
 
-  /* Command Search in FreshMart Teal Header — strictly 1 clean border */
+  /* Command Search — strictly 1 clean border matching FreshMart quick-search */
   body.retail-ui .hm-search-wrap {
     position: relative !important;
     flex: 1 1 360px !important;
-    max-width: 390px !important;
+    max-width: 400px !important;
     margin-left: 8px !important;
   }
   body.retail-ui .hm-search {
@@ -254,15 +241,15 @@
     height: 38px !important;
     padding: 0 10px 0 12px !important;
     border-radius: 11px !important;
-    background: rgba(255, 255, 255, 0.14) !important;
-    border: 1px solid rgba(255, 255, 255, 0.26) !important;
-    color: #e6fffa !important;
-    transition: background 150ms ease, border-color 150ms ease !important;
+    background: #ffffff !important;
+    border: 1px solid #b9e2da !important;
+    box-shadow: 0 2px 8px rgba(13, 122, 115, 0.05) !important;
+    color: #0d7a73 !important;
+    transition: border-color 150ms ease, box-shadow 150ms ease !important;
   }
   body.retail-ui .hm-search:focus-within {
-    background: rgba(255, 255, 255, 0.22) !important;
-    border-color: rgba(255, 255, 255, 0.65) !important;
-    color: #ffffff !important;
+    border-color: #14b8a6 !important;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.16) !important;
   }
   body.retail-ui .hm-search > input {
     flex: 1 1 auto !important;
@@ -275,18 +262,18 @@
     background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
-    color: #ffffff !important;
+    color: #0f2928 !important;
     font-size: 13px !important;
   }
   body.retail-ui .hm-search > input::placeholder {
-    color: rgba(240, 253, 250, 0.8) !important;
+    color: #6b8a86 !important;
   }
   body.retail-ui .hm-search kbd {
     padding: 2px 6px !important;
     border-radius: 6px !important;
-    background: rgba(255, 255, 255, 0.16) !important;
-    border: 1px solid rgba(255, 255, 255, 0.26) !important;
-    color: #ffffff !important;
+    background: #f0faf8 !important;
+    border: 1px solid #cfeae4 !important;
+    color: #4f706d !important;
     font-size: 10.5px !important;
     font-weight: 600 !important;
     white-space: nowrap !important;
@@ -298,9 +285,9 @@
     left: 0 !important;
     right: 0 !important;
     background: #ffffff !important;
-    border: 1px solid #d5e8e3 !important;
+    border: 1px solid #cde5e0 !important;
     border-radius: 14px !important;
-    box-shadow: 0 24px 48px -12px rgba(8, 28, 26, 0.35) !important;
+    box-shadow: 0 20px 44px -12px rgba(15, 41, 40, 0.2) !important;
     padding: 6px !important;
     z-index: 110 !important;
     display: grid !important;
@@ -315,12 +302,12 @@
     border-radius: 10px !important;
     background: transparent !important;
     border: 0 !important;
-    color: #0f172a !important;
+    color: #0f2928 !important;
     text-align: left !important;
   }
   body.retail-ui .hm-search-item:hover {
-    background: var(--wm-p-50) !important;
-    color: var(--wm-p-800) !important;
+    background: #eaf8f5 !important;
+    color: #0d7a73 !important;
   }
   body.retail-ui .hm-search-copy {
     flex: 1 1 auto !important;
@@ -330,12 +317,12 @@
     display: block !important;
     font-size: 13px !important;
     font-weight: 650 !important;
-    color: #0f172a !important;
+    color: #0f2928 !important;
   }
   body.retail-ui .hm-search-copy small {
     display: block !important;
     font-size: 11px !important;
-    color: #64748b !important;
+    color: #566e6c !important;
   }
 
   /* Right Tools */
@@ -354,18 +341,18 @@
     height: 36px !important;
     padding: 0 14px !important;
     border-radius: 10px !important;
-    background: #ffffff !important;
-    color: #0b6b64 !important;
+    background: linear-gradient(135deg, #0d8f86, #08736c) !important;
+    color: #ffffff !important;
     font-size: 12.5px !important;
-    font-weight: 750 !important;
-    box-shadow: 0 6px 16px -4px rgba(5, 48, 45, 0.28) !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 12px rgba(8, 127, 120, 0.22) !important;
     white-space: nowrap !important;
-    transition: transform 140ms ease, background 140ms ease !important;
+    text-decoration: none !important;
+    transition: transform 140ms ease, filter 140ms ease !important;
   }
   body.retail-ui .wm-top-pos-btn:hover {
     transform: translateY(-1px) !important;
-    background: #f0fdfa !important;
-    color: #084f4a !important;
+    filter: brightness(1.05) !important;
   }
 
   body.retail-ui .hm-icon-btn {
@@ -373,16 +360,17 @@
     width: 36px !important;
     height: 36px !important;
     border-radius: 10px !important;
-    background: rgba(255, 255, 255, 0.13) !important;
-    border: 1px solid rgba(255, 255, 255, 0.22) !important;
-    color: #f0fdfa !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+    border: 1px solid #bce4dc !important;
+    color: #0d7a73 !important;
     display: grid !important;
     place-items: center !important;
-    transition: background 140ms ease, color 140ms ease !important;
+    transition: background 140ms ease, border-color 140ms ease !important;
   }
   body.retail-ui .hm-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.22) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    border-color: #0d9488 !important;
+    color: #085f59 !important;
   }
   body.retail-ui .hm-bell-dot {
     position: absolute !important;
@@ -391,15 +379,19 @@
     width: 7px !important;
     height: 7px !important;
     border-radius: 50% !important;
-    background: #fde047 !important;
-    box-shadow: 0 0 0 2px #0d7a73 !important;
+    background: #10b981 !important;
+    box-shadow: 0 0 0 2px #ffffff !important;
   }
 
   body.retail-ui .hm-sep {
     width: 1px !important;
     height: 24px !important;
-    background: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(13, 122, 115, 0.18) !important;
     margin-inline: 2px !important;
+  }
+
+  body.retail-ui .hm-tools .account-menu {
+    position: relative !important;
   }
 
   body.retail-ui .hm-user-btn {
@@ -409,18 +401,20 @@
     height: 38px !important;
     padding: 3px 10px 3px 4px !important;
     border-radius: 11px !important;
-    background: rgba(255, 255, 255, 0.13) !important;
-    border: 1px solid rgba(255, 255, 255, 0.22) !important;
-    color: #ffffff !important;
+    background: rgba(255, 255, 255, 0.85) !important;
+    border: 1px solid #bce4dc !important;
+    color: #0f2928 !important;
   }
   body.retail-ui .hm-user-btn:hover {
-    background: rgba(255, 255, 255, 0.22) !important;
+    background: #ffffff !important;
+    border-color: #0d9488 !important;
   }
   body.retail-ui .hm-avatar {
     width: 30px !important;
     height: 30px !important;
     border-radius: 9px !important;
-    background: #ffffff !important;
+    background: #e4f7f3 !important;
+    border: 1px solid #b6e3da !important;
     color: #0d7a73 !important;
     display: grid !important;
     place-items: center !important;
@@ -433,16 +427,12 @@
     display: block !important;
     font-size: 12.5px !important;
     font-weight: 700 !important;
-    color: #ffffff !important;
+    color: #0f2928 !important;
   }
   body.retail-ui .hm-user-copy small {
     display: block !important;
     font-size: 10.5px !important;
-    color: #ccfbf1 !important;
-  }
-
-  body.retail-ui .hm-tools .account-menu {
-    position: relative !important;
+    color: #527370 !important;
   }
 
   body.retail-ui .hm-user-pop {
@@ -453,12 +443,27 @@
     left: auto !important;
     z-index: 120 !important;
     background: #ffffff !important;
-    border: 1px solid #d5e8e3 !important;
+    border: 1px solid #cde5e0 !important;
     border-radius: 14px !important;
-    box-shadow: 0 24px 48px -12px rgba(8, 28, 26, 0.35) !important;
-    color: #0f172a !important;
+    box-shadow: 0 20px 44px -12px rgba(15, 41, 40, 0.2) !important;
+    color: #0f2928 !important;
     padding: 14px !important;
     min-width: 230px !important;
+  }
+  body.retail-ui .hm-user-pop-head {
+    padding-bottom: 10px !important;
+    margin-bottom: 10px !important;
+    border-bottom: 1px solid #e6f2ef !important;
+  }
+  body.retail-ui .hm-user-pop-head strong {
+    display: block !important;
+    color: #0f2928 !important;
+    font-size: 13.5px !important;
+  }
+  body.retail-ui .hm-user-pop-head p {
+    margin: 3px 0 0 !important;
+    color: #566e6c !important;
+    font-size: 12px !important;
   }
   body.retail-ui .hm-logout-btn {
     width: 100% !important;
@@ -467,23 +472,6 @@
     justify-content: center !important;
     gap: 8px !important;
     border: 0 !important;
-  }
-  body.retail-ui .hm-user-pop-head {
-    padding-bottom: 10px !important;
-    margin-bottom: 10px !important;
-    border-bottom: 1px solid #eef4f2 !important;
-  }
-  body.retail-ui .hm-user-pop-head strong {
-    display: block !important;
-    color: #0f172a !important;
-    font-size: 13.5px !important;
-  }
-  body.retail-ui .hm-user-pop-head p {
-    margin: 3px 0 0 !important;
-    color: #64748b !important;
-    font-size: 12px !important;
-  }
-  body.retail-ui .hm-logout-btn {
     border-radius: 9px !important;
     background: #fef2f2 !important;
     color: #dc2626 !important;
@@ -508,7 +496,7 @@
     padding: 0 !important;
     display: flex !important;
     align-items: center !important;
-    gap: 4px !important;
+    gap: 5px !important;
   }
   body.retail-ui .hm-item {
     position: relative !important;
@@ -517,47 +505,47 @@
     display: inline-flex !important;
     align-items: center !important;
     gap: 7px !important;
-    height: 36px !important;
+    height: 34px !important;
     padding: 0 12px !important;
-    border-radius: 10px !important;
-    color: rgba(240, 253, 250, 0.9) !important;
+    border-radius: 9px !important;
+    color: #1f4845 !important;
     font-size: 13px !important;
-    font-weight: 560 !important;
+    font-weight: 600 !important;
     background: transparent !important;
     border: 0 !important;
     white-space: nowrap !important;
-    transition: background 140ms ease, color 140ms ease !important;
+    text-decoration: none !important;
+    transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease !important;
   }
   body.retail-ui .hm-top-ico {
     display: inline-grid !important;
     place-items: center !important;
-    color: #99f6e4 !important;
+    color: #0d7a73 !important;
     transition: color 140ms ease !important;
   }
   body.retail-ui .hm-chev {
     display: inline-grid !important;
     place-items: center !important;
-    color: rgba(204, 251, 241, 0.82) !important;
+    color: #5b7d79 !important;
     transition: transform 160ms ease, color 160ms ease !important;
   }
   body.retail-ui .hm-top:hover,
-  body.retail-ui .hm-item.is-open > .hm-top,
+  body.retail-ui .hm-item.is-open > .hm-top {
+    color: #0b6660 !important;
+    background: #ffffff !important;
+    box-shadow: inset 0 0 0 1px #bce4dc, 0 2px 6px rgba(13, 122, 115, 0.08) !important;
+  }
   body.retail-ui .hm-top.has-active {
     color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.18) !important;
+    background: linear-gradient(135deg, #0d9488, #0d7a73) !important;
+    box-shadow: 0 3px 10px rgba(13, 122, 115, 0.22) !important;
   }
-  body.retail-ui .hm-top.has-active {
-    font-weight: 700 !important;
-    box-shadow: inset 0 -2px 0 #ffffff !important;
-  }
-  body.retail-ui .hm-top:hover .hm-top-ico,
-  body.retail-ui .hm-item.is-open > .hm-top .hm-top-ico,
-  body.retail-ui .hm-top.has-active .hm-top-ico {
+  body.retail-ui .hm-top.has-active .hm-top-ico,
+  body.retail-ui .hm-top.has-active .hm-chev {
     color: #ffffff !important;
   }
   body.retail-ui .hm-item.is-open > .hm-top .hm-chev {
     transform: rotate(180deg) !important;
-    color: #ffffff !important;
   }
 
   /* Mega-Menu Dropdown Panel */
@@ -572,7 +560,7 @@
     background: #ffffff !important;
     border-radius: 16px !important;
     padding: 8px !important;
-    box-shadow: inset 0 0 0 1px #dcebe7, 0 28px 50px -16px rgba(10, 32, 30, 0.35), 0 6px 14px -6px rgba(10, 32, 30, 0.16) !important;
+    box-shadow: inset 0 0 0 1px #d4ebe6, 0 24px 48px -14px rgba(15, 41, 40, 0.2), 0 6px 14px -6px rgba(15, 41, 40, 0.08) !important;
     opacity: 0 !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -606,7 +594,7 @@
     gap: 10px !important;
   }
   body.retail-ui .hm-col + .hm-col {
-    border-left: 1px solid #edf4f2 !important;
+    border-left: 1px solid #e8f3f0 !important;
     padding-left: 10px !important;
   }
   body.retail-ui .hm-col-t {
@@ -619,7 +607,7 @@
     font-weight: 750 !important;
     letter-spacing: 0.11em !important;
     text-transform: uppercase !important;
-    color: #64748b !important;
+    color: #566e6c !important;
   }
   body.retail-ui .hm-col-t svg {
     color: #0d9488 !important;
@@ -638,39 +626,42 @@
     min-height: 40px !important;
     padding: 5px 10px 5px 6px !important;
     border-radius: 11px !important;
-    color: #334155 !important;
+    color: #264442 !important;
     font-size: 13px !important;
     font-weight: 500 !important;
+    text-decoration: none !important;
     transition: background 130ms ease, color 130ms ease !important;
   }
   body.retail-ui .hm-ico {
     width: 32px !important;
     height: 32px !important;
     border-radius: 9px !important;
-    background: #f1f5f9 !important;
-    color: #64748b !important;
+    background: #f2faf8 !important;
+    border: 1px solid #dceee9 !important;
+    color: #0d7a73 !important;
     display: grid !important;
     place-items: center !important;
     flex-shrink: 0 !important;
     transition: background 130ms ease, color 130ms ease !important;
   }
   body.retail-ui .hm-link:hover {
-    background: var(--wm-p-50) !important;
-    color: var(--wm-p-900) !important;
+    background: #eaf8f5 !important;
+    color: #0b5f59 !important;
   }
   body.retail-ui .hm-link:hover .hm-ico {
-    background: var(--wm-p-100) !important;
-    color: var(--wm-p-700) !important;
+    background: #d5f4ed !important;
+    color: #0b5f59 !important;
   }
   body.retail-ui .hm-link.is-active {
-    background: var(--wm-p-50) !important;
-    color: var(--wm-p-900) !important;
+    background: #e6f7f4 !important;
+    color: #0b5f59 !important;
     font-weight: 650 !important;
   }
   body.retail-ui .hm-link.is-active .hm-ico {
     background: linear-gradient(135deg, #14b8a6, #0d7a73) !important;
+    border-color: transparent !important;
     color: #ffffff !important;
-    box-shadow: 0 6px 12px -4px rgba(13, 122, 115, 0.5) !important;
+    box-shadow: 0 4px 10px -3px rgba(13, 122, 115, 0.4) !important;
   }
   body.retail-ui .hm-label {
     flex: 1 1 auto !important;
@@ -679,13 +670,13 @@
   body.retail-ui .hm-badge {
     padding: 2px 7px !important;
     border-radius: 999px !important;
-    background: var(--wm-p-100) !important;
-    color: var(--wm-p-800) !important;
+    background: #dcfce7 !important;
+    color: #065f46 !important;
     font-size: 10px !important;
     font-weight: 800 !important;
   }
 
-  /* Right Capacity Ring in Row 2 */
+  /* Right Cloud Ring in Row 2 */
   body.retail-ui .hm-cap {
     margin-left: auto !important;
     display: none !important;
@@ -703,20 +694,19 @@
     width: 30px !important;
     height: 30px !important;
     border-radius: 50% !important;
-    background: conic-gradient(#ffffff 0% 84%, rgba(255, 255, 255, 0.25) 84% 100%) !important;
+    background: conic-gradient(#0d9488 0% 84%, #cbece5 84% 100%) !important;
     display: grid !important;
     place-items: center !important;
     font-size: 8.5px !important;
     font-weight: 800 !important;
-    color: #ffffff !important;
-    box-shadow: 0 0 12px -4px rgba(255, 255, 255, 0.45) !important;
+    color: #0d7a73 !important;
   }
   body.retail-ui .hm-ring::before {
     content: '' !important;
     position: absolute !important;
     inset: 3px !important;
     border-radius: 50% !important;
-    background: #0a635d !important;
+    background: #f3fcfa !important;
   }
   body.retail-ui .hm-ring > span {
     position: relative !important;
@@ -725,1194 +715,20 @@
     display: block !important;
     font-size: 11.5px !important;
     font-weight: 700 !important;
-    color: #ffffff !important;
+    color: #0f2928 !important;
     line-height: 1.15 !important;
   }
   body.retail-ui .hm-cap-t small {
     display: block !important;
     font-size: 10px !important;
-    color: #ccfbf1 !important;
+    color: #527370 !important;
     line-height: 1.15 !important;
   }
 
   /* ==========================================================================
-     3. WAREHOUSE POS DASHBOARD (.wm-dashboard / .c2-*)
-     ========================================================================== */
-  body.retail-ui .wm-dashboard {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 20px !important;
-  }
-
-  body.retail-ui .c2-head {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 16px !important;
-  }
-  body.retail-ui .c2-crumb {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
-    color: #64748b !important;
-    margin-bottom: 4px !important;
-  }
-  body.retail-ui .c2-crumb [aria-current='page'] {
-    color: var(--wm-p-700) !important;
-    font-weight: 650 !important;
-  }
-  body.retail-ui .c2-title {
-    font-size: 26px !important;
-    font-weight: 800 !important;
-    letter-spacing: -0.025em !important;
-    color: #0f172a !important;
-    margin: 0 !important;
-  }
-  body.retail-ui .c2-sub {
-    font-size: 13px !important;
-    color: #64748b !important;
-    margin: 3px 0 0 !important;
-  }
-  body.retail-ui .c2-head-actions {
-    display: flex !important;
-    align-items: center !important;
-    flex-wrap: wrap !important;
-    gap: 10px !important;
-  }
-  body.retail-ui .c2-live {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 7px !important;
-    height: 36px !important;
-    padding: 0 13px !important;
-    border-radius: 999px !important;
-    background: #ffffff !important;
-    border: 1px solid #d5e9e3 !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
-    color: #0f4c46 !important;
-  }
-  body.retail-ui .c2-live i {
-    width: 7px !important;
-    height: 7px !important;
-    border-radius: 50% !important;
-    background: #10b981 !important;
-    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22) !important;
-  }
-
-  body.retail-ui .wm-select-pill {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 7px !important;
-    height: 36px !important;
-    padding: 0 12px !important;
-    border-radius: 10px !important;
-    background: #ffffff !important;
-    border: 1px solid #d4e6e1 !important;
-    color: #0f4c46 !important;
-  }
-  body.retail-ui .wm-select-pill select {
-    border: 0 !important;
-    outline: none !important;
-    box-shadow: none !important;
-    background: transparent !important;
-    font-size: 12.5px !important;
-    font-weight: 600 !important;
-    color: #0f172a !important;
-  }
-
-  body.retail-ui .wm-btn {
-    display: inline-flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 7px !important;
-    height: 38px !important;
-    padding: 0 15px !important;
-    border-radius: 11px !important;
-    font-size: 13px !important;
-    font-weight: 650 !important;
-    white-space: nowrap !important;
-    transition: transform 150ms ease, background 150ms ease, box-shadow 150ms ease !important;
-  }
-  body.retail-ui .wm-btn-primary {
-    background: linear-gradient(135deg, #0fa395 0%, #0d7a73 100%) !important;
-    color: #ffffff !important;
-    border: 1px solid #0d7a73 !important;
-    box-shadow: 0 8px 18px -6px rgba(13, 122, 115, 0.45) !important;
-  }
-  body.retail-ui .wm-btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px) !important;
-    background: linear-gradient(135deg, #0d8d81 0%, #095e58 100%) !important;
-  }
-  body.retail-ui .wm-btn-ghost {
-    background: rgba(255, 255, 255, 0.92) !important;
-    color: #1e3a37 !important;
-    border: 1px solid #cde4de !important;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
-  }
-  body.retail-ui .wm-btn-ghost:hover:not(:disabled) {
-    background: #ffffff !important;
-    border-color: #0d9488 !important;
-    color: #0d7a73 !important;
-  }
-
-  /* Glass-elevated WareHouse POS Card (.c2-card) */
-  body.retail-ui .c2-card {
-    background: rgba(255, 255, 255, 0.88) !important;
-    backdrop-filter: blur(14px) saturate(1.2) !important;
-    border: 1px solid #ffffff !important;
-    border-radius: 22px !important;
-    padding: 20px !important;
-    position: relative !important;
-    box-shadow:
-      inset 0 0 0 1px rgba(20, 184, 166, 0.16),
-      0 1px 2px rgba(8, 56, 52, 0.04),
-      0 22px 40px -28px rgba(11, 88, 82, 0.28) !important;
-    transition: transform 260ms cubic-bezier(.2, .7, .2, 1), box-shadow 260ms ease !important;
-  }
-  body.retail-ui .c2-card:hover {
-    transform: translateY(-2px) !important;
-    box-shadow:
-      inset 0 0 0 1px rgba(20, 184, 166, 0.28),
-      0 4px 10px rgba(8, 56, 52, 0.05),
-      0 28px 48px -28px rgba(11, 88, 82, 0.36) !important;
-  }
-
-  body.retail-ui .c2-card-head {
-    display: flex !important;
-    align-items: center !important;
-    gap: 12px !important;
-    margin-bottom: 16px !important;
-  }
-  body.retail-ui .c2-card-head-copy {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-  }
-  body.retail-ui .c2-ico {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 13px !important;
-    background: linear-gradient(145deg, #ffffff, var(--wm-p-100)) !important;
-    color: var(--wm-p-700) !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.45), 0 8px 14px -8px rgba(13, 122, 115, 0.45) !important;
-  }
-  body.retail-ui .c2-card-title {
-    font-size: 16.5px !important;
-    font-weight: 750 !important;
-    letter-spacing: -0.015em !important;
-    color: #0f172a !important;
-    margin: 0 !important;
-  }
-  body.retail-ui .c2-card-sub {
-    font-size: 12px !important;
-    color: #64748b !important;
-    margin: 2px 0 0 !important;
-  }
-  body.retail-ui .c2-link {
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
-    color: var(--wm-p-700) !important;
-    white-space: nowrap !important;
-  }
-  body.retail-ui .c2-link:hover {
-    text-decoration: underline !important;
-  }
-
-  /* Hero Row: Animated Warehouse Scene Banner (8 cols) + 2 Widgets (4 cols) */
-  @keyframes hwSpin { to { transform: rotate(360deg); } }
-  @keyframes hwDrift { 0% { translate: -320px; } 100% { translate: 1500px; } }
-  @keyframes hwShut { 0%, 15% { transform: scaleY(1); } 30%, 60% { transform: scaleY(0.16); } 75%, 100% { transform: scaleY(1); } }
-  @keyframes hwDash { to { stroke-dashoffset: -48px; } }
-  @keyframes hwDriveA { 0% { translate: 0; } 100% { translate: 1560px; } }
-  @keyframes hwDriveB { 0% { translate: 0; } 100% { translate: -1700px; } }
-
-  body.retail-ui .hw-row {
-    display: grid !important;
-    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-    gap: 20px !important;
-  }
-  body.retail-ui .hw-banner {
-    grid-column: span 8 !important;
-    position: relative !important;
-    isolation: isolate !important;
-    overflow: hidden !important;
-    min-height: 390px !important;
-    padding: 28px 30px !important;
-    border-radius: 26px !important;
-    background: linear-gradient(180deg, #f2fdfa 0%, #ccf6ec 56%, #7ee3d2 100%) !important;
-    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.32), 0 28px 48px -32px rgba(8, 76, 70, 0.42) !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: flex-start !important;
-  }
-  body.retail-ui .hw-scene {
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    z-index: -1 !important;
-  }
-  body.retail-ui .hw-rays {
-    transform-origin: 930px 96px !important;
-    animation: hwSpin 70s linear infinite !important;
-  }
-  body.retail-ui .hw-cloud {
-    animation: hwDrift var(--d, 70s) linear infinite !important;
-    animation-delay: var(--t, 0s) !important;
-  }
-  body.retail-ui .hw-shutter {
-    transform-box: fill-box !important;
-    transform-origin: top !important;
-    animation: hwShut 7s ease-in-out infinite !important;
-    animation-delay: var(--t, 0s) !important;
-  }
-  body.retail-ui .hw-dash {
-    animation: hwDash 1.2s linear infinite !important;
-  }
-  body.retail-ui .hw-tr1 {
-    animation: hwDriveA 17s linear infinite !important;
-  }
-  body.retail-ui .hw-tr2 {
-    animation: hwDriveB 23s linear -9s infinite !important;
-  }
-
-  body.retail-ui .hw-banner-copy {
-    max-width: 510px !important;
-  }
-  body.retail-ui .hw-kicker {
-    display: inline-block !important;
-    padding: 4px 10px !important;
-    border-radius: 999px !important;
-    background: rgba(255, 255, 255, 0.72) !important;
-    border: 1px solid rgba(13, 122, 115, 0.22) !important;
-    color: #0b5f59 !important;
-    font-size: 10.5px !important;
-    font-weight: 800 !important;
-    letter-spacing: 0.08em !important;
-  }
-  body.retail-ui .hw-h {
-    font-size: 31px !important;
-    font-weight: 850 !important;
-    letter-spacing: -0.035em !important;
-    line-height: 1.15 !important;
-    color: #072d2a !important;
-    margin: 10px 0 0 !important;
-  }
-  body.retail-ui .hw-lead {
-    font-size: 14px !important;
-    line-height: 1.6 !important;
-    color: #174944 !important;
-    margin: 10px 0 0 !important;
-  }
-  body.retail-ui .hw-lead b {
-    color: #062825 !important;
-    font-weight: 800 !important;
-  }
-  body.retail-ui .hw-actions {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 9px !important;
-    margin-top: 18px !important;
-  }
-
-  body.retail-ui .hw-widgets {
-    grid-column: span 4 !important;
-    display: grid !important;
-    grid-template-rows: repeat(2, 1fr) !important;
-    gap: 20px !important;
-  }
-  body.retail-ui .hw-w {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 10px !important;
-    padding: 18px !important;
-  }
-  body.retail-ui .hw-w-head {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-  }
-  body.retail-ui .hw-w-title-wrap {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-  }
-  body.retail-ui .hw-w-title {
-    font-size: 15px !important;
-    font-weight: 750 !important;
-    color: #0f172a !important;
-    margin: 0 !important;
-  }
-  body.retail-ui .hw-w-sub {
-    font-size: 11.5px !important;
-    color: #64748b !important;
-    margin: 1px 0 0 !important;
-  }
-  body.retail-ui .hw-w-go {
-    width: 31px !important;
-    height: 31px !important;
-    border-radius: 50% !important;
-    background: #f0fdfa !important;
-    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.35) !important;
-    color: var(--wm-p-700) !important;
-    display: grid !important;
-    place-items: center !important;
-    transition: transform 180ms ease, background 180ms ease, color 180ms ease !important;
-  }
-  body.retail-ui .hw-w-go:hover {
-    background: var(--wm-p-600) !important;
-    color: #ffffff !important;
-    transform: translate(1px, -1px) !important;
-  }
-  body.retail-ui .hw-rev {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    align-items: baseline !important;
-    gap: 6px 10px !important;
-  }
-  body.retail-ui .hw-big {
-    font-size: 27px !important;
-    font-weight: 850 !important;
-    letter-spacing: -0.03em !important;
-    color: #0f172a !important;
-    font-variant-numeric: tabular-nums !important;
-    margin: 0 !important;
-  }
-  body.retail-ui .hw-d {
-    padding: 2px 8px !important;
-    border-radius: 999px !important;
-    font-size: 11px !important;
-    font-style: normal !important;
-    font-weight: 750 !important;
-  }
-  body.retail-ui .hw-d.is-up {
-    background: #dcfce7 !important;
-    color: #047857 !important;
-  }
-  body.retail-ui .hw-rev small {
-    font-size: 11.5px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .hw-spark {
-    width: 100% !important;
-    height: 58px !important;
-    margin-top: auto !important;
-  }
-  body.retail-ui .hw-axis {
-    display: flex !important;
-    justify-content: space-between !important;
-    font-size: 10.5px !important;
-    color: #64748b !important;
-    margin: 0 !important;
-  }
-
-  /* Dock Doors 4x2 */
-  body.retail-ui .hw-doors {
-    list-style: none !important;
-    margin: 2px 0 !important;
-    padding: 0 !important;
-    flex: 1 1 auto !important;
-    display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-  }
-  body.retail-ui .hw-door {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 5px !important;
-    min-height: 38px !important;
-    border-radius: 12px !important;
-    border: 1px solid transparent !important;
-    transition: transform 160ms ease !important;
-  }
-  body.retail-ui .hw-door:hover {
-    transform: translateY(-2px) !important;
-  }
-  body.retail-ui .hw-door b {
-    font-size: 11px !important;
-    font-weight: 800 !important;
-  }
-  body.retail-ui .hw-door.is-load {
-    background: linear-gradient(145deg, #ffffff, #ccfbf1) !important;
-    border-color: rgba(20, 184, 166, 0.45) !important;
-    color: #0b5f59 !important;
-  }
-  body.retail-ui .hw-door.is-unload {
-    background: linear-gradient(145deg, #ffffff, #dcfce7) !important;
-    border-color: rgba(16, 185, 129, 0.35) !important;
-    color: #047857 !important;
-  }
-  body.retail-ui .hw-door.is-free {
-    background: transparent !important;
-    border: 1px dashed #94a3b8 !important;
-    color: #94a3b8 !important;
-  }
-  body.retail-ui .hw-legend {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px 14px !important;
-    font-size: 11px !important;
-    color: #475569 !important;
-    margin: auto 0 0 !important;
-  }
-  body.retail-ui .hw-legend span {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 5px !important;
-  }
-  body.retail-ui .hw-legend i {
-    width: 8px !important;
-    height: 8px !important;
-    border-radius: 50% !important;
-    background: #14b8a6 !important;
-  }
-  body.retail-ui .hw-legend .is-unload i { background: #10b981 !important; }
-  body.retail-ui .hw-legend .is-free i { background: #cbd5e1 !important; }
-
-  /* Row 2: Network Orbital + Stock Health Donut + Quick Actions */
-  body.retail-ui .c2-toprow {
-    display: grid !important;
-    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-    gap: 20px !important;
-  }
-  body.retail-ui .c2-orb-card { grid-column: span 4 !important; display: flex !important; flex-direction: column !important; }
-  body.retail-ui .c2-health-card { grid-column: span 4 !important; display: flex !important; flex-direction: column !important; }
-  body.retail-ui .c2-qa-card { grid-column: span 4 !important; display: flex !important; flex-direction: column !important; }
-
-  body.retail-ui .c2-orb-body {
-    flex: 1 1 auto !important;
-    display: grid !important;
-    place-items: center !important;
-    min-height: 280px !important;
-  }
-  body.retail-ui .c2-orb {
-    position: relative !important;
-    width: 280px !important;
-    height: 280px !important;
-    display: grid !important;
-    place-items: center !important;
-  }
-  body.retail-ui .c2-orb-glow {
-    position: absolute !important;
-    width: 170px !important;
-    height: 170px !important;
-    border-radius: 50% !important;
-    background: radial-gradient(circle, rgba(45, 212, 191, 0.28) 0%, transparent 70%) !important;
-  }
-  body.retail-ui .c2-orb-ring {
-    position: absolute !important;
-    border-radius: 50% !important;
-    border: 1px dashed rgba(13, 148, 136, 0.3) !important;
-  }
-  body.retail-ui .c2-orb-ring.r1 { width: 164px !important; height: 164px !important; }
-  body.retail-ui .c2-orb-ring.r2 { width: 256px !important; height: 256px !important; }
-
-  body.retail-ui .c2-orb-spin {
-    position: absolute !important;
-    inset: 0 !important;
-    pointer-events: none !important;
-  }
-  body.retail-ui .c2-orb-item {
-    position: absolute !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) rotate(var(--a)) translateY(calc(-1 * var(--r))) rotate(calc(-1 * var(--a))) !important;
-    pointer-events: auto !important;
-  }
-  body.retail-ui .c2-orb-tile {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 5px !important;
-    padding: 6px 10px !important;
-    border-radius: 999px !important;
-    background: #ffffff !important;
-    border: 1px solid #bde5dc !important;
-    box-shadow: 0 8px 18px -8px rgba(11, 88, 82, 0.28) !important;
-    color: var(--wm-p-700) !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    white-space: nowrap !important;
-    transition: transform 160ms ease, background 160ms ease, color 160ms ease !important;
-  }
-  body.retail-ui .c2-orb-tile em {
-    font-style: normal !important;
-    color: #1e293b !important;
-  }
-  body.retail-ui .c2-orb-tile:hover {
-    background: var(--wm-p-700) !important;
-    color: #ffffff !important;
-    transform: scale(1.06) !important;
-  }
-  body.retail-ui .c2-orb-tile:hover em {
-    color: #ffffff !important;
-  }
-  body.retail-ui .c2-orb-core {
-    position: relative !important;
-    z-index: 2 !important;
-    width: 64px !important;
-    height: 64px !important;
-    border-radius: 20px !important;
-    background: linear-gradient(135deg, #14b8a6 0%, #0d7a73 100%) !important;
-    color: #ffffff !important;
-    display: grid !important;
-    place-items: center !important;
-    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.85), 0 14px 28px -8px rgba(13, 122, 115, 0.6) !important;
-  }
-  body.retail-ui .c2-orb-cap {
-    position: absolute !important;
-    bottom: -4px !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    text-align: center !important;
-    background: rgba(255, 255, 255, 0.92) !important;
-    padding: 3px 12px !important;
-    border-radius: 999px !important;
-    border: 1px solid #d5ebe5 !important;
-    white-space: nowrap !important;
-  }
-  body.retail-ui .c2-orb-cap b {
-    font-size: 12px !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-    margin-right: 6px !important;
-  }
-  body.retail-ui .c2-orb-cap small {
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-
-  /* Stock Health Donut */
-  body.retail-ui .c2-health {
-    display: flex !important;
-    align-items: center !important;
-    gap: 16px !important;
-    margin-bottom: 14px !important;
-  }
-  body.retail-ui .c2-donut {
-    position: relative !important;
-    width: 128px !important;
-    height: 128px !important;
-    flex-shrink: 0 !important;
-    display: grid !important;
-    place-items: center !important;
-  }
-  body.retail-ui .c2-donut svg {
-    width: 100% !important;
-    height: 100% !important;
-  }
-  body.retail-ui .c2-donut-center {
-    position: absolute !important;
-    text-align: center !important;
-  }
-  body.retail-ui .c2-donut-center b {
-    display: block !important;
-    font-size: 24px !important;
-    font-weight: 850 !important;
-    color: #0f172a !important;
-    line-height: 1 !important;
-  }
-  body.retail-ui .c2-donut-center small {
-    display: block !important;
-    font-size: 11px !important;
-    color: #64748b !important;
-    margin-top: 3px !important;
-  }
-  body.retail-ui .c2-health-list {
-    list-style: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    flex: 1 1 auto !important;
-    display: grid !important;
-    gap: 8px !important;
-  }
-  body.retail-ui .c2-health-list li {
-    display: grid !important;
-    grid-template-columns: auto minmax(0, 1fr) auto auto !important;
-    align-items: center !important;
-    gap: 8px !important;
-    padding: 8px 11px !important;
-    border-radius: 12px !important;
-    background: #f8fbfa !important;
-    box-shadow: inset 0 0 0 1px #e2efec !important;
-    font-size: 12.5px !important;
-  }
-  body.retail-ui .c2-health-list li i {
-    width: 9px !important;
-    height: 9px !important;
-    border-radius: 50% !important;
-    background: var(--col) !important;
-  }
-  body.retail-ui .c2-health-list li span { color: #475569 !important; }
-  body.retail-ui .c2-health-list li b { font-weight: 800 !important; color: #0f172a !important; }
-  body.retail-ui .c2-health-list li em { font-style: normal !important; font-size: 11px !important; font-weight: 700 !important; color: #64748b !important; }
-
-  body.retail-ui .c2-hkpis {
-    margin-top: auto !important;
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 8px !important;
-  }
-  body.retail-ui .c2-hkpis > div {
-    padding: 10px 11px !important;
-    border-radius: 13px !important;
-    background: #f6fbfa !important;
-    box-shadow: inset 0 0 0 1px #dfeeea !important;
-  }
-  body.retail-ui .c2-hkpis small {
-    display: block !important;
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .c2-hkpis b {
-    display: block !important;
-    margin-top: 2px !important;
-    font-size: 13.5px !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-    white-space: nowrap !important;
-  }
-
-  /* Quick Actions 2x3 Grid */
-  body.retail-ui .c2-qa-grid {
-    flex: 1 1 auto !important;
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-  }
-  body.retail-ui .c2-qa {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: center !important;
-    gap: 4px !important;
-    padding: 12px 13px !important;
-    border-radius: 16px !important;
-    background: #f8fbfa !important;
-    box-shadow: inset 0 0 0 1px #dfeeea !important;
-    transition: transform 200ms ease, background 200ms ease, box-shadow 200ms ease !important;
-  }
-  body.retail-ui .c2-qa:hover {
-    background: #ffffff !important;
-    transform: translateY(-3px) !important;
-    box-shadow: inset 0 0 0 1px #5eead4, 0 16px 24px -16px rgba(13, 122, 115, 0.35) !important;
-  }
-  body.retail-ui .c2-qa-ico {
-    width: 34px !important;
-    height: 34px !important;
-    border-radius: 10px !important;
-    background: linear-gradient(145deg, #ffffff, var(--wm-p-100)) !important;
-    color: var(--wm-p-700) !important;
-    display: grid !important;
-    place-items: center !important;
-    margin-bottom: 4px !important;
-    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.45) !important;
-    transition: transform 200ms ease, background 200ms ease, color 200ms ease !important;
-  }
-  body.retail-ui .c2-qa:hover .c2-qa-ico {
-    background: linear-gradient(135deg, #14b8a6, #0d7a73) !important;
-    color: #ffffff !important;
-    transform: scale(1.07) rotate(-5deg) !important;
-  }
-  body.retail-ui .c2-qa-copy b {
-    display: block !important;
-    font-size: 13px !important;
-    font-weight: 750 !important;
-    color: #0f172a !important;
-  }
-  body.retail-ui .c2-qa-copy small {
-    display: block !important;
-    font-size: 11px !important;
-    color: #64748b !important;
-    margin-top: 1px !important;
-  }
-
-  /* Row 3: Revenue Chart + Warehouses Table */
-  body.retail-ui .c2-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 20px !important;
-  }
-  body.retail-ui .c2-sales-top {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    justify-content: space-between !important;
-    align-items: flex-start !important;
-    gap: 10px !important;
-    margin-bottom: 12px !important;
-  }
-  body.retail-ui .c2-tiles {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-    margin-top: 14px !important;
-  }
-  body.retail-ui .c2-tile {
-    padding: 12px 14px !important;
-    border-radius: 14px !important;
-    background: #f7fbfa !important;
-    box-shadow: inset 0 0 0 1px #dfeeea !important;
-  }
-  body.retail-ui .c2-tile.is-mint {
-    background: #effcf9 !important;
-    box-shadow: inset 0 0 0 1px #bde9df !important;
-  }
-  body.retail-ui .c2-tile p {
-    margin: 0 !important;
-    font-size: 11.5px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .c2-tile b {
-    display: block !important;
-    margin: 3px 0 !important;
-    font-size: 18px !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-  }
-  body.retail-ui .c2-tile em {
-    font-style: normal !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    color: #0d7a73 !important;
-  }
-
-  body.retail-ui .c2-row-name {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-  }
-  body.retail-ui .c2-row-ico {
-    width: 34px !important;
-    height: 34px !important;
-    border-radius: 10px !important;
-    background: var(--wm-p-100) !important;
-    color: var(--wm-p-700) !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-  }
-  body.retail-ui .c2-row-name b {
-    display: block !important;
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    color: #0f172a !important;
-  }
-  body.retail-ui .c2-row-name small {
-    display: block !important;
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .c2-add {
-    margin-top: 12px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
-    color: var(--wm-p-700) !important;
-  }
-  body.retail-ui .c2-add:hover {
-    text-decoration: underline !important;
-  }
-
-  /* Row 4: Conveyor Order Pipeline (8 cols) + Crowned Top Sellers (4 cols) */
-  @keyframes wmBelt { to { background-position-x: 16px; } }
-
-  body.retail-ui .c2-row {
-    display: grid !important;
-    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-    gap: 20px !important;
-  }
-  body.retail-ui .c2-pipe-card { grid-column: span 8 !important; }
-  body.retail-ui .c2-top-card { grid-column: span 4 !important; }
-
-  body.retail-ui .c2-flow {
-    padding-top: 6px !important;
-    position: relative !important;
-  }
-  body.retail-ui .c2-flow-steps {
-    list-style: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    display: grid !important;
-    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-    position: relative !important;
-  }
-  body.retail-ui .c2-flow-steps::before {
-    content: '' !important;
-    position: absolute !important;
-    top: 28px !important;
-    left: 10% !important;
-    right: 10% !important;
-    height: 3px !important;
-    background: repeating-linear-gradient(90deg, rgba(13, 148, 136, 0.55) 0 8px, transparent 8px 16px) !important;
-    animation: wmBelt 1.1s linear infinite !important;
-  }
-  body.retail-ui .c2-flow-steps li {
-    position: relative !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-    text-align: center !important;
-    padding: 0 4px !important;
-  }
-  body.retail-ui .c2-fl-node {
-    z-index: 1 !important;
-    width: 56px !important;
-    height: 56px !important;
-    border-radius: 50% !important;
-    background: linear-gradient(145deg, #ffffff, var(--wm-p-100)) !important;
-    color: var(--wm-p-700) !important;
-    display: grid !important;
-    place-items: center !important;
-    margin-bottom: 10px !important;
-    box-shadow: 0 0 0 4px #ffffff, inset 0 0 0 1px rgba(45, 212, 191, 0.6), 0 14px 22px -12px rgba(11, 88, 82, 0.45) !important;
-    transition: transform 220ms ease, background 220ms ease, color 220ms ease !important;
-  }
-  body.retail-ui .c2-flow-steps li:hover .c2-fl-node,
-  body.retail-ui .c2-flow-steps li:last-child .c2-fl-node {
-    background: linear-gradient(135deg, #14b8a6, #0d7a73) !important;
-    color: #ffffff !important;
-    transform: translateY(-3px) scale(1.05) !important;
-  }
-  body.retail-ui .c2-flow-steps b {
-    font-size: 24px !important;
-    font-weight: 850 !important;
-    color: #0f172a !important;
-    line-height: 1 !important;
-    font-variant-numeric: tabular-nums !important;
-  }
-  body.retail-ui .c2-fl-name {
-    margin-top: 5px !important;
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
-    color: #1e293b !important;
-  }
-  body.retail-ui .c2-flow-steps small {
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-
-  body.retail-ui .c2-flow-mix {
-    display: flex !important;
-    gap: 4px !important;
-    height: 12px !important;
-    margin-top: 22px !important;
-  }
-  body.retail-ui .c2-flow-mix > i {
-    border-radius: 999px !important;
-    display: block !important;
-  }
-  body.retail-ui .c2-flow-legend {
-    list-style: none !important;
-    padding: 0 !important;
-    margin: 10px 0 0 !important;
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px 18px !important;
-    font-size: 11.5px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .c2-flow-legend li {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-  }
-  body.retail-ui .c2-flow-legend li > i {
-    width: 9px !important;
-    height: 9px !important;
-    border-radius: 50% !important;
-  }
-  body.retail-ui .c2-flow-legend b {
-    color: #0f172a !important;
-    font-weight: 800 !important;
-  }
-
-  body.retail-ui .c2-flow-foot {
-    margin-top: 16px !important;
-    display: grid !important;
-    grid-template-columns: minmax(0, 0.7fr) minmax(0, 0.7fr) minmax(0, 1.6fr) !important;
-    gap: 10px !important;
-  }
-  body.retail-ui .c2-flow-foot > div {
-    padding: 11px 14px !important;
-    border-radius: 14px !important;
-    background: #f7fbfa !important;
-    box-shadow: inset 0 0 0 1px #dfeeea !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: center !important;
-  }
-  body.retail-ui .c2-flow-foot small {
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-  body.retail-ui .c2-flow-foot b {
-    font-size: 15px !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-  }
-  body.retail-ui .c2-flow-foot > div.is-warn {
-    flex-direction: row !important;
-    align-items: center !important;
-    gap: 11px !important;
-    background: #ecfdf5 !important;
-    box-shadow: inset 0 0 0 1px #a7f3d0 !important;
-  }
-  body.retail-ui .c2-warn-ico {
-    width: 34px !important;
-    height: 34px !important;
-    border-radius: 10px !important;
-    background: #d1fae5 !important;
-    color: #047857 !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-  }
-  body.retail-ui .c2-flow-foot .is-warn > span:nth-child(2) {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-  }
-  body.retail-ui .c2-flow-foot .is-warn b {
-    display: block !important;
-    font-size: 13px !important;
-  }
-  body.retail-ui .c2-flow-foot .is-warn a {
-    padding: 6px 13px !important;
-    border-radius: 999px !important;
-    background: var(--wm-p-700) !important;
-    color: #ffffff !important;
-    font-size: 11.5px !important;
-    font-weight: 750 !important;
-    white-space: nowrap !important;
-  }
-
-  /* Top Sellers Hero + Ranked List */
-  body.retail-ui .c2-best-hero {
-    position: relative !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 14px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    background: linear-gradient(135deg, #14b8a6 0%, #0d7a73 58%, #09524d 100%) !important;
-    color: #ffffff !important;
-    box-shadow: inset 0 1px rgba(255, 255, 255, 0.35), 0 20px 30px -20px rgba(9, 82, 77, 0.85) !important;
-  }
-  body.retail-ui .c2-best-medal {
-    position: absolute !important;
-    top: 9px !important;
-    right: 11px !important;
-    padding: 2px 9px !important;
-    border-radius: 999px !important;
-    background: rgba(6, 40, 37, 0.78) !important;
-    color: #5eead4 !important;
-    font-size: 10.5px !important;
-    font-weight: 800 !important;
-  }
-  body.retail-ui .c2-best-img {
-    width: 68px !important;
-    height: 68px !important;
-    border-radius: 15px !important;
-    background: #ffffff !important;
-    padding: 6px !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-    overflow: hidden !important;
-    box-shadow: 0 8px 16px rgba(6, 40, 37, 0.3) !important;
-  }
-  body.retail-ui .c2-best-copy {
-    min-width: 0 !important;
-    flex: 1 1 auto !important;
-    padding-right: 48px !important;
-  }
-  body.retail-ui .c2-best-copy > b {
-    display: block !important;
-    font-size: 15px !important;
-    font-weight: 800 !important;
-    color: #ffffff !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-  }
-  body.retail-ui .c2-best-copy > small {
-    display: block !important;
-    font-size: 11.5px !important;
-    color: rgba(236, 253, 250, 0.84) !important;
-  }
-  body.retail-ui .c2-best-stats {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 6px 12px !important;
-    margin-top: 7px !important;
-  }
-  body.retail-ui .c2-best-stats em {
-    font-style: normal !important;
-    font-size: 12px !important;
-    font-weight: 700 !important;
-    color: #e6fffa !important;
-  }
-
-  body.retail-ui .c2-best-list {
-    list-style: none !important;
-    padding: 0 !important;
-    margin: 12px 0 0 !important;
-    display: grid !important;
-    gap: 9px !important;
-  }
-  body.retail-ui .c2-best-list li {
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    padding: 8px 11px !important;
-    border-radius: 14px !important;
-    background: #f8fbfa !important;
-    box-shadow: inset 0 0 0 1px #dfeeea !important;
-  }
-  body.retail-ui .c2-best-rank {
-    width: 24px !important;
-    height: 24px !important;
-    border-radius: 50% !important;
-    background: var(--wm-p-100) !important;
-    color: var(--wm-p-800) !important;
-    font-size: 11px !important;
-    font-weight: 800 !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-  }
-  body.retail-ui .c2-best-thumb {
-    width: 40px !important;
-    height: 40px !important;
-    border-radius: 10px !important;
-    background: #ffffff !important;
-    border: 1px solid #e2efec !important;
-    padding: 3px !important;
-    display: grid !important;
-    place-items: center !important;
-    flex-shrink: 0 !important;
-    overflow: hidden !important;
-  }
-  body.retail-ui .c2-best-mid {
-    flex: 1 1 auto !important;
-    min-width: 0 !important;
-  }
-  body.retail-ui .c2-best-mid b {
-    display: block !important;
-    font-size: 12.5px !important;
-    font-weight: 700 !important;
-    color: #0f172a !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-  }
-  body.retail-ui .c2-best-bar {
-    display: block !important;
-    height: 5px !important;
-    border-radius: 999px !important;
-    background: #e2efec !important;
-    margin-top: 6px !important;
-    overflow: hidden !important;
-  }
-  body.retail-ui .c2-best-bar > i {
-    display: block !important;
-    height: 100% !important;
-    border-radius: inherit !important;
-    background: linear-gradient(90deg, #2dd4bf, #0d7a73) !important;
-  }
-  body.retail-ui .c2-best-n {
-    text-align: right !important;
-    flex-shrink: 0 !important;
-  }
-  body.retail-ui .c2-best-n b {
-    display: block !important;
-    font-size: 12.5px !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-  }
-  body.retail-ui .c2-best-n small {
-    display: block !important;
-    font-size: 11px !important;
-    color: #64748b !important;
-  }
-
-  /* ==========================================================================
-     4. INNER PAGES HARMONIZATION (CARDS, HEADERS, BUTTONS & FRAMED TABLES)
-     ========================================================================== */
-  body.retail-ui :is(
-    .panel,
-    .suite-panel,
-    .detail-card,
-    .detail-table,
-    .record-card,
-    .li-card,
-    .admin-records,
-    .inventory-work,
-    .pos-ticket,
-    .analytics-distribution,
-    .report-filter-panel,
-    .li-flow,
-    .metric-card,
-    .kpi-card
-  ) {
-    background: #ffffff !important;
-    border: 1px solid #ddebe7 !important;
-    border-radius: 16px !important;
-    box-shadow: 0 1px 2px rgba(8, 56, 52, 0.03), 0 14px 28px -22px rgba(11, 88, 82, 0.22) !important;
-  }
-
-  body.retail-ui .pos-ticket {
-    top: 124px !important;
-  }
-
-  body.retail-ui .primary-button,
-  body.retail-ui .action-create {
-    background: linear-gradient(135deg, #0fa395 0%, #0d7a73 100%) !important;
-    border: 1px solid #0d7a73 !important;
-    border-radius: 10px !important;
-    color: #ffffff !important;
-    font-weight: 650 !important;
-    box-shadow: 0 6px 14px -6px rgba(13, 122, 115, 0.45) !important;
-  }
-
-  body.retail-ui .table-scroll {
-    border: 1px solid #dceae6 !important;
-    border-radius: 12px !important;
-    background: #ffffff !important;
-  }
-  body.retail-ui .table-scroll :is(th, thead td),
-  body.retail-ui table :is(th, thead td) {
-    background: #f2faf8 !important;
-    color: #164e49 !important;
-    border-bottom: 1px solid #dceae6 !important;
-    text-align: left !important;
-  }
-
-  /* ==========================================================================
-     5. RESPONSIVE BREAKPOINTS & MOBILE DRAWER (< 1024px)
+     3. RESPONSIVE BREAKPOINTS & MOBILE DRAWER (< 1024px)
      ========================================================================== */
   @media (max-width: 1180px) {
-    body.retail-ui .hw-banner,
-    body.retail-ui .hw-widgets,
-    body.retail-ui .c2-orb-card,
-    body.retail-ui .c2-health-card,
-    body.retail-ui .c2-qa-card,
-    body.retail-ui .c2-pipe-card,
-    body.retail-ui .c2-top-card {
-      grid-column: span 12 !important;
-    }
-    body.retail-ui .hw-widgets {
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-      grid-template-rows: auto !important;
-    }
-    body.retail-ui .c2-grid {
-      grid-template-columns: 1fr !important;
-    }
     body.retail-ui .hm-loc {
       display: none !important;
     }
@@ -1925,6 +741,7 @@
     body.retail-ui .hm-menu {
       height: 0 !important;
       overflow: visible !important;
+      background: transparent !important;
     }
     body.retail-ui .hm-nav {
       position: fixed !important;
@@ -1932,13 +749,14 @@
       bottom: 0 !important;
       left: 0 !important;
       width: min(310px, 86vw) !important;
-      background: linear-gradient(180deg, #0b6b64 0%, #095852 100%) !important;
+      background: linear-gradient(180deg, #e5f8f4 0%, #f6fcfa 100%) !important;
+      border-right: 1px solid #bce4dc !important;
       z-index: 120 !important;
       padding: 16px !important;
       overflow-y: auto !important;
       transform: translateX(-105%) !important;
       transition: transform 200ms ease !important;
-      box-shadow: 20px 0 50px rgba(4, 38, 35, 0.45) !important;
+      box-shadow: 20px 0 50px rgba(15, 41, 40, 0.18) !important;
     }
     body.retail-ui .wm-drawer-open .hm-nav {
       transform: translateX(0) !important;
@@ -1946,7 +764,7 @@
     body.retail-ui .wm-backdrop {
       position: fixed !important;
       inset: 0 !important;
-      background: rgba(6, 18, 17, 0.58) !important;
+      background: rgba(15, 41, 40, 0.35) !important;
       backdrop-filter: blur(2px) !important;
       z-index: 75 !important;
       border: 0 !important;
@@ -1957,7 +775,7 @@
       justify-content: space-between !important;
       padding-bottom: 14px !important;
       margin-bottom: 12px !important;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-bottom: 1px solid #cce9e3 !important;
     }
     body.retail-ui .hm-list {
       flex-direction: column !important;
@@ -1977,8 +795,8 @@
       min-width: 0 !important;
       display: none !important;
       margin-top: 4px !important;
-      background: rgba(255, 255, 255, 0.05) !important;
-      box-shadow: none !important;
+      background: rgba(255, 255, 255, 0.78) !important;
+      box-shadow: inset 0 0 0 1px #d4ebe6 !important;
     }
     body.retail-ui .hm-item.is-open > .hm-panel {
       display: block !important;
@@ -1989,33 +807,17 @@
     body.retail-ui .hm-col + .hm-col {
       border-left: 0 !important;
       padding-left: 0 !important;
-      border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+      border-top: 1px solid #e2f1ee !important;
       padding-top: 8px !important;
-    }
-    body.retail-ui .hm-link {
-      color: #e2e8f0 !important;
-    }
-    body.retail-ui .hm-ico {
-      background: rgba(255, 255, 255, 0.08) !important;
-      color: #5eead4 !important;
     }
   }
 
   @media (max-width: 720px) {
     body.retail-ui .hm-search-wrap,
     body.retail-ui .hm-user-copy,
-    body.retail-ui .wm-top-pos-btn span {
+    body.retail-ui .wm-top-pos-btn span,
+    body.retail-ui .hm-bar::after {
       display: none !important;
-    }
-    body.retail-ui .hw-widgets,
-    body.retail-ui .c2-tiles,
-    body.retail-ui .c2-flow-foot {
-      grid-template-columns: 1fr !important;
-    }
-    body.retail-ui .c2-flow-steps {
-      grid-template-columns: repeat(5, minmax(90px, 1fr)) !important;
-      overflow-x: auto !important;
-      padding-bottom: 8px !important;
     }
   }
 }
