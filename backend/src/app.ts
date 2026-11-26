@@ -31,10 +31,12 @@ import { forecastRoutes } from './modules/forecasts/forecasts.routes.js';
 import { notificationRoutes } from './modules/notifications/notifications.routes.js';
 import { payosRoutes } from './modules/payos/payos.routes.js';
 import { iotRoutes } from './modules/iot/iot.routes.js';
+import { mobileOpsRoutes } from './modules/mobile-ops/mobile-ops.routes.js';
 
 export function createApp(checkDatabase: () => Promise<void>) {
   const app = express();
   app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(helmet({ contentSecurityPolicy: { directives: {
     upgradeInsecureRequests: env.NODE_ENV === 'production' ? [] : null,
   } } }));
@@ -70,6 +72,7 @@ export function createApp(checkDatabase: () => Promise<void>) {
   app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapi));
   app.use('/api/v1', payosRoutes);
   app.use('/api/v1', iotRoutes);
+  app.use('/api/v1', mobileOpsRoutes);
   app.use('/api/v1', organizationRoutes);
   app.use('/api/v1', productRoutes);
   app.use('/api/v1', shiftRoutes);

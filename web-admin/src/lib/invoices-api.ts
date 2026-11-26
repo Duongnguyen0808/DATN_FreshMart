@@ -22,6 +22,8 @@ export type PaymentTransaction = { id: string; invoiceId: string; method: Paymen
 export type PaymentTransactionList = { items: PaymentTransaction[]; pagination: { page: number; pageSize: number; total: number; totalPages: number }; summary: { total: number; amount: number; methods: Record<PaymentMethod, { count: number; amount: number }> } };
 export type FefoPromoCodeItem = {
   promoCode: string;
+  bogoEligible?: boolean;
+  bogoPromoCode?: string | null;
   lotId: string;
   lotCode: string;
   skuId: string;
@@ -38,6 +40,7 @@ export type FefoPromoCodeItem = {
 
 export type FefoPromoVerifyItem = {
   promoCode: string;
+  mode?: 'DISCOUNT' | 'BOGO';
   lotId: string;
   lotCode: string;
   skuId: string;
@@ -48,6 +51,7 @@ export type FefoPromoVerifyItem = {
   lotQuantity: number;
   cartQuantity: number;
   eligibleQuantity: number;
+  freeQuantity?: number;
   discountPercent: number;
   sellingPrice: number;
   discountAmount: number;

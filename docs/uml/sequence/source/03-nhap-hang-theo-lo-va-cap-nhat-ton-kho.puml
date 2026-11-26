@@ -1,0 +1,85 @@
+@startuml
+title Sơ đồ tuần tự: Nhập hàng theo đơn đặt hàng (PO) và quản lý lô
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+hide footbox
+
+actor "Nhân viên kho" as Staff
+boundary "Giao diện Web" as UI
+control "PurchaseOrderRoutes" as Route
+control "PurchaseOrdersService" as Service
+control "Cloudinary" as Cloud
+database "SQL Server\n(Prisma)" as DB
+control "Socket.IO\nRealtime" as IO
+
+Staff -> UI : Nhập số lượng thực nhận,\nmã lô, hạn dùng và chứng từ
+activate UI
+
+UI -> Route : POST /api/v1/purchase-orders/:id/receipts
+activate Route
+
+Route -> Route : Xác thực JWT,\nquyền purchase_orders.receive
+
+Route -> Service : receivePurchaseOrder(user, id, input)
+activate Service
+
+Service -> DB : Truy vấn đơn PO và các dòng SKU
+activate DB
+DB --> Service : Thông tin đơn PO
+deactivate DB
+
+alt Đơn không OPEN, sai chi nhánh hoặc nhận vượt số còn lại
+  Service --> Route : Ném AppError (400/403/404/409)
+  Route --> UI : Phản hồi lỗi nhập hàng
+  UI --> Staff : Hiển thị thông báo lỗi
+else Hợp lệ
+  opt Có ảnh chứng từ đính kèm
+    Service -> Cloud : Tải song song ảnh chứng từ (Promise.all)
+    activate Cloud
+    Cloud --> Service : Danh sách URL ảnh chứng từ
+    deactivate Cloud
+  end
+
+  Service -> DB : Bắt đầu Serializable Transaction:\nKhóa PO, xác nhận IoT và tạo GoodsReceipt
+  activate DB
+  DB --> Service : Bản ghi GoodsReceipt
+  deactivate DB
+
+  loop Từng dòng sản phẩm nhận hàng
+    Service -> DB : Upsert tồn kho, tạo InventoryLot\n(AVAILABLE/QUARANTINE) và ghi LotMovement
+    activate DB
+    DB --> Service : Xác nhận ghi lô
+    deactivate DB
+
+    Service -> DB : Tăng onHand, ghi InventoryTransaction\nvà cập nhật receivedQuantity của PO
+    activate DB
+    DB --> Service : Xác nhận cập nhật tồn
+    deactivate DB
+  end
+
+  Service -> DB : Cập nhật Payable, công nợ NCC,\ntrạng thái PO (COMPLETED/OPEN) và AuditLog
+  activate DB
+  DB --> Service : Commit giao dịch & trả PO
+  deactivate DB
+
+  Service ->> IO : publishInventoryUpdate(warehouseId, PURCHASE_RECEIPT)
+  Service --> Route : Kết quả PO và createdReceiptId
+  deactivate Service
+
+  Route --> UI : HTTP 201 Created + phiếu nhập
+  deactivate Route
+
+  UI --> Staff : Hiển thị nhập kho thành công
+end
+
+deactivate UI
+@enduml

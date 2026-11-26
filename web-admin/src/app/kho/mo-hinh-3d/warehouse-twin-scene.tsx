@@ -48,7 +48,7 @@ type Props = {
   speedMultiplier?: number;
 };
 
-const movement = new Set<DemoState>(['TRUCK_APPROACHING','TRUCK_DOCKING','TRUCK_UNLOADING','FORKLIFT_TO_TRUCK','FORKLIFT_PICKUP','MOVE_TO_OUTBOUND','MOVE_TO_STORAGE','IN_TRANSIT','DESTINATION_ARRIVAL','DESTINATION_PALLET_PICKUP','TRANSFER_PREPARING','IOT_CAMERA_SIMULATED','IOT_CAMERA_IN_SIMULATED','FORKLIFT_DELIVER_TO_TRUCK']);
+const movement = new Set<DemoState>(['TRUCK_APPROACHING','TRUCK_DOCKING','TRUCK_UNLOADING','FORKLIFT_TO_TRUCK','FORKLIFT_PICKUP','MOVE_TO_OUTBOUND','MOVE_TO_STORAGE','TRANSFER_LOADING_TRUCK','IN_TRANSIT','DESTINATION_ARRIVAL','DESTINATION_PALLET_PICKUP','TRANSFER_PREPARING','IOT_CAMERA_SIMULATED','IOT_CAMERA_IN_SIMULATED','FORKLIFT_DELIVER_TO_TRUCK']);
 const route: Partial<Record<DemoState, [number, number][]>> = {
   // Inbound truck parks to the right of the entrance, leaving the doorway and camera aisle clear.
   // Start on the centre of the inbound lane, follow the road straight, then turn once at the apron.
@@ -56,55 +56,29 @@ const route: Partial<Record<DemoState, [number, number][]>> = {
   WORKER_APPROACHING: [[10,5.1],[10,10]],
   // Approach the inbound truck's rear loading edge from the east apron.
   FORKLIFT_TO_TRUCK: [[10,10],[10,11.5],[8.8,11.5]],
-  // Pass through the clear doorway, turn in the cross-aisle, then use the west aisle.
-  // x=0 between the rack rows is too narrow for a forklift and its load.
-  // Exit through the door, align with the camera gate from its approach side, and pass through it.
-  MOVE_TO_OUTBOUND: [[-4.7,-.3],[-4.7,2.5],[-4.7,5.8],[0,5.8],[0,7.4],[6,7.4],[6,8.5]],
-  // Keep the load on the forks after camera; approach the parked truck from behind, then stop at reach distance.
-  FORKLIFT_DELIVER_TO_TRUCK: [[6,10],[10,10],[12,10],[12,17],[16,17],[16,15.3]],
-  // Enter past the receiving gate, use the open doorway, then take the west aisle to the rack.
-  MOVE_TO_STORAGE: [[-6,8.5],[0,8.5],[0,5.8],[-4.7,5.8],[-4.7,2.5],[-4.7,-1.3]],
+  // Pass through the clear front doorway (x=-4.7), turn in the yard apron (z=12.6), and enter the camera gate from the front.
+  // Keeping x=-4.7 all the way through the door guarantees large clearance from the racks at x=-1.8.
+  MOVE_TO_OUTBOUND: [[-4.7,-.3],[-4.7,4.5],[-4.7,8.2],[-4.7,12.6],[6,12.6],[6,9.2]],
+  // Back straight out through guard bollards (z=12.6), turn onto the east apron (z=14.6), and drive straight (+X) up to the rear doors of the parked truck at [16, 10.7] (rear door at x=14.39, z=10.7).
+  FORKLIFT_DELIVER_TO_TRUCK: [[6,9.2],[6,14.6],[11.6,14.6],[11.6,10.7],[12.8,10.7]],
+  // Back out of receiving bay past bollards (z=12.6), move to doorway axis (x=-4.7), and drive straight through the front door into the west aisle.
+  MOVE_TO_STORAGE: [[-6,9.2],[-6,12.6],[-4.7,12.6],[-4.7,8.2],[-4.7,4.5],[-4.7,-1.3]],
   IN_TRANSIT: [[16,10.7],[16,-10],[16,-28]],
   DESTINATION_ARRIVAL: [[16,-12.5],[9,-12.5],[4.4,-12.5],[3.8,-12.5]],
-  IOT_CAMERA_SIMULATED: [[8.8,11.5],[8.8,14],[-6,14],[-6,8.5]],
+  IOT_CAMERA_SIMULATED: [[8.8,11.5],[8.8,14.2],[-6,14.2],[-6,9.2]],
   IOT_CAMERA_IN_SIMULATED: [[1.2,-26],[0,-27],[-5.5,-27]],
 };
 type GridNode = { x: number; z: number; g: number; f: number };
-const PICKUP_START: [number,number] = [10,5.1];
+const PICKUP_START: [number,number] = [0,11.8];
 const PICKUP_STAGING: [number,number] = [-4.7,-.3];
-const PATH_GRID = .5;
-function findShortestPickupRoute(start: [number,number], goal: [number,number]): [number,number][] {
-  const blocked = (x:number,z:number) => {
-    if(x < -10 || x > 11 || z < -8.5 || z > 14) return true;
-    if(Math.abs(Math.abs(x)-8.3) < .58 && z > -6.8 && z < 6.8) return true;
-    if(Math.abs(z+6.8) < .58 && Math.abs(x) < 8.8) return true;
-    return [-3,.5].some(rz => [-1.8,2.2,6.2].some(rx => Math.abs(x-rx) < 2.1 && Math.abs(z-rz) < 1.05));
-  };
-  const toGrid = (p:[number,number]) => ({x:Math.round(p[0]/PATH_GRID),z:Math.round(p[1]/PATH_GRID)});
-  const fromGrid = (p:{x:number;z:number}):[number,number] => [p.x*PATH_GRID,p.z*PATH_GRID];
-  const source=toGrid(start), target=toGrid(goal), key=(x:number,z:number)=>`${x},${z}`;
-  const h=(x:number,z:number)=>Math.hypot(target.x-x,target.z-z);
-  const open:GridNode[]=[];
-  const push=(n:GridNode)=>{let i=open.push(n)-1;while(i>0){const p=(i-1)>>1;if(open[p].f<=n.f)break;open[i]=open[p];i=p;}open[i]=n;};
-  const pop=()=>{const first=open[0],last=open.pop()!;if(open.length){let i=0;while(true){let c=i*2+1;if(c>=open.length)break;if(c+1<open.length&&open[c+1].f<open[c].f)c++;if(open[c].f>=last.f)break;open[i]=open[c];i=c;}open[i]=last;}return first;};
-  const startKey=key(source.x,source.z),goalKey=key(target.x,target.z),cost=new Map([[startKey,0]]),parent=new Map<string,string>();
-  push({...source,g:0,f:h(source.x,source.z)});let visited=0;
-  while(open.length&&visited++<12000){
-    const node=pop(),nodeKey=key(node.x,node.z);if(node.g>(cost.get(nodeKey)??Infinity))continue;if(nodeKey===goalKey)break;
-    for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){
-      if(!dx&&!dz)continue;const x=node.x+dx,z=node.z+dz,world=fromGrid({x,z});if(blocked(...world))continue;
-      if(dx&&dz&&(blocked(...fromGrid({x:node.x+dx,z:node.z}))||blocked(...fromGrid({x:node.x,z:node.z+dz}))))continue;
-      const nextKey=key(x,z),nextCost=node.g+(dx&&dz?Math.SQRT2:1);if(nextCost>=(cost.get(nextKey)??Infinity))continue;
-      cost.set(nextKey,nextCost);parent.set(nextKey,nodeKey);push({x,z,g:nextCost,f:nextCost+h(x,z)});
-    }
-  }
-  if(!parent.has(goalKey))return [start,goal];
-  const points:{x:number;z:number}[]=[];let cursor=goalKey;while(cursor!==startKey){const [x,z]=cursor.split(',').map(Number);points.push({x,z});cursor=parent.get(cursor)!;}points.push(source);points.reverse();
-  const clear=(a:{x:number;z:number},b:{x:number;z:number})=>{const steps=Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)*PATH_GRID/(PATH_GRID*.3));for(let i=1;i<steps;i++){const t=i/steps;if(blocked((a.x+(b.x-a.x)*t)*PATH_GRID,(a.z+(b.z-a.z)*t)*PATH_GRID))return false;}return true;};
-  const result:[number,number][]=[start];let i=0;while(i<points.length-1){let j=points.length-1;while(j>i+1&&!clear(points[i],points[j]))j--;result.push(j===points.length-1?goal:fromGrid(points[j]));i=j;}
-  return result;
-}
-const transferPickupRoute=findShortestPickupRoute(PICKUP_START,PICKUP_STAGING);
+const transferPickupRoute: [number, number][] = [
+  [0, 11.8],
+  [0, 8.8],
+  [-4.7, 8.8],
+  [-4.7, 6.8],
+  [-4.7, 4.5],
+  [-4.7, -0.3],
+];
 function smoothstep(a: number, b: number, x: number) { const t = THREE.MathUtils.clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); }
 /** Frame-rate independent shortest-path angle damping (prevents heading snaps at waypoints). */
 function dampAngle(current: number, target: number, lambda: number, delta: number) {
@@ -156,14 +130,14 @@ const RACK_BRACKET_GEO = new THREE.BoxGeometry(0.1, 0.32, 1.02);
 const RACK_BOX_GEO = new THREE.BoxGeometry(0.86, 0.47, 0.72);
 const RACK_LABEL_GEO = new THREE.BoxGeometry(0.32, 0.18, 0.012);
 
-const RACK_POST_MAT = new THREE.MeshStandardMaterial({ color: '#1e3a5f', metalness: 0.45, roughness: 0.42 });
-const RACK_BEAM_MAT = new THREE.MeshStandardMaterial({ color: '#ea580c', metalness: 0.2, roughness: 0.5 });
+const RACK_POST_MAT = new THREE.MeshStandardMaterial({ color: '#1e3a8a', metalness: 0.42, roughness: 0.38 });
+const RACK_BEAM_MAT = new THREE.MeshStandardMaterial({ color: '#f97316', metalness: 0.22, roughness: 0.42 });
 const RACK_LABEL_MAT = new THREE.MeshBasicMaterial({ color: '#ffffff' });
 const RACK_BOX_MATS = {
-  blue: new THREE.MeshStandardMaterial({ color: '#2563eb', roughness: 0.78 }),
-  white: new THREE.MeshStandardMaterial({ color: '#f1f5f9', roughness: 0.78 }),
-  cardboard: new THREE.MeshStandardMaterial({ color: '#c28e5c', roughness: 0.78 }),
-  selected: new THREE.MeshStandardMaterial({ color: '#38bdf8', roughness: 0.6, emissive: '#0284c7', emissiveIntensity: 0.38 }),
+  blue: new THREE.MeshStandardMaterial({ color: '#0284c7', roughness: 0.65, metalness: 0.08 }),
+  white: new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.72 }),
+  cardboard: new THREE.MeshStandardMaterial({ color: '#d4a373', roughness: 0.74 }),
+  selected: new THREE.MeshStandardMaterial({ color: '#2dd4bf', roughness: 0.45, emissive: '#0d9488', emissiveIntensity: 0.45 }),
 };
 
 function Rack({ x, z, items, onSelect, selectedItemId }: { x: number; z: number; items: Inventory[]; onSelect: (item: Inventory) => void; selectedItemId?: string }) {
@@ -190,10 +164,10 @@ function AccessDoor({ state, alert, phase, speedMultiplier = 1, onSelect, onComp
   useEffect(() => { reported.current = null; }, [phase]);
   useFrame((_, delta) => {
     const target = state === 'OPEN' ? 1 : 0;
-    // Motorised industrial roller shutter door: smooth, realistic vertical roll-up and roll-down (~2.2s at 1x)
+    // When not running a door-access simulation (phase === 'IDLE'), open rapidly so vehicles never hit a half-lowered shutter.
     const dt = Math.min(delta, .05);
     const speed = speedScale(speedRef.current);
-    const motorRate = 0.45 * speed;
+    const motorRate = (phase === 'IDLE' && target === 1 ? 1.8 : 0.45) * speed;
     if (amount.current < target) {
       amount.current = Math.min(target, amount.current + motorRate * dt);
     } else if (amount.current > target) {
@@ -256,7 +230,7 @@ function AccessDoor({ state, alert, phase, speedMultiplier = 1, onSelect, onComp
       <mesh position={[0, 1.16, 0.2]}><boxGeometry args={[0.3, 0.22, 0.025]}/><meshStandardMaterial color="#e6f7f5" emissive={checkpoint} emissiveIntensity={phase === 'SCANNING' ? 0.5 : 0.15}/></mesh>
       <Label position={[0, 1.92, 0.12]} size={0.14}>RFID · REED SWITCH</Label>
     </group>
-    <Label position={[0, 4.18, 0.32]} size={0.21} color={alert ? '#b23930' : '#0f5257'}>{alert ? 'WARNING · CỬA CUỐN KHO CHÍNH' : phase === 'OPENING' ? 'ĐANG CUỐN LÊN · CỬA KHO CHÍNH' : phase === 'CLOSING' ? 'ĐANG HẠ XUỐNG · CỬA KHO CHÍNH' : state === 'OPEN' ? 'OPEN · CỬA CUỐN KHO CHÍNH' : 'CLOSED · CỬA CUỐN KHO CHÍNH'}</Label>
+    <Label position={[3.8, 3.88, 0.48]} size={0.18} color={alert ? '#b23930' : '#0f5257'}>{alert ? 'CẢNH BÁO · CỬA KHO' : phase === 'OPENING' ? 'ĐANG MỞ · CỬA KHO' : phase === 'CLOSING' ? 'ĐANG ĐÓNG · CỬA KHO' : state === 'OPEN' ? 'ĐANG MỞ · CỬA KHO' : 'CỬA KHO ĐANG ĐÓNG'}</Label>
   </group>;
 }
 function WarehouseEmployee({ phase, doorOpen, employeeName, speedMultiplier = 1, onComplete, targetsRef }: { phase: AccessPhase; doorOpen: boolean; employeeName?: string; speedMultiplier?: number; onComplete?: (phase: AccessPhase) => void; targetsRef?: React.MutableRefObject<SceneTargets> }) {
@@ -515,23 +489,34 @@ function SceneCameraDirector({
   });
   return null;
 }
-function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, selectedZone, activeSite, demoState, paused, accessDoorState, accessAlert, onSelectDoor, accessEmployeePhase, accessEmployeeName, onAccessMotionComplete, speedMultiplier, targetsRef }: { site: Site; index: number; onSelectItem: (item: Inventory)=>void; selectedItemId?: string; onSelectZone: (zone:string)=>void; selectedZone:string; activeSite:boolean; demoState:DemoState; paused:boolean; accessDoorState?: 'OPEN' | 'CLOSED' | 'UNKNOWN'; accessAlert?: boolean; onSelectDoor?: () => void; accessEmployeePhase?: AccessPhase; accessEmployeeName?: string; onAccessMotionComplete?: (phase: AccessPhase) => void; speedMultiplier?: number; targetsRef?: React.MutableRefObject<SceneTargets> }) {
-  const z = -index*24;
+function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, selectedZone, activeSite, demoState, paused, accessDoorState, accessAlert, onSelectDoor, accessEmployeePhase, accessEmployeeName, onAccessMotionComplete, speedMultiplier, targetsRef, transferMode }: { site: Site; index: number; onSelectItem: (item: Inventory)=>void; selectedItemId?: string; onSelectZone: (zone:string)=>void; selectedZone:string; activeSite:boolean; demoState:DemoState; paused:boolean; accessDoorState?: 'OPEN' | 'CLOSED' | 'UNKNOWN'; accessAlert?: boolean; onSelectDoor?: () => void; accessEmployeePhase?: AccessPhase; accessEmployeeName?: string; onAccessMotionComplete?: (phase: AccessPhase) => void; speedMultiplier?: number; targetsRef?: React.MutableRefObject<SceneTargets>; transferMode?: boolean }) {
+  const z = -index*28;
   const stocks = site.items;
   const corrugatedTex = useMemo(() => getCorrugatedMetalTexture(8, 2), []);
   const floorTex = useMemo(() => getConcreteYardTexture(6, 5), []);
-  const wallMat = <meshStandardMaterial color="#edf2f4" map={corrugatedTex ?? undefined} roughness={.65} metalness={.18} />;
-  const plinthMat = <meshStandardMaterial color="#37515f" roughness={.6} metalness={.22} />;
-  const fasciaMat = <meshStandardMaterial color="#0d7a73" roughness={.42} metalness={.3} />;
-  const effectiveDoorState: 'OPEN' | 'CLOSED' | 'UNKNOWN' = index > 0 || (demoState !== 'IDLE' && demoState !== 'COMPLETE') || ['OPENING', 'ENTERING', 'WAITING_ALERT'].includes(accessEmployeePhase ?? 'IDLE') ? 'OPEN' : accessEmployeePhase === 'CLOSING' ? 'CLOSED' : (accessDoorState ?? 'CLOSED');
+  const wallMat = <meshStandardMaterial color="#f4f7f9" map={corrugatedTex ?? undefined} roughness={.58} metalness={.16} />;
+  const plinthMat = <meshStandardMaterial color="#1e293b" roughness={.55} metalness={.25} />;
+  const fasciaMat = <meshStandardMaterial color={activeSite ? '#0f766e' : '#334155'} emissive={activeSite ? '#0d9488' : '#000000'} emissiveIntensity={activeSite ? 0.14 : 0} roughness={.38} metalness={.32} />;
+  const effectiveDoorState: 'OPEN' | 'CLOSED' | 'UNKNOWN' = index > 0 || transferMode || (demoState !== 'IDLE' && demoState !== 'COMPLETE') || ['OPENING', 'ENTERING', 'WAITING_ALERT'].includes(accessEmployeePhase ?? 'IDLE') ? 'OPEN' : accessEmployeePhase === 'CLOSING' ? 'CLOSED' : (accessDoorState ?? 'CLOSED');
   return <group position={[0,0,z]}>
     <WarehouseDetails paused={paused}/>
-    <AccessDoor state={effectiveDoorState} alert={!!accessAlert} phase={accessEmployeePhase ?? 'IDLE'} speedMultiplier={speedMultiplier} onSelect={onSelectDoor} onComplete={onAccessMotionComplete}/>
+    <AccessDoor state={effectiveDoorState} alert={!!accessAlert && demoState === 'IDLE'} phase={accessEmployeePhase ?? 'IDLE'} speedMultiplier={speedMultiplier} onSelect={onSelectDoor} onComplete={onAccessMotionComplete}/>
     {index===0 && <WarehouseEmployee phase={accessEmployeePhase ?? 'IDLE'} doorOpen={effectiveDoorState === 'OPEN'} employeeName={accessEmployeeName} speedMultiplier={speedMultiplier} onComplete={onAccessMotionComplete} targetsRef={targetsRef}/>}
     <IndoorWarehouseWorker paused={paused}/>
-    {/* Polished industrial concrete slab with subtle border apron */}
-    <mesh position={[0,-.24,0]} receiveShadow><boxGeometry args={[17.4,.34,14.4]}/><meshStandardMaterial color="#9eb0b8" roughness={.85}/></mesh>
-    <mesh position={[0,-.22,0]} receiveShadow><boxGeometry args={[16.8,.35,13.8]}/><meshStandardMaterial color="#dfe6e9" map={floorTex ?? undefined} roughness={.52} metalness={.08}/></mesh>
+    {/* Polished industrial concrete slab with subtle border apron & glowing active zone ring */}
+    <mesh position={[0,-.24,0]} receiveShadow><boxGeometry args={[17.4,.34,14.4]}/><meshStandardMaterial color={activeSite ? '#0d9488' : '#94a3b8'} roughness={.75}/></mesh>
+    <mesh position={[0,-.22,0]} receiveShadow><boxGeometry args={[16.8,.35,13.8]}/><meshStandardMaterial color="#e8eef2" map={floorTex ?? undefined} roughness={.46} metalness={.1}/></mesh>
+    {/* Glowing emerald/amber safety aisle runner along the West Forklift Aisle (x = -4.7) */}
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-4.7, -0.042, 0.4]}>
+      <planeGeometry args={[2.1, 11.4]} />
+      <meshBasicMaterial color="#0d9488" transparent opacity={0.14} />
+    </mesh>
+    {[-5.75, -3.65].map(ax => (
+      <mesh key={`aisle-line-${ax}`} rotation={[-Math.PI / 2, 0, 0]} position={[ax, -0.038, 0.4]}>
+        <planeGeometry args={[0.09, 11.4]} />
+        <meshBasicMaterial color="#14b8a6" transparent opacity={0.75} />
+      </mesh>
+    ))}
     {/* Exterior dock apron safety stripes */}
     {[-6.2, 6.2].map(sx => (
       <mesh key={`dock-stripe-${sx}`} rotation={[-Math.PI / 2, 0, 0]} position={[sx, -0.04, 10.2]}>
@@ -569,17 +554,18 @@ function Warehouse({ site, index, onSelectItem, selectedItemId, onSelectZone, se
       <mesh position={[x,1.8,6.82]}><boxGeometry args={[.16,3.6,.4]}/><meshStandardMaterial color="#2f4d5c" roughness={.55}/></mesh>
       <mesh position={[x,.42,7.05]} castShadow><cylinderGeometry args={[.1,.12,.84,10]}/><meshStandardMaterial color="#f59e0b" roughness={.45}/></mesh>
     </group>)}
-    <Billboard position={[0,5.02,6.98]}>
-      <mesh position={[0,0,-.02]}><boxGeometry args={[6.04,.82,.1]}/><meshStandardMaterial color="#0d7a73" roughness={.5}/></mesh>
-      <mesh position={[0,0,0]}><boxGeometry args={[5.88,.7,.12]}/><meshStandardMaterial color="#ffffff" roughness={.7}/></mesh>
-      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,.11,.075]} fontSize={.26} color="#0f3d3e" anchorX="center" anchorY="middle" maxWidth={5.4}>{site.name}</Text>
-      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,-.17,.075]} fontSize={.125} color="#496a6d" anchorX="center" anchorY="middle" maxWidth={5.4}>{`${site.storeName} · ${site.code}`}</Text>
+    <Billboard position={[0,5.9,6.98]}>
+      <mesh position={[0,0,-.02]}><boxGeometry args={[6.44,.98,.1]}/><meshStandardMaterial color={activeSite ? '#0f766e' : '#334155'} roughness={.4}/></mesh>
+      <mesh position={[0,0,0]}><boxGeometry args={[6.24,.82,.12]}/><meshStandardMaterial color="#ffffff" roughness={.6}/></mesh>
+      <mesh position={[-2.94,0,.07]}><boxGeometry args={[.14,.62,.02]}/><meshBasicMaterial color={activeSite ? '#14b8a6' : '#64748b'}/></mesh>
+      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,.13,.085]} fontSize={.26} color="#0f172a" anchorX="center" anchorY="middle" maxWidth={5.6}>{site.name}</Text>
+      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,-.17,.085]} fontSize={.13} color="#0f766e" anchorX="center" anchorY="middle" maxWidth={5.6}>{`${site.storeName} · ${site.code}`}</Text>
     </Billboard>
     {/* Two dense rack banks leave the west aisle clear for the camera-to-storage forklift route. */}
     {[-3,.5].map((rackZ,row)=>[-1.8,2.2,6.2].map((rackX,col)=><Rack key={`${row}-${col}`} x={rackX} z={rackZ} items={stocks.slice(row*3+col).concat(stocks.slice(0,row*3+col))} onSelect={onSelectItem} selectedItemId={selectedItemId}/>))}
-    {!activeSite&&<ParkedForklift position={[10,0,5.1]}/>}
-    <CameraGate x={-6} z={8.5} zone="receiving" selected={selectedZone==='receiving'} active={activeSite&&['WAITING_CONFIRMATION','IOT_CAMERA_SIMULATED','IOT_CAMERA_IN_SIMULATED'].includes(demoState)} onSelect={onSelectZone}/>
-    <CameraGate x={6} z={8.5} zone="shipping" selected={selectedZone==='shipping'} active={activeSite&&demoState==='IOT_CAMERA_OUT_SIMULATED'} onSelect={onSelectZone}/>
+    {!activeSite&&demoState==='IDLE'&&<ParkedForklift position={[10,0,5.1]}/>}
+    <CameraGate x={-6} z={9.2} zone="receiving" selected={selectedZone==='receiving'} active={activeSite&&['WAITING_CONFIRMATION','IOT_CAMERA_SIMULATED','IOT_CAMERA_IN_SIMULATED'].includes(demoState)} onSelect={onSelectZone}/>
+    <CameraGate x={6} z={9.2} zone="shipping" selected={selectedZone==='shipping'} active={activeSite&&demoState==='IOT_CAMERA_OUT_SIMULATED'} onSelect={onSelectZone}/>
     {stocks.length===0 && <Label position={[0,.4,0]} size={.28}>Chưa có tồn kho</Label>}
   </group>;
 }
@@ -599,7 +585,7 @@ function CameraGate({x,z,zone,selected,active,onSelect}:{x:number;z:number;zone:
     <mesh position={[-1.75,.12,-1.55]} receiveShadow><boxGeometry args={[.65,.24,.65]}/><meshStandardMaterial color="#77858b"/></mesh>
     <mesh position={[-1.75,1.35,-1.35]} castShadow><boxGeometry args={[.55,.7,.28]}/><meshStandardMaterial color="#e5ebea"/></mesh>
     <mesh position={[-1.75,1.4,-1.2]}><planeGeometry args={[.38,.32]}/><meshBasicMaterial color={active?accent:'#304b59'}/></mesh>
-    {[-1,1].map(side=><group key={`guard-${side}`} position={[side*1.65,0,.8]}>
+    {[-1,1].map(side=><group key={`guard-${side}`} position={[side*1.9,0,.8]}>
       <mesh position={[0,.4,0]} castShadow><cylinderGeometry args={[.09,.12,.8,10]}/><meshStandardMaterial color="#efbc42"/></mesh>
       <mesh position={[0,.52,0]}><cylinderGeometry args={[.094,.1,.15,10]}/><meshStandardMaterial color="#34434b"/></mesh>
     </group>)}
@@ -613,10 +599,10 @@ function CameraGate({x,z,zone,selected,active,onSelect}:{x:number;z:number;zone:
       <mesh position={[0,-.48,-.08]} castShadow><boxGeometry args={[.48,.5,.22]}/><meshStandardMaterial color="#e4edf1" metalness={.2}/></mesh>
       <mesh ref={led} position={[.15,-.47,.04]}><sphereGeometry args={[.055,12,10]}/><meshBasicMaterial color="#7897a8"/></mesh>
     </group>
-    <Billboard position={[0,3.25,.72]}>
-      <mesh><boxGeometry args={[2.55,.5,.06]}/><meshBasicMaterial color={accent}/></mesh>
-      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,.075,.045]} fontSize={.17} color="#ffffff" outlineWidth={.018} outlineColor="#183248" anchorX="center" anchorY="middle" maxWidth={2.4}>{title}</Text>
-      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,-.14,.045]} fontSize={.105} color="#ffffff" outlineWidth={.014} outlineColor="#183248" anchorX="center" anchorY="middle" maxWidth={2.4}>{receiving?(active?'ĐỐI CHIẾU MÃ KIỆN':'ĐƯA TEM QR VỀ PHÍA CAMERA'):'QUÉT MÃ XUẤT · MÔ PHỎNG'}</Text>
+    <Billboard position={[0,3.52,.68]}>
+      <mesh><boxGeometry args={[2.82,.64,.06]}/><meshBasicMaterial color={accent}/></mesh>
+      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,.12,.055]} fontSize={.17} color="#ffffff" anchorX="center" anchorY="middle" maxWidth={2.6}>{title}</Text>
+      <Text font="/fonts/ibm-plex-sans.ttf" position={[0,-.13,.055]} fontSize={.11} color="#ffffff" anchorX="center" anchorY="middle" maxWidth={2.6}>{receiving?(active?'ĐỐI CHIẾU MÃ KIỆN':'ĐƯA TEM QR VÀO CAMERA'):'QUÉT MÃ XUẤT KHO'}</Text>
     </Billboard>    {[-1,1].map((side)=><mesh key={side} rotation={[-Math.PI/2,0,0]} position={[side*1.28,.018,0]}><planeGeometry args={[.045,2.35]}/><meshBasicMaterial color={accent} transparent opacity={selected||active?.62:.3}/></mesh>)}
     {[-1,1].map((side)=><mesh key={`end-${side}`} rotation={[-Math.PI/2,0,0]} position={[0,.018,side*1.18]}><planeGeometry args={[2.6,.045]}/><meshBasicMaterial color={accent} transparent opacity={selected||active?.62:.3}/></mesh>)}
     <mesh ref={ring} rotation={[-Math.PI/2,0,0]} position={[0,.02,0]}><planeGeometry args={[2.3,2.1]}/><meshBasicMaterial color={accent} transparent opacity={.15} depthWrite={false}/></mesh>
@@ -636,16 +622,24 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
   });
   useEffect(()=>{if(current.current!==state){current.current=state;elapsed.current=0;done.current='';}},[state,runId]);
   useEffect(()=>{
-    if((state==='TRUCK_APPROACHING'||state==='TRANSFER_PREPARING')&&truck.current){
+    if(state==='TRUCK_APPROACHING'&&truck.current){
       truck.current.position.set(ROAD_LANES[0],0,28);truck.current.rotation.y=Math.PI/2;
-      if(cargo.current){cargo.current.visible=true;cargo.current.position.set(-.8,1.15,0);}
+      if(cargo.current){cargo.current.visible=true;cargo.current.position.set(-.55,.68,0);}
       if(gate.current)gate.current.rotation.z=0;
       if(forkCargo.current)forkCargo.current.visible=false;
       if(pickPallet.current){pickPallet.current.visible=false;pickPallet.current.position.y=0;}
       if(fork.current){fork.current.position.set(10,0,5.1);fork.current.rotation.y=0;}
       if(lift.current)lift.current.position.y=.08;
     }
-    if(state==='TRANSFER_PREPARING'&&truck.current){truck.current.position.set(ROAD_LANES[0],0,10.7);truck.current.rotation.y=Math.PI/2;if(cargo.current)cargo.current.position.set(-3,1.15,0);}
+    if(state==='TRANSFER_PREPARING'&&truck.current){
+      truck.current.position.set(ROAD_LANES[0],0,10.7);truck.current.rotation.y=0;
+      if(cargo.current){cargo.current.visible=false;cargo.current.position.set(-.55,.68,0);}
+      if(gate.current)gate.current.rotation.z=0;
+      if(forkCargo.current)forkCargo.current.visible=false;
+      if(pickPallet.current){pickPallet.current.visible=true;pickPallet.current.position.y=0;}
+      if(fork.current){fork.current.position.set(0,0,11.8);fork.current.rotation.y=0;}
+      if(lift.current)lift.current.position.y=.08;
+    }
   },[state,runId]);
   useFrame((_,delta)=>{
     if(paused)return;
@@ -656,40 +650,47 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
     const routeNow=phase==='TRANSFER_PREPARING' ? transferPickupRoute
       : phase==='IN_TRANSIT' ? [[ROAD_LANES[0],10.7],[ROAD_LANES[0],-10],[ROAD_LANES[0],destinationZ+11.5]] as [number,number][]
       : phase==='DESTINATION_ARRIVAL' ? [[ROAD_LANES[0],destinationZ+11.5],[9,destinationZ+11.5],[4.4,destinationZ+11.5],[3.8,destinationZ+11.5]] as [number,number][]
-      : phase==='DESTINATION_PALLET_PICKUP' ? [[13.5,destinationZ+11.5],[8.8,destinationZ+11.5]] as [number,number][]
-      : phase==='IOT_CAMERA_IN_SIMULATED' ? [[8.8,destinationZ+11.5],[10,destinationZ+11.5],[10,destinationZ+13.8],[1.2,destinationZ+13.8],[-6,destinationZ+13.8],[-6,destinationZ+8.5]] as [number,number][]
-      : phase==='MOVE_TO_STORAGE' ? (transferMode ? [[8.8,destinationZ+11.5],[0,destinationZ+11.5],[0,destinationZ+5.8],[-4.7,destinationZ+5.8],[-4.7,destinationZ+2.5],[-4.7,destinationZ-1.3]] : [[-6,destinationZ+8.5],[0,destinationZ+8.5],[0,destinationZ+5.8],[-4.7,destinationZ+5.8],[-4.7,destinationZ+2.5],[-4.7,destinationZ-1.3]]) as [number,number][]
+      : phase==='DESTINATION_PALLET_PICKUP' ? [[10,destinationZ+5.1],[10,destinationZ+11.5],[8.8,destinationZ+11.5]] as [number,number][]
+      : phase==='IOT_CAMERA_IN_SIMULATED' ? [[8.8,destinationZ+11.5],[8.8,destinationZ+12.8],[-6,destinationZ+12.8],[-6,destinationZ+9.2]] as [number,number][]
+      : phase==='MOVE_TO_STORAGE' ? (transferMode ? [[-6,destinationZ+9.2],[-6,destinationZ+12.2],[-4.7,destinationZ+12.2],[-4.7,destinationZ+8.2],[-4.7,destinationZ+4.5],[-4.7,destinationZ-1.3]] : [[-6,9.2],[-6,12.2],[-4.7,12.2],[-4.7,8.2],[-4.7,4.5],[-4.7,-1.3]]) as [number,number][]
       : route[phase];
     if(phase==='TRUCK_APPROACHING'||phase==='TRUCK_DOCKING'||phase==='IN_TRANSIT'||phase==='DESTINATION_ARRIVAL'){
-      const t=Math.min(1,elapsed.current*(phase==='IN_TRANSIT'?1/5.5:phase==='TRUCK_APPROACHING'?1/5.5:phase==='DESTINATION_ARRIVAL'?1/3.2:.7));
+      const t=Math.min(1,elapsed.current*(phase==='IN_TRANSIT'?1/5.5:phase==='TRUCK_APPROACHING'?1/5.5:phase==='DESTINATION_ARRIVAL'?1/2.2:.7));
       if(truck.current&&routeNow){const p=sampleRoute(routeNow,smoothstep(0,1,t),1.7);truck.current.position.set(p.x,0,p.z);const heading=Math.atan2(-p.dz,p.dx);truck.current.rotation.y=elapsed.current<.05?heading:dampAngle(truck.current.rotation.y,heading,7,dt);}
-      if(((phase==='TRUCK_APPROACHING'||phase==='TRUCK_DOCKING')&&t>=1 || phase==='DESTINATION_ARRIVAL'&&elapsed.current>3.2 || phase==='IN_TRANSIT'&&t>=1)&&done.current!==phase){done.current=phase;callback(phase)}
+      if(((phase==='TRUCK_APPROACHING'||phase==='TRUCK_DOCKING')&&t>=1 || phase==='DESTINATION_ARRIVAL'&&elapsed.current>=4.2 || phase==='IN_TRANSIT'&&t>=1)&&done.current!==phase){done.current=phase;callback(phase)}
     }
     if(phase==='TRUCK_UNLOADING'||phase==='DESTINATION_ARRIVAL'){
       if(cargo.current){
         if(phase==='TRUCK_UNLOADING'){
-          cargo.current.position.x=-.8-2.5*smoothstep(0,3.2,elapsed.current);
-          cargo.current.position.y=1.05*(1-smoothstep(2.5,3.4,elapsed.current));
+          cargo.current.position.x=-.55-2.75*smoothstep(0,3.2,elapsed.current);
+          cargo.current.position.y=.68*(1-smoothstep(2.5,3.4,elapsed.current));
         } else {
-          // At the receiving dock the loaded pallet slides off the rear lift and settles on the ground.
-          cargo.current.position.x=-3;
-          cargo.current.position.y=1.15*(1-smoothstep(1.35,2.65,elapsed.current));
+          // Wait until truck completely stops (2.2s), open rear liftgate, then slide pallet out and lower smoothly.
+          cargo.current.position.x=-.55-2.45*smoothstep(2.7,3.45,elapsed.current);
+          cargo.current.position.y=.68*(1-smoothstep(3.4,4.05,elapsed.current));
         }
       }
-      if(gate.current)gate.current.rotation.z=-.55*smoothstep(0,1.2,elapsed.current);
+      if(gate.current)gate.current.rotation.z=phase==='TRUCK_UNLOADING'?-.55*smoothstep(0,1.2,elapsed.current):-.55*smoothstep(2.2,2.9,elapsed.current);
       if(phase==='TRUCK_UNLOADING'&&elapsed.current>3.6&&done.current!==phase){done.current=phase;callback(phase)}
     }
     if(transferMode&&cargo.current){
       const loaded=['WAITING_DISPATCH_CONFIRM','DISPATCHED','IN_TRANSIT','DESTINATION_ARRIVAL','DESTINATION_PALLET_PICKUP'].includes(phase);
-      cargo.current.visible=loaded;
+      if(phase!=='TRANSFER_LOADING_TRUCK')cargo.current.visible=loaded;
+      if(['WAITING_DISPATCH_CONFIRM','DISPATCHED','IN_TRANSIT'].includes(phase)){
+        cargo.current.position.set(-.55,.68,0);
+        if(gate.current)gate.current.rotation.z=0;
+      }
       if(phase==='WAITING_DISPATCH_CONFIRM'&&forkCargo.current)forkCargo.current.visible=false;
     }
+    if(phase==='WAITING_CONFIRMATION'||phase==='GOODS_RECEIVED'){if(forkCargo.current)forkCargo.current.visible=true;}
+    if(phase==='IOT_CAMERA_OUT_SIMULATED'){if(forkCargo.current)forkCargo.current.visible=true;if(fork.current)fork.current.position.set(6,0,9.2);}
+    if(phase==='WAITING_RECEIVE_CONFIRM'||phase==='RECEIVED'){if(destinationCargo.current)destinationCargo.current.visible=true;}
     const destinationPhase=transferMode&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED'].includes(phase);
     const activeForkRef=destinationPhase?destinationFork:fork;const activeLiftRef=destinationPhase?destinationLift:lift;const activeCargoRef=destinationPhase?destinationCargo:forkCargo;
     if(activeForkRef.current&&routeNow&&['WORKER_APPROACHING','TRANSFER_PREPARING','FORKLIFT_TO_TRUCK','FORKLIFT_PICKUP','MOVE_TO_OUTBOUND','MOVE_TO_STORAGE','IOT_CAMERA_SIMULATED','DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','FORKLIFT_DELIVER_TO_TRUCK'].includes(phase)){
       // WareTrack's simulated forklift cruises around 2.2–2.6 m/s. Smoothstep has a 1.5×
       // peak/average ratio, so durations below are based on measured route length and keep peaks realistic.
-      const travel=phase==='WORKER_APPROACHING'?2.4:phase==='TRANSFER_PREPARING'?8:phase==='MOVE_TO_OUTBOUND'?10.5:phase==='MOVE_TO_STORAGE'?8.5:phase==='IOT_CAMERA_IN_SIMULATED'?12:phase==='IOT_CAMERA_SIMULATED'?10:phase==='FORKLIFT_DELIVER_TO_TRUCK'?9.5:phase==='FORKLIFT_TO_TRUCK'?3.4:phase==='DESTINATION_PALLET_PICKUP'?3.6:4.8;
+      const travel=phase==='WORKER_APPROACHING'?2.4:phase==='TRANSFER_PREPARING'?5.2:phase==='MOVE_TO_OUTBOUND'?9.5:phase==='MOVE_TO_STORAGE'?7.8:phase==='IOT_CAMERA_IN_SIMULATED'?11:phase==='IOT_CAMERA_SIMULATED'?10:phase==='FORKLIFT_DELIVER_TO_TRUCK'?8.5:phase==='FORKLIFT_TO_TRUCK'?3.4:phase==='DESTINATION_PALLET_PICKUP'?3.6:4.8;
       const t=Math.min(1,elapsed.current/travel);const p=sampleRoute(routeNow,smoothstep(0,1,t),.34);activeForkRef.current.position.set(p.x,0,p.z);
       // The WareTrack forklift points along local -Z in this scene; steer through turns smoothly.
       const heading=Math.atan2(-p.dx,-p.dz);
@@ -699,6 +700,7 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
       const yawRate=Math.atan2(Math.sin(activeForkRef.current.rotation.y-prevHeading),Math.cos(activeForkRef.current.rotation.y-prevHeading))/Math.max(dt,.001);
       const wheelRef=destinationPhase?destinationSteering:steering;
       if(wheelRef.current)wheelRef.current.rotation.z=THREE.MathUtils.damp(wheelRef.current.rotation.z,THREE.MathUtils.clamp(yawRate*1.6,-2.4,2.4),6,dt);
+      if(phase==='FORKLIFT_DELIVER_TO_TRUCK'&&gate.current)gate.current.rotation.z=-.55*smoothstep(.15,.65,t);
       if(activeLiftRef.current){activeLiftRef.current.position.y=phase==='FORKLIFT_TO_TRUCK'?.08:phase==='FORKLIFT_PICKUP'?.08+.5*smoothstep(12.2,13.2,elapsed.current):phase==='DESTINATION_PALLET_PICKUP'?.08+.5*smoothstep(3.6,4.4,elapsed.current):phase==='MOVE_TO_STORAGE'?.08+.5*(1-smoothstep(7.2,8.2,elapsed.current)):phase==='IOT_CAMERA_IN_SIMULATED'?.58:phase==='IOT_CAMERA_SIMULATED'||phase==='MOVE_TO_OUTBOUND'||phase==='FORKLIFT_DELIVER_TO_TRUCK'?.58:.08;}
       if(activeCargoRef.current)activeCargoRef.current.visible=phase==='FORKLIFT_TO_TRUCK'?false:phase==='DESTINATION_PALLET_PICKUP'?elapsed.current>4.4:phase==='PALLET_UNLOADING'||phase==='MOVE_TO_OUTBOUND'||phase==='IOT_CAMERA_OUT_SIMULATED'||phase==='FORKLIFT_DELIVER_TO_TRUCK'||phase==='MOVE_TO_STORAGE'||phase==='IOT_CAMERA_SIMULATED'||phase==='IOT_CAMERA_IN_SIMULATED';
       if(phase==='DESTINATION_PALLET_PICKUP'&&elapsed.current>4.4&&cargo.current)cargo.current.visible=false;
@@ -719,31 +721,39 @@ function ActiveVehicles({ state, paused, runId, callback, product, inventory, de
       if(elapsed.current>=1.5&&done.current!==phase){done.current=phase;callback(phase);}
     }
     if(phase==='TRANSFER_LOADING_TRUCK'){
-      const raised=smoothstep(0,.75,elapsed.current);
-      const lowering=smoothstep(1.1,2,elapsed.current);
-      if(lift.current)lift.current.position.y=.08+.92*raised*(1-lowering);
-      if(elapsed.current>=1.25){if(forkCargo.current)forkCargo.current.visible=false;if(cargo.current)cargo.current.visible=true;}
+      if(truck.current){truck.current.position.set(ROAD_LANES[0],0,10.7);truck.current.rotation.y=0;}
+      const nudge=smoothstep(0,.45,elapsed.current)*(1-smoothstep(1.35,1.85,elapsed.current));
+      if(fork.current){fork.current.position.set(12.8+.65*nudge,0,10.7);fork.current.rotation.y=-Math.PI/2;}
+      if(lift.current){lift.current.position.y=elapsed.current<1.25?.58+.18*smoothstep(0,.6,elapsed.current):.76-.68*smoothstep(1.25,1.9,elapsed.current);}
+      const placed=elapsed.current>=.85;
+      if(forkCargo.current)forkCargo.current.visible=!placed;
+      if(cargo.current){
+        cargo.current.visible=placed;
+        if(placed)cargo.current.position.set(-1.55+1.0*smoothstep(.85,1.5,elapsed.current),.68,0);
+      }
+      if(gate.current)gate.current.rotation.z=-.55*(1-smoothstep(1.55,2.25,elapsed.current));
+      if(elapsed.current>=2.45&&done.current!==phase){done.current=phase;callback(phase);}
     }
     if(phase==='STORED'){if(forkCargo.current)forkCargo.current.visible=false;if(destinationCargo.current)destinationCargo.current.visible=false;}
   });
   const activeTruck=state!=='IDLE'&&state!=='COMPLETE';
   const destinationForkActive=transferMode&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED','COMPLETE'].includes(state);
   const activeFork=!destinationForkActive&&!['DISPATCHED','IN_TRANSIT','DESTINATION_ARRIVAL'].includes(state);
-  if(fork.current&&(state==='IDLE'||state==='COMPLETE'))fork.current.position.set(10,0,5.1);
+  if(fork.current&&(state==='IDLE'||state==='COMPLETE'))fork.current.position.set(transferMode?0:10,0,transferMode?11.8:5.1);
   return <>
     <group ref={truck} position={[ROAD_LANES[0],0,28]} rotation={[0,Math.PI/2,0]} visible={activeTruck}>
       <FreightTruckModel refrigerated/>
-      <group ref={gate} position={[-1.7,.65,0]}><mesh><boxGeometry args={[.12,1.2,1.65]}/><meshStandardMaterial color="#d8e5eb"/></mesh></group>
-      <group ref={cargo} position={[-.8,1.15,0]}><LogisticsPallet kind={inventory?packagingFor(inventory.sku.product.name):'cardboard'}/><Label position={[0,1.5,0]} size={.19}>{product?.name ?? 'KIỆN HÀNG'}</Label></group>
+      <group ref={gate} position={[-1.61,.55,0]}><mesh><boxGeometry args={[.1,1.05,1.45]}/><meshStandardMaterial color="#d8e5eb"/></mesh></group>
+      <group ref={cargo} position={[-.55,.68,0]}><LogisticsPallet kind={inventory?packagingFor(inventory.sku.product.name):'cardboard'}/><Label position={[0,1.35,0]} size={.18}>{product?.name ?? 'KIỆN HÀNG'}</Label></group>
     </group>
-    <group ref={fork} position={[10,0,5.1]} visible={activeFork}>
+    <group ref={fork} position={[transferMode?0:10,0,transferMode?11.8:5.1]} visible={activeFork}>
       <ForkliftVehicle liftRef={lift} driverRef={driver} steeringRef={steering} cargo={<group ref={forkCargo} position={[0,.1,0]} visible={false}><LogisticsPallet kind={inventory?packagingFor(inventory.sku.product.name):'cardboard'}/></group>}/>
     </group>
     {transferMode&&<group ref={pickPallet} position={[-4.7,0,-2.2]} visible={state==='TRANSFER_PREPARING'||state==='FORKLIFT_PICKUP'}>
       <LogisticsPallet kind={inventory?packagingFor(inventory.sku.product.name):'cardboard'}/>
       <Label position={[0,1.25,0]} size={.16} color="#80521a">{product?.name ?? 'PALLET THEO PHIẾU'}</Label>
     </group>}
-    {transferMode&&<group ref={destinationFork} position={[13.5,0,destinationZ+11.5]} visible={destinationForkActive}>
+    {transferMode&&<group ref={destinationFork} position={[10,0,destinationZ+5.1]} visible={destinationForkActive}>
       <ForkliftVehicle liftRef={destinationLift} driverRef={destinationDriver} steeringRef={destinationSteering} cargo={<group ref={destinationCargo} position={[0,.1,0]} visible={false}><LogisticsPallet kind={inventory?packagingFor(inventory.sku.product.name):'cardboard'}/></group>}/>
     </group>}
   </>;
@@ -798,23 +808,23 @@ function Campus({ props }: { props: Props }) {
   const roadAsphaltTex = useMemo(() => getAsphaltTexture(3, 28), []);
   const skyTex = useMemo(() => getSkyDomeTexture(), []);
   return <>
-    <color attach="background" args={['#dcebf4']}/><fog attach="fog" args={['#dcebf4',92,225]}/>
+    <color attach="background" args={['#e6f0f7']}/><fog attach="fog" args={['#e6f0f7',96,235]}/>
     <mesh position={[0, 0, -15]}>
       <sphereGeometry args={[245, 16, 12]} />
       <meshBasicMaterial map={skyTex ?? undefined} color="#ffffff" side={THREE.BackSide} fog={false} />
     </mesh>
     <Environment resolution={64} frames={1}>
-      <Lightformer form="rect" intensity={1.8} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[30, 30, 1]} color="#f0f9ff" />
-      <Lightformer form="circle" intensity={2.4} position={[-20, 16, 14]} scale={8} color="#fff7ed" />
-      <Lightformer form="rect" intensity={0.9} position={[20, 6, -15]} rotation={[0, -Math.PI / 2, 0]} scale={[24, 10, 1]} color="#bae6fd" />
-      <Lightformer form="rect" intensity={0.6} position={[0, -6, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#cbd5e1" />
+      <Lightformer form="rect" intensity={1.9} position={[0, 12, 0]} rotation={[Math.PI / 2, 0, 0]} scale={[30, 30, 1]} color="#f8fafc" />
+      <Lightformer form="circle" intensity={2.5} position={[-20, 16, 14]} scale={8} color="#fffbeb" />
+      <Lightformer form="rect" intensity={1.0} position={[20, 6, -15]} rotation={[0, -Math.PI / 2, 0]} scale={[24, 10, 1]} color="#ccfbf1" />
+      <Lightformer form="rect" intensity={0.65} position={[0, -6, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[40, 40, 1]} color="#cbd5e1" />
     </Environment>
-    <hemisphereLight args={['#f8fafc','#8e9aa2',.85]}/><ambientLight intensity={.28}/>
-    <directionalLight position={[-22,34,16]} color="#fff7eb" intensity={2.25} castShadow shadow-mapSize={[1024,1024]} shadow-bias={-.0005} shadow-camera-left={-42} shadow-camera-right={42} shadow-camera-top={42} shadow-camera-bottom={-68} shadow-normalBias={.03}/>
-    <directionalLight position={[22,14,-18]} color="#cce4ff" intensity={.42}/>
-    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.055,-15]} receiveShadow><planeGeometry args={[64,104]}/><meshStandardMaterial color="#d4dce0" map={yardConcreteTex ?? undefined} roughness={.9}/></mesh>
+    <hemisphereLight args={['#ffffff','#94a3b8',.88]}/><ambientLight intensity={.32}/>
+    <directionalLight position={[-22,34,16]} color="#fffaf0" intensity={2.35} castShadow shadow-mapSize={[1024,1024]} shadow-bias={-.0005} shadow-camera-left={-42} shadow-camera-right={42} shadow-camera-top={42} shadow-camera-bottom={-68} shadow-normalBias={.03}/>
+    <directionalLight position={[22,14,-18]} color="#e0f2fe" intensity={.48}/>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[0,-.055,-15]} receiveShadow><planeGeometry args={[64,104]}/><meshStandardMaterial color="#dce4e8" map={yardConcreteTex ?? undefined} roughness={.86}/></mesh>
     {/* marked two-way truck road and yard apron */}
-    <mesh rotation={[-Math.PI/2,0,0]} position={[ROAD_CENTER_X,-.045,ROAD_CENTER_Z]} receiveShadow><planeGeometry args={[ROAD_WIDTH,ROAD_LENGTH]}/><meshStandardMaterial color="#4b5560" map={roadAsphaltTex ?? undefined} roughness={.88}/></mesh>
+    <mesh rotation={[-Math.PI/2,0,0]} position={[ROAD_CENTER_X,-.045,ROAD_CENTER_Z]} receiveShadow><planeGeometry args={[ROAD_WIDTH,ROAD_LENGTH]}/><meshStandardMaterial color="#334155" map={roadAsphaltTex ?? undefined} roughness={.85}/></mesh>
     <InstancedMainRoadMarkings />
     {['TRUCK_UNLOADING','WORKER_APPROACHING','FORKLIFT_TO_TRUCK','PALLET_UNLOADING'].includes(props.demoState)&&<>
       <group position={[7.1,-.02,11.5]}>
@@ -825,11 +835,11 @@ function Campus({ props }: { props: Props }) {
       </group>
       <Label position={[7.1,2,11.5]} size={.2} color="#a56608">{props.demoState==='TRUCK_UNLOADING'?'ĐIỂM HẠ PALLET':props.demoState==='PALLET_UNLOADING'?'XE NÂNG ĐANG NHẤC PALLET':'PALLET ĐÃ HẠ · CHỜ XE NÂNG'}</Label>
     </>}
-    {props.campusWarehouses.map((site,i)=><Warehouse key={site.id} site={site} index={i} onSelectItem={props.onSelectItem} selectedItemId={selectedId} onSelectZone={props.onSelectZone} selectedZone={props.selectedZone} activeSite={i===0||(props.transferMode&&props.campusWarehouses[i]?.id===props.destinationWarehouseId&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED','COMPLETE'].includes(props.demoState))} demoState={props.demoState} paused={props.demoPaused} accessDoorState={i===0?props.accessDoorState:undefined} accessAlert={i===0?props.accessAlert:false} onSelectDoor={i===0?props.onSelectDoor:undefined} accessEmployeePhase={i===0?props.accessEmployeePhase:'IDLE'} accessEmployeeName={i===0?props.accessEmployeeName:undefined} onAccessMotionComplete={i===0?props.onAccessMotionComplete:undefined} speedMultiplier={props.speedMultiplier} targetsRef={i===0?targetsRef:undefined}/>)}
+    {props.campusWarehouses.map((site,i)=><Warehouse key={site.id} site={site} index={i} onSelectItem={props.onSelectItem} selectedItemId={selectedId} onSelectZone={props.onSelectZone} selectedZone={props.selectedZone} activeSite={i===0||(props.transferMode&&props.campusWarehouses[i]?.id===props.destinationWarehouseId&&['DESTINATION_PALLET_PICKUP','IOT_CAMERA_IN_SIMULATED','WAITING_RECEIVE_CONFIRM','RECEIVED','MOVE_TO_STORAGE','STORED','COMPLETE'].includes(props.demoState))} demoState={props.demoState} paused={props.demoPaused} accessDoorState={i===0?props.accessDoorState:undefined} accessAlert={i===0 && props.demoState === 'IDLE' ? props.accessAlert : false} onSelectDoor={i===0?props.onSelectDoor:undefined} accessEmployeePhase={i===0?props.accessEmployeePhase:'IDLE'} accessEmployeeName={i===0?props.accessEmployeeName:undefined} onAccessMotionComplete={i===0?props.onAccessMotionComplete:undefined} speedMultiplier={props.speedMultiplier} targetsRef={i===0?targetsRef:undefined} transferMode={props.transferMode}/>)}
     <SurroundingWorld paused={props.demoPaused}/>
     <LogisticsYard/>{idle&&!props.demoPaused&&<YardTraffic enabled/>}
-    <ActiveVehicles state={props.demoState} paused={props.demoPaused} runId={props.demoRunId} callback={props.onMotionComplete} product={props.demoProduct} inventory={props.demoInventory} transferMode={props.transferMode} destinationZ={props.transferMode?-Math.max(0,props.campusWarehouses.findIndex(site=>site.id===props.destinationWarehouseId))*24:0} speedMultiplier={props.speedMultiplier} targetsRef={targetsRef}/>
-    <MapControls makeDefault enableRotate enableDamping dampingFactor={.1} panSpeed={1.15} rotateSpeed={0.85} zoomSpeed={1.1} minDistance={7} maxDistance={105} maxPolarAngle={Math.PI/2.12} target={[0,0,props.campusWarehouses.length > 1 ? -12*(props.campusWarehouses.length-1) : 2]}/>
+    <ActiveVehicles state={props.demoState} paused={props.demoPaused} runId={props.demoRunId} callback={props.onMotionComplete} product={props.demoProduct} inventory={props.demoInventory} transferMode={props.transferMode} destinationZ={props.transferMode?-Math.max(0,props.campusWarehouses.findIndex(site=>site.id===props.destinationWarehouseId))*28:0} speedMultiplier={props.speedMultiplier} targetsRef={targetsRef}/>
+    <MapControls makeDefault enableRotate enableDamping dampingFactor={.1} panSpeed={1.15} rotateSpeed={0.85} zoomSpeed={1.1} minDistance={7} maxDistance={105} maxPolarAngle={Math.PI/2.12} target={[0,0,props.campusWarehouses.length > 1 ? -14*(props.campusWarehouses.length-1) : 2]}/>
     <SceneCameraDirector phase={props.accessEmployeePhase ?? 'IDLE'} focus={!!props.accessFocus} demoState={props.demoState} transferMode={props.transferMode} campusCount={props.campusWarehouses.length} targetsRef={targetsRef}/>
   </>;
 }

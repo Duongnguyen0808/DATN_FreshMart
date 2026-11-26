@@ -8,7 +8,7 @@ import { assessShortage } from './shortage-rule.js';
 import { supplyTiming } from './supply-timing.js';
 import { planReplenishment } from './recommendation-plan.js';
 import { expired, takeLots, warehouseToday } from '../inventory/lot-stock.js';
-import { buildFefoPromoCode, calculateFefoPromoDiscount, parseFefoPromoLotCode } from './fefo-promo.js';
+import { buildBogoPromoCode, buildFefoPromoCode, calculateFefoPromoDiscount, parseFefoPromoLotCode, parseFefoPromoToken } from './fefo-promo.js';
 
 describe('FEFO × AI Demand Forecast Simulation & Inventory Balance', () => {
   it('Ví dụ tính tay 1: Mô phỏng 1 lô cận hạn trong tầm nhìn 14 ngày (FEFO × Forecast)', () => {
@@ -460,5 +460,42 @@ describe('FEFO × AI Demand Forecast Simulation & Inventory Balance', () => {
     });
     expect(farLot.eligible).toBe(false);
     expect(farLot.discountAmount).toBe(0);
+  });
+
+  it('Ví dụ tính tay 10: Mã Mua 1 Tặng 1 (BOGO) cho lô cận hạn <= 10 ngày tại POS', () => {
+    expect(buildBogoPromoCode('lot-yogurt-02')).toBe('BOGO-LOT-YOGURT-02');
+    expect(parseFefoPromoToken('bogo-lot-yogurt-02')).toEqual({ mode: 'BOGO', lotCode: 'LOT-YOGURT-02' });
+    expect(parseFefoPromoLotCode('bogo-lot-yogurt-02')).toBe('LOT-YOGURT-02');
+
+    // Lô còn 5 hộp, hạn 8 ngày (<= 10 ngày), giá 20.000đ. Khách lấy 5 hộp -> tối đa 2 cặp (4 hộp), tặng 2 hộp (-40.000đ)
+    const bogoOk = calculateFefoPromoDiscount({
+      lotCode: 'LOT-YOGURT-02',
+      lotQuantity: 5,
+      daysRemaining: 8,
+      expired: false,
+      sellingPrice: 20_000,
+      cartQuantity: 5,
+      unit: 'hộp',
+      mode: 'BOGO',
+    });
+    expect(bogoOk.eligible).toBe(true);
+    expect(bogoOk.mode).toBe('BOGO');
+    expect(bogoOk.promoCode).toBe('BOGO-LOT-YOGURT-02');
+    expect(bogoOk.freeQuantity).toBe(2);
+    expect(bogoOk.eligibleQuantity).toBe(4);
+    expect(bogoOk.discountAmount).toBe(40_000);
+
+    // Nếu giỏ mới có 1 hộp thì yêu cầu tối thiểu 2 hộp (1 mua + 1 tặng)
+    const singleItem = calculateFefoPromoDiscount({
+      lotCode: 'LOT-YOGURT-02',
+      lotQuantity: 5,
+      daysRemaining: 8,
+      expired: false,
+      sellingPrice: 20_000,
+      cartQuantity: 1,
+      unit: 'hộp',
+      mode: 'BOGO',
+    });
+    expect(singleItem.eligible).toBe(false);
   });
 });

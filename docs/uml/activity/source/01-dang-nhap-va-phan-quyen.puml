@@ -1,0 +1,55 @@
+@startuml
+title Sơ đồ hoạt động: Đăng nhập, cấp phát phiên và phân quyền chi nhánh
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Người dùng|
+start
+:Nhập email và mật khẩu;
+:Gửi yêu cầu đăng nhập;
+
+|Giao diện Web/Mobile|
+:Kiểm tra dữ liệu đầu vào rỗng;
+if (Email và mật khẩu đã nhập?) then ([Không hợp lệ])
+  :Hiển thị thông báo yêu cầu nhập đủ thông tin;
+  stop
+else ([Hợp lệ])
+  :Gửi yêu cầu POST /auth/login;
+endif
+
+|Backend/API|
+:Chuẩn hóa email và xác thực schema đầu vào;
+|Cơ sở dữ liệu|
+:Truy vấn tài khoản theo email\nkèm vai trò, quyền và chi nhánh;
+|Backend/API|
+:So sánh mật khẩu với mã băm\n(hoặc dummy hash nếu không tồn tại);
+if (Tài khoản tồn tại, đúng mật khẩu\nvà đang hoạt động?) then ([Không hợp lệ])
+  :Trả về lỗi 401 INVALID_CREDENTIALS;
+  |Giao diện Web/Mobile|
+  :Hiển thị thông báo sai thông tin đăng nhập;
+  stop
+else ([Hợp lệ])
+  |Backend/API|
+  :Khởi tạo mã phiên (UUID) và Refresh Token;
+  |Cơ sở dữ liệu|
+  :Thực thi giao dịch (Transaction):\nLưu phiên đăng nhập (hạn 7 ngày)\nvà ghi nhật ký AuditLog (auth.login);
+  |Backend/API|
+  :Ký JWT Access Token (hạn 15 phút);
+  :Trả về Access Token, Refresh Token\nvà thông tin phân quyền người dùng;
+endif
+
+|Giao diện Web/Mobile|
+:Lưu token và chọn chi nhánh mặc định\ntrong phạm vi được phân công;
+:Điều hướng vào màn hình Trang chủ\nvà hiển thị chức năng theo quyền RBAC;
+stop
+@enduml

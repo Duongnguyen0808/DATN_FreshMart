@@ -335,10 +335,24 @@ export default function TransfersPage() {
             </div>
             <fieldset>
               <legend>Danh sách sản phẩm</legend>
-              <div className="transfer-lines">
+              <div className="transfer-lines" style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
                 {lines.map((line, index) => (
-                  <div key={line.key}>
-                    <select required value={line.skuId} onChange={e => setLines(old => old.map((x, i) => (i === index ? { ...x, skuId: e.target.value } : x)))}>
+                  <div
+                    key={line.key}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(220px, 1fr) 110px 76px',
+                      alignItems: 'center',
+                      gap: 10,
+                      margin: 0,
+                    }}
+                  >
+                    <select
+                      required
+                      value={line.skuId}
+                      onChange={e => setLines(old => old.map((x, i) => (i === index ? { ...x, skuId: e.target.value } : x)))}
+                      style={{ height: 42, minHeight: 42, margin: 0, marginTop: 0, width: '100%' }}
+                    >
                       <option value="">Chọn sản phẩm</option>
                       {skuOptions.filter(s => !lines.some((x, i) => i !== index && x.skuId === s.id)).map(s => (
                         <option key={s.id} value={s.id}>
@@ -346,8 +360,20 @@ export default function TransfersPage() {
                         </option>
                       ))}
                     </select>
-                    <input required type="number" min={1} value={line.quantity} onChange={e => setLines(old => old.map((x, i) => (i === index ? { ...x, quantity: Number(e.target.value) } : x)))} />
-                    <ActionButton tone="danger" disabled={lines.length === 1} onClick={() => setLines(old => old.filter((_, i) => i !== index))}>
+                    <input
+                      required
+                      type="number"
+                      min={1}
+                      value={line.quantity}
+                      onChange={e => setLines(old => old.map((x, i) => (i === index ? { ...x, quantity: Number(e.target.value) } : x)))}
+                      style={{ height: 42, minHeight: 42, margin: 0, marginTop: 0, width: '100%' }}
+                    />
+                    <ActionButton
+                      tone="danger"
+                      disabled={lines.length === 1}
+                      onClick={() => setLines(old => old.filter((_, i) => i !== index))}
+                      style={{ height: 42, minHeight: 42, margin: 0, marginTop: 0, width: '100%', justifyContent: 'center' }}
+                    >
                       Xóa
                     </ActionButton>
                   </div>

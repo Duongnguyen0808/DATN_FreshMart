@@ -48,22 +48,38 @@ export function refreshSession(): Promise<User> {
   return refreshing;
 }
 
+const inFlightGets = new Map<string, Promise<unknown>>();
+
 export async function api<T>(path: string, method = 'GET', body?: unknown, timeoutMs = 10000): Promise<T> {
-  try {
-    return await request<T>(path, method, body, accessToken, timeoutMs);
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 401) throw error;
-    try {
-      await refreshSession();
-    } catch (refreshError) {
-      if (refreshError instanceof ApiError && refreshError.status === 401) {
-        accessToken = null;
-        window.dispatchEvent(new Event('session-expired'));
-      }
-      throw refreshError;
-    }
-    return request<T>(path, method, body, accessToken, timeoutMs);
+  const isGet = method.toUpperCase() === 'GET' && body === undefined;
+  if (isGet && inFlightGets.has(path)) {
+    return inFlightGets.get(path) as Promise<T>;
   }
+
+  const exec = async (): Promise<T> => {
+    try {
+      return await request<T>(path, method, body, accessToken, timeoutMs);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      try {
+        await refreshSession();
+      } catch (refreshError) {
+        if (refreshError instanceof ApiError && refreshError.status === 401) {
+          accessToken = null;
+          window.dispatchEvent(new Event('session-expired'));
+        }
+        throw refreshError;
+      }
+      return request<T>(path, method, body, accessToken, timeoutMs);
+    }
+  };
+
+  const promise = exec();
+  if (isGet) {
+    inFlightGets.set(path, promise);
+    promise.finally(() => { inFlightGets.delete(path); });
+  }
+  return promise;
 }
 
 export async function logout() {

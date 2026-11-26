@@ -396,9 +396,8 @@ function attachWatchers(page, state) {
       await ensureOwnerUi();
 
       await page.goto(`${BASE_URL}/de-nghi-mua`, { waitUntil: 'domcontentloaded' });
-      await page.waitForURL(url => new URL(url).pathname === '/nhap-hang', { waitUntil: 'commit', timeout: 30000 });
-      await expect(page.getByRole('heading', { name: 'Nhập hàng' })).toBeVisible({ timeout: 15000 });
-      step('/de-nghi-mua dieu huong thong nhat ve /nhap-hang');
+      await expect(page.getByRole('heading', { name: /Đề nghị mua hàng|Nhập hàng/ })).toBeVisible({ timeout: 15000 });
+      step('/de-nghi-mua mo danh sach de nghi mua hang thanh cong');
 
       await page.goto(`${BASE_URL}/don-mua-hang`, { waitUntil: 'domcontentloaded' });
       await expect(page.getByRole('heading', { name: 'Đơn mua hàng' })).toBeVisible({ timeout: 15000 });

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Protected, useAuth } from '../../components/auth-provider';
-import { ActionLink } from '../../components/ui/action-button';
+import { InvoiceQrReturnScanner } from '../../components/invoices/invoice-qr-return-scanner';
+import { ActionButton, ActionLink } from '../../components/ui/action-button';
 import { Icon } from '../../components/ui/icon';
 import { MetricCard, MetricGrid } from '../../components/ui/metric-card';
 import { FilterToolbar, PageHeader, PanelCard } from '../../components/ui/page-kit';
@@ -29,6 +30,7 @@ function InvoiceListPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [qrScanOpen, setQrScanOpen] = useState(false);
   const load = async () => { setLoading(true); setError(''); try { setResult(await api.getInvoices({ q: query.trim() || undefined, status, page })); } catch (reason) { setError(errorMessage(reason)); } finally { setLoading(false); } };
   useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, status, page]);
   useEffect(() => setPage(1), [query, status]);
@@ -42,14 +44,20 @@ function InvoiceListPage() {
     <PageHeader
       breadcrumbs={['Bán hàng', 'Hóa đơn']}
       title="Tra cứu hóa đơn bán hàng"
-      description="Đối soát giao dịch, hoàn tiền, phương thức thanh toán và trạng thái hóa đơn theo phạm vi được cấp."
-      actions={user?.permissions.includes('invoices.create') ? <ActionLink tone="approve" href="/hoa-don/tao">+ Tạo hóa đơn</ActionLink> : undefined}
+      description="Đối soát giao dịch, hoàn tiền, phương thức thanh toán và quét mã QR trên hóa đơn để đổi trả nhanh."
+      actions={
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <ActionButton tone="view" onClick={() => setQrScanOpen(true)}>Quét QR trả hàng</ActionButton>
+          {user?.permissions.includes('invoices.create') && <ActionLink tone="approve" href="/hoa-don/tao">+ Tạo hóa đơn</ActionLink>}
+        </div>
+      }
     />
     <MetricGrid className="suite-kpis" label="Chỉ số hóa đơn"><MetricCard tone="blue" label="TỔNG HÓA ĐƠN" value={result.summary.total}/><MetricCard tone="green" label="HOÀN TẤT" value={result.summary.completed}/><MetricCard tone="teal" label="DOANH THU SAU HOÀN" value={money(result.summary.revenue)}/><MetricCard tone="red" label="ĐÃ HỦY" value={result.summary.cancelled}/></MetricGrid>
     <PanelCard>
       <TabBar value={status} onChange={setStatus} label="Lọc trạng thái" items={tabs.map(tab => ({ ...tab, count: tab.value === 'all' ? result.summary.total : tab.value === 'COMPLETED' ? result.summary.completed : result.summary.cancelled }))}/>
-      <FilterToolbar searchValue={query} onSearchChange={setQuery} searchPlaceholder="Tìm mã hóa đơn, khách hàng, số điện thoại…" onClear={() => { setQuery(''); setStatus('all'); }}/>
-      {error && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}<div className="table-scroll"><table><thead><tr><th>Mã hóa đơn</th><th>Chi nhánh / POS</th><th>Khách hàng</th><th>Thu ngân</th><th>Thanh toán</th><th className="numeric">Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>{loading ? <tr><td colSpan={7}><TableState message="Đang tải hóa đơn…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={7}><TableState message="Chưa có hóa đơn phù hợp."/></td></tr> : result.items.map(invoice => <tr key={invoice.id} className="clickable-row" tabIndex={0} onClick={() => router.push(`/hoa-don/${invoice.id}`)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); router.push(`/hoa-don/${invoice.id}`); } }}><td><strong className="document-code">{invoice.code}</strong><small>{dateTime(invoice.completedAt)}</small></td><td><strong>{invoice.store.name}</strong><small>{invoice.shift.posCode} · {invoice.shift.code}</small></td><td><strong>{invoice.customerName ?? 'Khách lẻ'}</strong><small>{invoice.customerPhone ?? 'Không có SĐT'}</small></td><td>{invoice.cashier.name}</td><td>{invoice.payments.map(payment => methodName[payment.method]).join(' + ')}</td><td className="numeric"><strong>{money(invoice.total)}</strong>{invoice.refundedAmount > 0 && <small className="negative">Đã hoàn {money(invoice.refundedAmount)}</small>}</td><td>{statusBadge(invoice)}</td></tr>)}</tbody></table></div><footer><span>Hiển thị {result.items.length} trên {result.pagination.total} hóa đơn</span><div className="suite-pagination"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>‹ Trước</button><span>Trang {page}/{result.pagination.totalPages}</span><button disabled={page >= result.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau ›</button></div></footer></PanelCard>
+      <FilterToolbar searchValue={query} onSearchChange={setQuery} searchPlaceholder="Tìm mã hóa đơn, chi nhánh hoặc thu ngân…" onClear={() => { setQuery(''); setStatus('all'); }}/>
+      {error && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}<div className="table-scroll"><table><thead><tr><th>Mã hóa đơn</th><th>Chi nhánh / POS</th><th>Khách mua</th><th>Thu ngân</th><th>Thanh toán</th><th className="numeric">Tổng tiền</th><th>Trạng thái</th></tr></thead><tbody>{loading ? <tr><td colSpan={7}><TableState message="Đang tải hóa đơn…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={7}><TableState message="Chưa có hóa đơn phù hợp."/></td></tr> : result.items.map(invoice => <tr key={invoice.id} className="clickable-row" tabIndex={0} onClick={() => router.push(`/hoa-don/${invoice.id}`)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); router.push(`/hoa-don/${invoice.id}`); } }}><td><strong className="document-code">{invoice.code}</strong><small>{dateTime(invoice.completedAt)}</small></td><td><strong>{invoice.store.name}</strong><small>{invoice.shift.posCode} · {invoice.shift.code}</small></td><td><strong>Khách vãng lai</strong><small>Bán lẻ tại quầy</small></td><td>{invoice.cashier.name}</td><td>{invoice.payments.map(payment => methodName[payment.method]).join(' + ')}</td><td className="numeric"><strong>{money(invoice.total)}</strong>{invoice.refundedAmount > 0 && <small className="negative">Đã hoàn {money(invoice.refundedAmount)}</small>}</td><td>{statusBadge(invoice)}</td></tr>)}</tbody></table></div><footer><span>Hiển thị {result.items.length} trên {result.pagination.total} hóa đơn</span><div className="suite-pagination"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>‹ Trước</button><span>Trang {page}/{result.pagination.totalPages}</span><button disabled={page >= result.pagination.totalPages} onClick={() => setPage(value => value + 1)}>Sau ›</button></div></footer></PanelCard>
+    {qrScanOpen && <InvoiceQrReturnScanner onClose={() => setQrScanOpen(false)} />}
   </div>;
 }
 

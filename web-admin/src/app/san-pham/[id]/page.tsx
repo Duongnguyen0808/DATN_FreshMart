@@ -104,12 +104,16 @@ export default function ProductDetail() {
 
   return <div className="detail-screen product-detail-page">
     <div className="detail-back"><Link href="/san-pham">← Quay lại danh sách sản phẩm</Link></div>
-    <header className="detail-heading">
+    <header className="detail-heading product-detail-hero">
       <div className="product-detail-title">
         <div className="product-detail-image">{product.imageUrl ? <img src={product.imageUrl} alt={product.name} /> : <span>{product.name.charAt(0)}</span>}</div>
-        <div><div className="breadcrumb">Hàng hóa › Sản phẩm › {product.code}</div><h1>{product.name}</h1><p>{product.code} · {product.category.name}</p></div>
+        <div className="product-detail-meta">
+          <div className="breadcrumb">Hàng hóa › Sản phẩm › {product.code}</div>
+          <h1>{product.name}</h1>
+          <p>Mã SP: <strong>{product.code}</strong> · Danh mục: <strong>{product.category.name}</strong> · ĐVT: <strong>{product.unit}</strong>{sku?.barcode ? <> · Barcode: <strong>{sku.barcode}</strong></> : null}</p>
+        </div>
       </div>
-      <div><StatusBadge tone={product.active ? 'green' : 'neutral'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge><button className="outline-button" onClick={() => router.push('/san-pham')}>Quay lại danh sách</button>{canManage && <button className={product.active ? 'danger-button' : 'success-button'} onClick={changeProductStatus}>{product.active ? 'Ngừng kinh doanh' : 'Mở lại kinh doanh'}</button>}</div>
+      <div className="product-detail-actions"><StatusBadge tone={product.active ? 'green' : 'neutral'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge>{canManage && <button className={product.active ? 'danger-button' : 'success-button'} onClick={changeProductStatus}>{product.active ? 'Ngừng kinh doanh' : 'Mở lại kinh doanh'}</button>}</div>
     </header>
     {error && !skuModal && <div className="ui-error" role="alert">{error}</div>}
 

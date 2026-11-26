@@ -1,0 +1,68 @@
+@startuml
+title Sơ đồ tuần tự: Kiểm soát cửa kho IoT RFID và đồng bộ Socket.IO
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+hide footbox
+
+actor "Nhân viên kho" as Staff
+boundary "Thiết bị IoT\n(ESP32-RC522)" as IoT
+control "IotRoutes" as Route
+control "WarehouseAccessService" as Service
+database "SQL Server\n(Prisma)" as DB
+control "Socket.IO\nRealtime" as IO
+boundary "Web/Mobile\nClient" as Client
+
+Staff -> IoT : Quẹt thẻ RFID tại đầu đọc
+activate IoT
+
+IoT -> Route : POST /api/v1/iot/access/rfid\n(kèm IOT_INGEST_TOKEN, eventId, uid)
+activate Route
+
+Route -> Route : Kiểm tra token thiết bị\nvà xác thực schema đầu vào
+
+alt Token thiết bị không hợp lệ
+  Route --> IoT : HTTP 401 IOT_DEVICE_UNAUTHENTICATED
+else Token hợp lệ
+  Route -> Service : ingestAccessRfid(input, IOT_DEVICE)
+  activate Service
+
+  Service -> DB : Kiểm tra thiết bị đăng ký\nvà truy vấn thẻ RFID + quyền nhân viên
+  activate DB
+  DB --> Service : Thông tin thiết bị, thẻ và nhân viên
+  deactivate DB
+
+  alt Thẻ ACTIVE, đúng kho và nhân viên có quyền
+    Service -> DB : Transaction: cập nhật lastSeenAt,\nghi RFID_SCAN và ACCESS_GRANTED
+    activate DB
+    DB --> Service : Sự kiện ACCESS_GRANTED
+    deactivate DB
+  else Thẻ không hợp lệ hoặc không đủ quyền
+    Service -> DB : Transaction: cập nhật lastSeenAt,\nghi RFID_SCAN, ACCESS_DENIED và cảnh báo INVALID_RFID
+    activate DB
+    DB --> Service : Sự kiện ACCESS_DENIED + Alert
+    deactivate DB
+  end
+
+  Service ->> IO : publishWarehouseAccess(warehouseId, event)
+  activate IO
+  IO ->> Client : Emit sự kiện iot:access
+  deactivate IO
+
+  Service --> Route : Trả về {duplicate: false, event}
+  deactivate Service
+
+  Route --> IoT : Phản hồi kết quả xác thực thẻ
+  deactivate Route
+end
+
+deactivate IoT
+@enduml

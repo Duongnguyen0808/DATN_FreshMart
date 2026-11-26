@@ -1,0 +1,63 @@
+@startuml
+title Sơ đồ tuần tự: Đăng nhập, cấp phát phiên và phân quyền
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+skinparam SequenceBoxBorderColor #888888
+hide footbox
+
+actor "Người dùng" as User
+boundary "Giao diện\nWeb/Mobile" as UI
+control "AuthRoutes" as Route
+control "AuthService" as Service
+database "SQL Server\n(Prisma)" as DB
+
+User -> UI : Nhập email, mật khẩu\nvà bấm Đăng nhập
+activate UI
+
+UI -> Route : POST /api/v1/auth/login
+activate Route
+
+Route -> Route : Kiểm tra rate limit,\norigin và schema Zod
+
+Route -> Service : login(email, password)
+activate Service
+
+Service -> DB : Truy vấn người dùng theo email\n(kèm vai trò, quyền, chi nhánh)
+activate DB
+DB --> Service : Bản ghi User hoặc null
+deactivate DB
+
+Service -> Service : So sánh mật khẩu\n(verifyPassword)
+
+alt Tài khoản không tồn tại, sai mật khẩu hoặc bị khóa
+  Service --> Route : Ném AppError (401 INVALID_CREDENTIALS)
+  Route --> UI : HTTP 401 + thông báo lỗi
+  UI --> User : Hiển thị lỗi đăng nhập
+else Tài khoản hợp lệ và đang hoạt động
+  Service -> DB : Transaction: tạo Session (7 ngày)\nvà ghi AuditLog (auth.login)
+  activate DB
+  DB --> Service : Xác nhận lưu phiên
+  deactivate DB
+
+  Service -> Service : Ký JWT Access Token (15 phút)
+  Service --> Route : Trả về {accessToken, refreshToken, user}
+  deactivate Service
+
+  Route --> UI : HTTP 200 + phiên đăng nhập\n(cookie HttpOnly nếu client=web)
+  deactivate Route
+
+  UI -> UI : Lưu token, chọn chi nhánh\nvà nạp giao diện theo RBAC
+  UI --> User : Hiển thị Trang chủ
+end
+
+deactivate UI
+@enduml

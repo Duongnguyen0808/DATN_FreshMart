@@ -28,22 +28,49 @@ export function TabBar<T extends string>({ items, value, onChange, label = 'Chuy
     if (!nav) return;
     const update = () => {
       const active = [...nav.querySelectorAll<HTMLButtonElement>(':scope > .ui-tab')].find(tab => tab.getAttribute('aria-pressed') === 'true');
-      if (!active) return;
+      if (!active) {
+        nav.style.removeProperty('--tab-indicator-x');
+        nav.style.removeProperty('--tab-indicator-width');
+        delete nav.dataset.indicatorReady;
+        return;
+      }
       nav.style.setProperty('--tab-indicator-x', `${active.offsetLeft}px`);
       nav.style.setProperty('--tab-indicator-width', `${active.offsetWidth}px`);
       nav.dataset.indicatorReady = 'true';
     };
     update();
+    const rafId = requestAnimationFrame(update);
     const observer = new ResizeObserver(update);
     observer.observe(nav);
     [...nav.querySelectorAll(':scope > .ui-tab')].forEach(tab => observer.observe(tab));
-    return () => observer.disconnect();
-  }, [value, items.length]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      observer.disconnect();
+    };
+  }, [value, items]);
   return <nav ref={navRef} className={`ui-tabbar ${className}`.trim()} aria-label={label}>
     {items.map((item, index) => {
       const tone = item.tone ?? tabTone(item.value, index);
       return <button key={item.value} type="button" style={item.style} className={`ui-tab ui-tab-${tone} ${item.className ?? ''}`} aria-pressed={value === item.value} onClick={() => onChange(item.value)}>
-        <span>{item.className?.includes('category-filter') ? null : <Icon name={iconByTone[tone]} size={15}/>} {item.label}</span>{item.count !== undefined && <b>{item.count}</b>}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, lineHeight: 1.2 }}>{item.className?.includes('category-filter') ? null : <Icon name={iconByTone[tone]} size={15}/>} {item.label}</span>
+        {item.count !== undefined && (
+          <b
+            className="ui-tab-count"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              minWidth: 22,
+              height: 20,
+              padding: '0 7px',
+              lineHeight: 1,
+              verticalAlign: 'middle',
+              boxSizing: 'border-box',
+            }}
+          >
+            {item.count}
+          </b>
+        )}
       </button>;
     })}
   </nav>;

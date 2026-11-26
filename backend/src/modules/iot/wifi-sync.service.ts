@@ -101,7 +101,7 @@ export async function getLaptopWifiCredentials(useCache = true): Promise<{ ssid:
   }
 }
 
-async function probeCameraOverHttp(candidateIp: string, hostIp: string): Promise<{ ip: string; ssid: string; deviceId: string } | null> {
+async function probeCameraOverHttp(candidateIp: string, hostIp: string, timeoutMs = 450): Promise<{ ip: string; ssid: string; deviceId: string } | null> {
   const ip = normalizeIpv4(candidateIp);
   if (!ip) return null;
   try {
@@ -109,7 +109,7 @@ async function probeCameraOverHttp(candidateIp: string, hostIp: string): Promise
     const response = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(700),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return null;
     const data = (await response.json()) as { ip?: string; ssid?: string; deviceId?: string; ready?: boolean };
@@ -122,6 +122,53 @@ async function probeCameraOverHttp(candidateIp: string, hostIp: string): Promise
   } catch {
     return null;
   }
+}
+
+async function discoverCameraFromArpAndSubnet(hostIp: string): Promise<{ ip: string; ssid: string; deviceId: string } | null> {
+  const prefixMatch = hostIp.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3})\.(\d{1,3})$/);
+  if (!prefixMatch) return null;
+  const subnetPrefix = prefixMatch[1]!;
+  const hostLastOctet = Number(prefixMatch[2]);
+
+  const candidates = new Set<string>();
+  // 1. Read Windows ARP table for already-known dynamic LAN neighbours on the same subnet
+  if (process.platform === 'win32') {
+    try {
+      const { stdout } = await execFileAsync('arp', ['-a'], { timeout: 1000, windowsHide: true });
+      const lines = stdout.split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+([0-9a-f-]{17})\s+dynamic/i);
+        if (!m) continue;
+        const ip = m[1]!;
+        if (ip.startsWith(`${subnetPrefix}.`) && ip !== hostIp && !ip.endsWith('.1') && !ip.endsWith('.255')) {
+          candidates.add(ip);
+        }
+      }
+    } catch {
+      // Ignore arp errors
+    }
+  }
+
+  // 2. Add common DHCP client range around typical home/hotspot routers
+  for (const octet of [86, 85, 87, 88, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 50, 51, 52]) {
+    if (octet !== hostLastOctet) candidates.add(`${subnetPrefix}.${octet}`);
+  }
+  for (let d = -12; d <= 12; d++) {
+    const oct = hostLastOctet + d;
+    if (oct > 1 && oct < 254 && oct !== hostLastOctet) {
+      candidates.add(`${subnetPrefix}.${oct}`);
+    }
+  }
+
+  const list = Array.from(candidates);
+  const batchSize = 24;
+  for (let i = 0; i < list.length; i += batchSize) {
+    const batch = list.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(ip => probeCameraOverHttp(ip, hostIp, 380)));
+    const hit = results.find(Boolean);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export function getCameraDeviceStatus() {
@@ -169,6 +216,30 @@ export async function syncLaptopWifiOverUsb(force = false) {
           cameraIp: httpProbe.ip,
           port: latestCameraState.port,
           message: `Đã kết nối nhanh Wi-Fi "${httpProbe.ssid || ssid}" · Camera IP: ${httpProbe.ip}`,
+        };
+      }
+    }
+
+    // Fast path 1b: Parallel ARP + Subnet HTTP probe (<400ms, discovers ESP32-CAM on Wi-Fi without resetting USB!)
+    if (hostIp) {
+      const lanHit = await discoverCameraFromArpAndSubnet(hostIp);
+      if (lanHit && (!ssid || !lanHit.ssid || lanHit.ssid === ssid)) {
+        lastSyncedSignature = signature;
+        latestCameraState = {
+          deviceId: lanHit.deviceId,
+          cameraIp: lanHit.ip,
+          ssid: lanHit.ssid || ssid,
+          hostIp,
+          port: latestCameraState?.port || 'LAN',
+          updatedAt: new Date().toISOString(),
+        };
+        return {
+          synced: true,
+          ssid: lanHit.ssid || ssid,
+          hostIp,
+          cameraIp: lanHit.ip,
+          port: latestCameraState.port,
+          message: `Đã tìm thấy ESP32-CAM trên mạng LAN "${lanHit.ssid || ssid}" · IP: ${lanHit.ip}`,
         };
       }
     }

@@ -1,0 +1,54 @@
+@startuml
+title Sơ đồ hoạt động: Kiểm soát ra vào cửa kho bằng thẻ RFID và đồng bộ Socket.IO
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Nhân viên kho|
+start
+:Quẹt thẻ RFID tại đầu đọc cửa kho;
+
+|Thiết bị IoT|
+:Đọc mã UID thẻ (RC522);
+:Gửi yêu cầu HTTP kèm IOT_INGEST_TOKEN\nvà thông tin eventId, deviceId, uid;
+
+|Backend/API|
+:Xác thực token thiết bị IoT;
+|Cơ sở dữ liệu|
+:Kiểm tra thiết bị đã đăng ký cho kho\nvà kiểm tra trùng lặp eventId;
+|Backend/API|
+if (Sự kiện bị trùng eventId?) then ([Trùng lặp])
+  :Trả về kết quả đã ghi nhận trước đó (duplicate=true);
+  stop
+else ([Mới])
+  |Cơ sở dữ liệu|
+  :Truy vấn thẻ RFID, nhân viên sở hữu,\nchi nhánh và quyền truy cập kho;
+  |Backend/API|
+  if (Thẻ ACTIVE, đúng kho, nhân viên đang hoạt động\nvà có quyền vào kho?) then ([Hợp lệ])
+    |Cơ sở dữ liệu|
+    :Thực thi Transaction:\nCập nhật lastSeenAt thiết bị,\nghi sự kiện RFID_SCAN và ACCESS_GRANTED;
+  else ([Không hợp lệ])
+    |Cơ sở dữ liệu|
+    :Thực thi Transaction:\nCập nhật lastSeenAt thiết bị,\nghi sự kiện RFID_SCAN và ACCESS_DENIED;
+    :Tạo cảnh báo an ninh INVALID_RFID\nvà ghi sự kiện ALERT_CREATED;
+  endif
+
+  |Backend/API|
+  :Phát sự kiện thời gian thực Socket.IO\n(kênh iot:access tới phòng kho);
+  :Trả kết quả xác thực cho thiết bị;
+endif
+
+|Giao diện Web/Mobile|
+:Nhận sự kiện iot:access qua Socket.IO;
+:Làm mới nhật ký Timeline cửa kho\nvà hiển thị trạng thái Hợp lệ/Từ chối;
+stop
+@enduml

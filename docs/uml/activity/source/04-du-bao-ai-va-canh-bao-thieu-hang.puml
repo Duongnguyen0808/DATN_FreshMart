@@ -1,0 +1,63 @@
+@startuml
+title Sơ đồ hoạt động: Dự báo nhu cầu AI và xác định nguy cơ thiếu hàng
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Quản lý chi nhánh|
+start
+:Chọn chi nhánh và kỳ dự báo (7, 14 hoặc 30 ngày);
+:Kích hoạt chạy dự báo nhu cầu AI;
+
+|Giao diện Web/Mobile|
+:Gửi yêu cầu POST /forecasts;
+
+|Backend/API|
+:Xác thực JWT và kiểm tra phạm vi chi nhánh;
+|Cơ sở dữ liệu|
+:Truy vấn tồn kho khả dụng (loại trừ lô cách ly/hết hạn)\nvà lịch sử bán hàng 366 ngày của chi nhánh;
+|Backend/API|
+if (Chi nhánh có SKU đang tồn kho?) then ([Không có SKU])
+  :Trả lỗi 409 NO_STOCK_SKUS;
+  |Giao diện Web/Mobile|
+  :Thông báo chi nhánh chưa có SKU để dự báo;
+  stop
+else ([Có SKU])
+  :Tổng hợp chuỗi thời gian bán hàng theo SKU;
+  :Gửi dữ liệu lịch sử sang dịch vụ AI;
+endif
+
+|Dịch vụ AI|
+:Tiền xử lý chuỗi thời gian và tạo đặc trưng;
+:Chạy mô hình dự báo (Gradient Boosting)\nvà tính tồn kho an toàn (Backtest P95);
+:Trả về sản lượng dự báo và mức chất lượng dữ liệu;
+
+|Backend/API|
+:Kiểm tra cấu trúc phản hồi AI bằng Zod schema;
+if (Phản hồi AI hợp lệ?) then ([Không hợp lệ])
+  :Trả lỗi dịch vụ AI không khả dụng;
+  |Giao diện Web/Mobile|
+  :Hiển thị thông báo lỗi gọi dịch vụ AI;
+  stop
+else ([Hợp lệ])
+  |Cơ sở dữ liệu|
+  :Lưu phiên dự báo (ForecastRun)\nvà chi tiết dự báo từng SKU (DemandForecast);
+  |Backend/API|
+  :Đối chiếu tồn khả dụng, nguồn cung đang về\nvà tồn an toàn để đánh giá thiếu hụt;
+  :Tính toán đề xuất điều chuyển nội bộ\nhoặc đặt mua bổ sung;
+  :Trả về danh sách cảnh báo thiếu hàng và đề xuất;
+endif
+
+|Giao diện Web/Mobile|
+:Hiển thị kỳ dự báo, mô hình, thời gian cập nhật\nvà danh sách SKU cần xử lý;
+stop
+@enduml

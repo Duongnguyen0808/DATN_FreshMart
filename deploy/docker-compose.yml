@@ -1,0 +1,83 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: freshmart-sqlserver
+    user: "0:0"
+    restart: always
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Express"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"
+      MSSQL_MEMORY_LIMIT_MB: "1600"
+      TZ: "Asia/Ho_Chi_Minh"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\""]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 20s
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.ai
+    image: freshmart-ai:latest
+    container_name: freshmart-ai
+    restart: always
+    environment:
+      TZ: "Asia/Ho_Chi_Minh"
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.node
+    image: freshmart-node:latest
+    container_name: freshmart-backend
+    working_dir: /app/backend
+    restart: always
+    env_file:
+      - .env.backend
+    volumes:
+      - ./db-snapshot.json.gz:/app/deploy/db-snapshot.json.gz:ro
+      - ./init-and-import.mjs:/app/deploy/init-and-import.mjs:ro
+      - ../backend/src:/app/backend/src:ro
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    command: ["sh", "-c", "node /app/deploy/init-and-import.mjs && npx tsx src/server.ts"]
+
+  web-admin:
+    image: freshmart-node:latest
+    container_name: freshmart-web
+    working_dir: /app/web-admin
+    restart: always
+    environment:
+      NODE_ENV: "production"
+      NEXT_PUBLIC_API_BASE_URL: "/api/v1"
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      TZ: "Asia/Ho_Chi_Minh"
+    depends_on:
+      - backend
+    command: ["npx", "next", "start", "-H", "0.0.0.0", "-p", "3000"]
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: freshmart-tunnel
+    restart: always
+    depends_on:
+      - backend
+      - web-admin
+    volumes:
+      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
+      - ./tunnel.json:/etc/cloudflared/tunnel.json:ro
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+
+volumes:
+  mssql_data:

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { TableState } from '../../components/ui/table-state';
 import { downloadExcel } from '../../lib/excel-export';
 
@@ -13,6 +13,7 @@ import { TablePagination } from '../../components/ui/table-pagination';
 import { useToast } from '../../components/ui/toast-provider';
 import { errorMessage } from '../../lib/auth-api';
 import { getPaymentTransactions, type InvoiceStatus, type PaymentMethod, type PaymentTransactionList } from '../../lib/invoices-api';
+import { formatPaymentReferenceLabel } from '../../lib/invoice-receipt';
 import { getStores, type Store } from '../../lib/organization-api';
 
 type MethodFilter = 'all' | PaymentMethod;
@@ -62,7 +63,7 @@ function PaymentTransactionsPage() {
     const rows = [
       ['TRA CỨU GIAO DỊCH THANH TOÁN'], [],
       ['Hóa đơn', 'Thời gian', 'Phương thức', 'Mã tham chiếu', 'Khách hàng', 'Chi nhánh', 'Thu ngân', 'Số tiền', 'Trạng thái hóa đơn'],
-      ...result.items.map((item) => [item.invoice.code, dateTime(item.invoice.completedAt), methodLabels[item.method], item.reference ?? '', item.invoice.customerName ?? 'Khách lẻ', item.invoice.store.name, item.invoice.cashier.name, String(item.amount), item.invoice.status === 'COMPLETED' ? 'Hoàn tất' : 'Đã hủy']),
+      ...result.items.map((item) => [item.invoice.code, dateTime(item.invoice.completedAt), methodLabels[item.method], formatPaymentReferenceLabel(item.method, item.reference) ?? '', item.invoice.customerName ?? 'Khách vãng lai', item.invoice.store.name, item.invoice.cashier.name, String(item.amount), item.invoice.status === 'COMPLETED' ? 'Hoàn tất' : 'Đã hủy']),
     ];
     const csv = '\uFEFF' + rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\r\n');
     void downloadExcel(csv, `giao-dich-thanh-toan-trang-${page}.xls`);
@@ -90,7 +91,7 @@ function PaymentTransactionsPage() {
     {error && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}
     <section className="suite-panel panel">
       <TabBar items={tabs} value={method} onChange={setMethod} label="Lọc phương thức thanh toán" />
-      <div className="table-scroll"><table><thead><tr><th>Hóa đơn / Thời gian</th><th>Phương thức</th><th>Mã tham chiếu</th><th>Khách hàng</th><th>Chi nhánh / POS</th><th>Thu ngân</th><th className="numeric">Số tiền giao dịch</th><th className="numeric">Tổng hóa đơn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{loading ? <tr><td colSpan={10}><TableState message="Đang tải giao dịch…" loading/></td></tr> : result.items.length ? result.items.map((item) => <tr key={item.id}><td><strong>{item.invoice.code}</strong><small>{dateTime(item.invoice.completedAt)}</small></td><td><StatusBadge tone={methodTones[item.method]}>{methodLabels[item.method]}</StatusBadge></td><td><code>{item.reference ?? '—'}</code></td><td><strong>{item.invoice.customerName ?? 'Khách lẻ'}</strong><small>{item.invoice.customerPhone ?? 'Không có SĐT'}</small></td><td><strong>{item.invoice.store.name}</strong><small>{item.invoice.shift.posCode} · {item.invoice.shift.code}</small></td><td>{item.invoice.cashier.name}</td><td className="numeric"><strong>{money(item.amount)}</strong></td><td className="numeric">{money(item.invoice.total)}</td><td><StatusBadge tone={item.invoice.status === 'COMPLETED' ? 'green' : 'red'}>{item.invoice.status === 'COMPLETED' ? 'Hoàn tất' : 'Đã hủy'}</StatusBadge></td><td><Link className="ui-action-button action-view" href={`/hoa-don/${item.invoice.id}`}>Xem hóa đơn</Link></td></tr>) : <tr><td colSpan={10}><TableState message="Không có giao dịch phù hợp bộ lọc."/></td></tr>}</tbody></table></div>
+      <div className="table-scroll"><table><thead><tr><th>Hóa đơn / Thời gian</th><th>Phương thức</th><th>Chi tiết / Mã tham chiếu</th><th>Khách mua</th><th>Chi nhánh / POS</th><th>Thu ngân</th><th className="numeric">Số tiền giao dịch</th><th className="numeric">Tổng hóa đơn</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>{loading ? <tr><td colSpan={10}><TableState message="Đang tải giao dịch…" loading/></td></tr> : result.items.length ? result.items.map((item) => <tr key={item.id}><td><strong>{item.invoice.code}</strong><small>{dateTime(item.invoice.completedAt)}</small></td><td><StatusBadge tone={methodTones[item.method]}>{methodLabels[item.method]}</StatusBadge></td><td>{formatPaymentReferenceLabel(item.method, item.reference) ? <code>{formatPaymentReferenceLabel(item.method, item.reference)}</code> : '—'}</td><td><strong>Khách vãng lai</strong><small>Bán lẻ tại quầy</small></td><td><strong>{item.invoice.store.name}</strong><small>{item.invoice.shift.posCode} · {item.invoice.shift.code}</small></td><td>{item.invoice.cashier.name}</td><td className="numeric"><strong>{money(item.amount)}</strong></td><td className="numeric">{money(item.invoice.total)}</td><td><StatusBadge tone={item.invoice.status === 'COMPLETED' ? 'green' : 'red'}>{item.invoice.status === 'COMPLETED' ? 'Hoàn tất' : 'Đã hủy'}</StatusBadge></td><td><Link className="ui-action-button action-view" href={`/hoa-don/${item.invoice.id}`}>Xem hóa đơn</Link></td></tr>) : <tr><td colSpan={10}><TableState message="Không có giao dịch phù hợp bộ lọc."/></td></tr>}</tbody></table></div>
       <TablePagination page={result.pagination.page} totalPages={result.pagination.totalPages} shown={result.items.length} total={result.pagination.total} noun="giao dịch" onChange={setPage} />
     </section>
   </div>;

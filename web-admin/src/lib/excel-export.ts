@@ -55,12 +55,12 @@ export async function createExcelBuffer(csv: string) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'FreshMart';
     workbook.created = new Date();
-    workbook.subject = 'Báo cáo vận hành';
+    workbook.subject = 'Thống kê vận hành';
     const headerIndex = findHeaderIndex(rows);
     const count = Math.max(1, ...rows.map(row => row.length));
     const headers = headerIndex >= 0 ? rows[headerIndex] : [];
     const widths = Array.from({ length: count }, (_, index) => columnWidth(rows.map(row => row[index] ?? ''), headers[index] ?? ''));
-    const sheet = workbook.addWorksheet('Báo cáo', {
+    const sheet = workbook.addWorksheet('Thống kê', {
       views: headerIndex >= 0 ? [{ state: 'frozen', ySplit: headerIndex + 1, xSplit: 0, showGridLines: false }] : [{ showGridLines: false }],
       pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, margins: { left: 0.25, right: 0.25, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } },
     });

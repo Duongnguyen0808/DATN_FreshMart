@@ -30,7 +30,8 @@ const types: { value: Filter; label: string; tone: StatusTone }[] = [
 ];
 const byType = Object.fromEntries(types.map(type => [type.value, type])) as Record<Filter, (typeof types)[number]>;
 const number = (value: number) => new Intl.NumberFormat('vi-VN').format(value);
-const dateTime = (value: string) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+const formatDateRow = (value: string) => new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value));
+const formatTimeRow = (value: string) => new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value));
 const empty: TransactionList = { items: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 } };
 
 export default function InventoryLedgerPage() {
@@ -63,21 +64,41 @@ export default function InventoryLedgerPage() {
   useEffect(() => setPage(1), [query, warehouseId, type]);
 
   return <div className="suite-page inventory-ledger-page">
-    <header className="suite-heading"><div><div className="breadcrumb"><Link href="/ton-kho">Hàng hóa</Link><span>›</span> Lịch sử tồn kho</div><h1>Lịch sử biến động tồn kho</h1><p>Tra cứu số trước, số sau, nguyên nhân và người thực hiện của từng giao dịch kho.</p></div><ActionLink tone="view" href="/ton-kho">Về danh sách tồn kho</ActionLink></header>
+    <header className="suite-heading"><div><div className="breadcrumb"><Link href="/ton-kho">Hàng hóa</Link> <span>›</span> <span>Lịch sử tồn kho</span></div><h1>Lịch sử biến động tồn kho</h1><p>Tra cứu số trước, số sau, nghiệp vụ và người thực hiện của từng giao dịch kho.</p></div><ActionLink tone="view" href="/ton-kho">Về danh sách tồn kho</ActionLink></header>
     <section className="suite-panel panel">
       <div className="suite-filters inventory-ledger-filters">
-        <label><Icon name="search"/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Tìm sản phẩm, barcode, sản phẩm, chứng từ hoặc lý do..."/></label>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 40, minHeight: 40, padding: '0 12px', margin: 0, border: '1px solid #d1d5db', borderRadius: 8, background: '#ffffff', boxSizing: 'border-box' }}>
+          <Icon name="search"/>
+          <input
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Tìm tên sản phẩm, mã hàng hoặc barcode..."
+            style={{ border: 0, outline: 'none', boxShadow: 'none', background: 'transparent', height: '100%', minHeight: 0, margin: 0, padding: '0 4px', width: '100%' }}
+          />
+        </label>
         <select aria-label="Kho" value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="">Tất cả kho</option>{warehouses.map(row => <option key={row.id} value={row.id}>{row.store.name} · {row.name}</option>)}</select>
         <select aria-label="Nghiệp vụ" value={type} onChange={event => setType(event.target.value as Filter)}>{types.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
         <button type="button" onClick={() => { setQuery(''); setWarehouseId(''); setType('all'); }}>Xóa lọc</button>
       </div>
       {error && <div className="ui-error" role="alert">{error} <button type="button" onClick={load}>Thử lại</button></div>}
-      <div className="table-scroll"><table><thead><tr><th>Thời gian</th><th>Sản phẩm / Mã sản phẩm</th><th>Chi nhánh / Kho</th><th>Nghiệp vụ</th><th>Chứng từ</th><th>Nguyên nhân</th><th>Người thực hiện</th><th className="numeric">Trước</th><th className="numeric">Thay đổi</th><th className="numeric">Sau</th><th>Thao tác</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan={11}><TableState message="Đang tải lịch sử tồn kho…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có biến động phù hợp bộ lọc."/></td></tr> : result.items.map(row => <tr key={row.id}>
-          <td>{dateTime(row.occurredAt)}</td><td><ProductIdentity name={row.sku.product.name} code={row.sku.product.code} imageUrl={row.sku.product.imageUrl}/></td><td><strong>{row.warehouse.store.name}</strong><small>{row.warehouse.code} · {row.warehouse.name}</small></td>
-          <td><StatusBadge tone={byType[row.type as Filter]?.tone ?? 'blue'}>{byType[row.type as Filter]?.label ?? row.type}</StatusBadge></td><td><code>{row.referenceId}</code></td><td className="inventory-ledger-reason">{row.reason}</td><td>{row.actor?.name ?? 'Hệ thống'}</td>
-          <td className="numeric">{number(row.beforeQuantity)}</td><td className={`numeric ${row.quantity > 0 ? 'positive' : 'negative'}`}><strong>{row.quantity > 0 ? '+' : ''}{number(row.quantity)}</strong></td><td className="numeric"><strong>{number(row.afterQuantity)}</strong></td>
-          <td><ActionLink tone="view" href={`/ton-kho/${row.inventoryId}`}>Xem tồn kho</ActionLink></td>
+      <div className="table-scroll"><table><thead><tr><th>Thời gian</th><th>Sản phẩm / Mã sản phẩm</th><th>Chi nhánh / Kho</th><th>Nghiệp vụ</th><th>Người thực hiện</th><th className="numeric">Trước</th><th className="numeric">Thay đổi</th><th className="numeric">Sau</th><th>Thao tác</th></tr></thead><tbody>
+        {loading ? <tr><td colSpan={9}><TableState message="Đang tải lịch sử tồn kho…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={9}><TableState message="Không có biến động phù hợp bộ lọc."/></td></tr> : result.items.map(row => <tr key={row.id}>
+          <td style={{ whiteSpace: 'nowrap' }}>
+            <strong style={{ display: 'block', fontSize: 13.5, fontWeight: 600, color: '#0f172a', lineHeight: 1.3 }}>
+              {formatDateRow(row.occurredAt)}
+            </strong>
+            <small style={{ display: 'block', marginTop: 2, fontSize: 12, color: '#64748b', lineHeight: 1.25 }}>
+              {formatTimeRow(row.occurredAt)}
+            </small>
+          </td>
+          <td><ProductIdentity name={row.sku.product.name} code={row.sku.product.code} imageUrl={row.sku.product.imageUrl}/></td>
+          <td style={{ whiteSpace: 'nowrap' }}><strong>{row.warehouse.store.name}</strong><small>{row.warehouse.code} · {row.warehouse.name}</small></td>
+          <td style={{ whiteSpace: 'nowrap' }}><StatusBadge tone={byType[row.type as Filter]?.tone ?? 'blue'}>{byType[row.type as Filter]?.label ?? row.type}</StatusBadge></td>
+          <td style={{ whiteSpace: 'nowrap' }}>{row.actor?.name ?? 'Hệ thống'}</td>
+          <td className="numeric" style={{ whiteSpace: 'nowrap' }}>{number(row.beforeQuantity)}</td>
+          <td className={`numeric ${row.quantity > 0 ? 'positive' : 'negative'}`} style={{ whiteSpace: 'nowrap' }}><strong>{row.quantity > 0 ? '+' : ''}{number(row.quantity)}</strong></td>
+          <td className="numeric" style={{ whiteSpace: 'nowrap' }}><strong>{number(row.afterQuantity)}</strong></td>
+          <td style={{ whiteSpace: 'nowrap' }}><ActionLink tone="view" href={`/ton-kho/${row.inventoryId}`}>Xem tồn kho</ActionLink></td>
         </tr>)}
       </tbody></table></div>
       <TablePagination page={page} totalPages={result.pagination.totalPages} shown={result.items.length} total={result.pagination.total} noun="giao dịch kho" onChange={setPage}/>

@@ -109,8 +109,8 @@
 @media(max-width:420px){.shift-denominations{grid-template-columns:1fr}.shift-denominations label{grid-template-columns:80px 1fr}}
 
 /* Keep the shared admin shell readable and centered like KiotViet. */
-html{font-family:Roboto,Arial,sans-serif}
-body{font-family:Roboto,Arial,sans-serif;font-size:14px}
+html{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;font-size:14px}
 button,input,select,textarea{font-family:inherit}
 .main-content{width:100%;max-width:1520px;margin:0 auto;padding:14px 18px 32px;background:#fff!important;align-self:stretch}
 @media(max-width:760px){.main-content{width:100%;max-width:none;margin:0;padding:12px 10px 24px}}

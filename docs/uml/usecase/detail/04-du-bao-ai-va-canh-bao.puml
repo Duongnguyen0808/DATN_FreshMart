@@ -1,0 +1,51 @@
+@startuml
+title Sơ đồ Use Case Chi tiết: Dự báo nhu cầu AI và Cảnh báo FEFO
+
+left to right direction
+skinparam linetype polyline
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam usecaseBorderColor #222222
+skinparam usecaseBackgroundColor #F8FCFB
+skinparam rectangleBorderColor #444444
+skinparam ArrowColor #333333
+skinparam nodesep 26
+skinparam ranksep 65
+
+actor "Chủ hệ thống\n(OWNER)" as Owner
+actor "Quản lý chi nhánh\n(BRANCH_MANAGER)" as Manager
+actor "Nhân viên\n(EMPLOYEE)" as Staff
+
+rectangle "Phân hệ Dự báo AI & Cảnh báo Rủi ro" {
+  usecase "Chạy dự báo nhu cầu\nAI (7/14/30 ngày)" as UC_AI_01
+  usecase "Xem lịch sử\ncác phiên dự báo" as UC_AI_04
+  usecase "Xem cảnh báo\nthiếu hàng AI" as UC_AI_02
+  usecase "Tạo đơn bổ sung\ntừ đề xuất AI" as UC_AI_05
+  usecase "Xem cảnh báo lô\ncận hạn FEFO" as UC_AI_03
+  usecase "Tạo điều chuyển\ntừ cảnh báo FEFO" as UC_AI_06
+}
+
+actor "Dịch vụ AI" as AI
+
+Owner -- UC_AI_01
+Owner -- UC_AI_04
+Owner -- UC_AI_02
+Owner -- UC_AI_03
+
+Manager -- UC_AI_01
+Manager -- UC_AI_04
+Manager -- UC_AI_02
+Manager -- UC_AI_05
+Manager -- UC_AI_03
+Manager -- UC_AI_06
+
+Staff -- UC_AI_02
+Staff -- UC_AI_03
+
+UC_AI_01 -- AI
+UC_AI_05 ..> UC_AI_02 : <<extend>>
+UC_AI_06 ..> UC_AI_03 : <<extend>>
+@enduml

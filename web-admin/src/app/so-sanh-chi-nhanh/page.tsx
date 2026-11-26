@@ -92,13 +92,13 @@ function BranchComparisonPage() {
     ];
     const csv = '\uFEFF' + rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\r\n');
     void downloadExcel(csv, `so-sanh-chi-nhanh-${from}-${to}.xlsx`);
-    showToast('Đã xuất báo cáo so sánh chi nhánh.');
+    showToast('Đã xuất thống kê so sánh chi nhánh.');
   };
   const sortLabels: Record<SortKey, string> = { revenue: 'doanh thu', grossProfit: 'lợi nhuận gộp', inventoryValue: 'giá trị tồn', outstandingDebt: 'công nợ' };
 
   return <div className="suite-page report-page branch-comparison-page">
     <header className="suite-heading">
-      <div><div className="breadcrumb">Phân tích <span>›</span> So sánh chi nhánh</div><h1>So sánh hiệu quả chi nhánh</h1><p>Đặt các chi nhánh trên cùng kỳ báo cáo để đánh giá bán hàng, tồn kho và công nợ.</p></div>
+      <div><div className="breadcrumb">Thống kê <span>›</span> So sánh chi nhánh</div><h1>So sánh hiệu quả chi nhánh</h1><p>Đặt các chi nhánh trên cùng kỳ thống kê để đánh giá bán hàng, tồn kho và công nợ.</p></div>
       <button className="outline-button" onClick={exportExcel} disabled={loading || !report.branches.length}><Icon name="download" />Xuất Excel</button>
     </header>
 
@@ -123,7 +123,7 @@ function BranchComparisonPage() {
       <MetricCard tone="indigo" label="GIÁ TRỊ TỒN KHO" icon={<Icon name="store" />} value={money(report.summary.inventoryValue)} caption={`${number(report.summary.lowStock)} sắp thiếu · ${number(report.summary.outOfStock)} hết hàng`} />
       <MetricCard tone="orange" label="CÔNG NỢ PHẢI TRẢ" icon={<Icon name="warning" />} value={money(report.summary.outstandingDebt)} caption={`Quá hạn ${money(report.summary.overdueDebt)}`} />
     </MetricGrid>
-    <DistributionPanel title="Doanh thu theo chi nhánh" description="Tỷ trọng đóng góp trong cùng kỳ báo cáo." rows={report.branches.map(row => ({ id: row.id, label: row.name, value: row.revenue }))}/>
+    <DistributionPanel title="Doanh thu theo chi nhánh" description="Tỷ trọng đóng góp trong cùng kỳ thống kê." rows={report.branches.map(row => ({ id: row.id, label: row.name, value: row.revenue }))}/>
 
     {(categoryId || productId) && <div className="demo-banner"><strong>Phạm vi bộ lọc sản phẩm:</strong> doanh thu và tồn kho được lọc theo sản phẩm hoặc danh mục; công nợ vẫn là tổng nghĩa vụ của cả chi nhánh vì khoản phải trả không phân bổ theo từng sản phẩm.</div>}
 

@@ -55,8 +55,8 @@ QRCodeReaderSetupErr ESP32QRCodeReader::setup()
   cameraConfig.xclk_freq_hz = 20000000;
   cameraConfig.pixel_format = PIXFORMAT_JPEG;
 
-  cameraConfig.frame_size = FRAMESIZE_UXGA;
-  cameraConfig.jpeg_quality = 12;
+  cameraConfig.frame_size = FRAMESIZE_SVGA;
+  cameraConfig.jpeg_quality = 9;
   cameraConfig.fb_count = 2;
   cameraConfig.fb_location = CAMERA_FB_IN_PSRAM;
   cameraConfig.grab_mode = CAMERA_GRAB_LATEST;
@@ -77,19 +77,19 @@ QRCodeReaderSetupErr ESP32QRCodeReader::setup()
   sensor_t *sensor = esp_camera_sensor_get();
   if (!sensor) { Serial.println("Camera init: sensor unavailable."); esp_camera_deinit(); return SETUP_CAMERA_INIT_ERROR; }
   if (sensor->set_framesize(sensor, frameSize) != 0) { Serial.println("Camera init: frame size could not be set."); esp_camera_deinit(); return SETUP_CAMERA_INIT_ERROR; }
-  // Tune sensor for crisp QR edges, fast shutter speed (low motion blur), and anti-glare
-  sensor->set_quality(sensor, 12);
+  // Tune sensor for crisp QR & 1D barcode edges (disable denoise smearing, brighten indoor exposure, fast shutter)
+  sensor->set_quality(sensor, 9);
   sensor->set_contrast(sensor, 2);
-  sensor->set_sharpness(sensor, 2);
-  sensor->set_brightness(sensor, 0);
+  sensor->set_sharpness(sensor, 3);
+  sensor->set_brightness(sensor, 2);
   sensor->set_saturation(sensor, -1);
-  sensor->set_denoise(sensor, 1);
-  sensor->set_gainceiling(sensor, GAINCEILING_4X);
+  sensor->set_denoise(sensor, 0);
+  sensor->set_gainceiling(sensor, GAINCEILING_32X);
   sensor->set_whitebal(sensor, 1);
   sensor->set_awb_gain(sensor, 1);
   sensor->set_exposure_ctrl(sensor, 1);
   sensor->set_aec2(sensor, 1);
-  sensor->set_ae_level(sensor, -1);
+  sensor->set_ae_level(sensor, 2);
   sensor->set_gain_ctrl(sensor, 1);
   sensor->set_lenc(sensor, 1);
   sensor->set_raw_gma(sensor, 1);

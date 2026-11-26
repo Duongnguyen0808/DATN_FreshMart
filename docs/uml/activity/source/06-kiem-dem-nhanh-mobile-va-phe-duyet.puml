@@ -1,0 +1,69 @@
+@startuml
+title Sơ đồ hoạt động: Kiểm đếm tồn kho nhanh trên Mobile và Phê duyệt trên Web Admin
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Nhân viên vận hành|
+start
+:Mở chức năng Kiểm đếm nhanh trên Mobile;
+:Quét mã vạch sản phẩm bằng Camera iPhone;
+
+|Mobile App|
+:Gọi API tra cứu sản phẩm và tồn hệ thống;
+:Hiển thị ảnh sản phẩm, tên hàng và số lượng tồn hệ thống;
+
+|Nhân viên vận hành|
+:Nhập số lượng đếm thực tế và ghi chú (nếu có);
+:Bấm gửi phiếu kiểm đếm cho quản lý;
+
+|Mobile App|
+:Gửi yêu cầu POST /mobile-ops/quick-stocktakes;
+
+|Backend/API|
+:Xác thực JWT và kiểm tra quyền stocktakes.create;
+|Cơ sở dữ liệu|
+:Truy vấn SKU theo barcode và tồn kho hiện tại;
+|Backend/API|
+if (SKU tồn tại và đang hoạt động?) then ([Không tồn tại])
+  :Trả lỗi 404 SKU_NOT_FOUND;
+  |Mobile App|
+  :Hiển thị thông báo không tìm thấy sản phẩm;
+  stop
+else ([Hợp lệ])
+  :Tính chênh lệch = thực tế - tồn hệ thống;
+  |Cơ sở dữ liệu|
+  :Thực thi Transaction:\nLưu phiếu QuickStocktakeReport (trạng thái PENDING,\nkhông tự động thay đổi tồn kho)\nvà ghi MobileActivityLog;
+  |Backend/API|
+  :Phát sự kiện Socket.IO ops:stocktake;
+  :Trả về mã phiếu kiểm đếm (QKK-...);
+endif
+
+|Quản lý chi nhánh|
+:Mở trang Vận hành Mobile trên Web Admin\nvà xem danh sách phiếu chờ duyệt;
+:Đối chiếu chênh lệch và chọn Phê duyệt hoặc Từ chối;
+
+|Web Admin|
+:Gửi yêu cầu PATCH /mobile-ops/quick-stocktakes/:id/review;
+
+|Backend/API|
+:Xác thực JWT và kiểm tra quyền stocktakes.approve;
+|Cơ sở dữ liệu|
+:Cập nhật trạng thái phiếu (APPROVED hoặc REJECTED),\nlưu người duyệt, thời gian và ghi chú duyệt;
+|Backend/API|
+:Phát sự kiện Socket.IO ops:stocktake;
+:Trả về phiếu đã cập nhật;
+
+|Mobile App|
+:Nhận sự kiện ops:stocktake qua Socket.IO\nvà tự động cập nhật trạng thái phiếu trên màn hình;
+stop
+@enduml

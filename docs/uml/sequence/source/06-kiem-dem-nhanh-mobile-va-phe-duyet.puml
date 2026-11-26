@@ -1,0 +1,77 @@
+@startuml
+title Sơ đồ tuần tự: Kiểm đếm nhanh trên Mobile và Phê duyệt trên Web Admin
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+hide footbox
+
+actor "Nhân viên" as Staff
+boundary "Mobile App" as Mobile
+control "MobileOpsRoutes\n& Service" as Backend
+database "SQL Server\n(Prisma)" as DB
+control "Socket.IO\nRealtime" as IO
+boundary "Web Admin" as Web
+actor "Quản lý" as Manager
+
+Staff -> Mobile : Quét barcode, nhập số lượng\nthực đếm và bấm Gửi
+activate Mobile
+
+Mobile -> Backend : POST /api/v1/mobile-ops/quick-stocktakes
+activate Backend
+
+Backend -> Backend : Xác thực JWT,\nquyền stocktakes.create
+
+Backend -> DB : Truy vấn SKU theo barcode\nvà tồn hệ thống hiện tại
+activate DB
+DB --> Backend : Thông tin SKU và systemQuantity
+deactivate DB
+
+alt Không tìm thấy SKU hoạt động
+  Backend --> Mobile : HTTP 404 SKU_NOT_FOUND
+  Mobile --> Staff : Hiển thị thông báo không tìm thấy
+else SKU hợp lệ
+  Backend -> DB : Transaction: lưu QuickStocktakeReport\n(trạng thái PENDING, không sửa tồn kho)\nvà ghi MobileActivityLog
+  activate DB
+  DB --> Backend : Phiếu QKK-... (PENDING)
+  deactivate DB
+
+  Backend ->> IO : publishMobileOpsEvent(ops:stocktake)
+  Backend --> Mobile : HTTP 201 Created + phiếu kiểm đếm
+  deactivate Backend
+
+  Mobile --> Staff : Hiển thị đã gửi chờ quản lý duyệt
+  deactivate Mobile
+
+  Manager -> Web : Xem phiếu và bấm Phê duyệt/Từ chối
+  activate Web
+
+  Web -> Backend : PATCH /api/v1/mobile-ops/quick-stocktakes/:id/review
+  activate Backend
+
+  Backend -> Backend : Xác thực JWT,\nquyền stocktakes.approve
+
+  Backend -> DB : Cập nhật status (APPROVED/REJECTED),\nngười duyệt, thời gian và ghi chú
+  activate DB
+  DB --> Backend : Phiếu đã cập nhật
+  deactivate DB
+
+  Backend ->> IO : publishMobileOpsEvent(ops:stocktake)
+  activate IO
+  IO ->> Mobile : Emit sự kiện ops:stocktake\n(tự làm mới danh sách phiếu)
+  deactivate IO
+
+  Backend --> Web : HTTP 200 OK + phiếu đã duyệt
+  deactivate Backend
+
+  Web --> Manager : Cập nhật giao diện danh sách phiếu
+  deactivate Web
+end
+@enduml

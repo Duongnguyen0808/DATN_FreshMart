@@ -165,10 +165,27 @@ async function seed() {
     }
     const suppliers = [
       { code: 'SUP-0012', name: 'Công ty CP Sữa Việt Nam (Vinamilk)', contactName: 'Phạm Văn Thái', phone: '0912888333', email: 'thai.pv@vinamilk.com.vn', address: '10 Tân Trào, Quận 7, TP.HCM' },
+      { code: 'SUP-0032', name: 'Tập đoàn Nước giải khát Tân Hiệp Phát', contactName: 'Hoàng Văn Long', phone: '0934556778', email: 'long.hv@thp.com.vn', address: '219 Đại lộ Bình Dương, Thuận An, Bình Dương' },
       { code: 'SUP-0045', name: 'Công ty TNHH Masan Consumer', contactName: 'Nguyễn Quỳnh Anh', phone: '0903456789', email: 'anh.nq@masangroup.com', address: '23 Lê Duẩn, Quận 1, TP.HCM' },
+      { code: 'SUP-0088', name: 'Công ty CP Acecook Việt Nam', contactName: 'Đỗ Mai Chi', phone: '0918776655', email: 'chi.dm@acecookvietnam.com', address: 'Lô II-3, KCN Tân Bình, Tân Phú, TP.HCM' },
       { code: 'SUP-0109', name: 'Công ty CP Chuỗi Thực phẩm TH', contactName: 'Trần Mạnh Cường', phone: '0977112233', email: 'cuong.tm@thmilk.vn', address: '166 Nguyễn Thái Học, Ba Đình, Hà Nội' },
-      { code: 'SUP-0088', name: 'Công ty CP Acecook Việt Nam', contactName: 'Đỗ Mai Chi', phone: '0918776655', email: 'chi.dm@acecookvietnam.com', address: 'Lô II-3, KCN Tân Bình, TP.HCM' },
-      { code: 'SUP-0032', name: 'Tập đoàn Nước giải khát Tân Hiệp Phát', contactName: 'Hoàng Văn Long', phone: '0934556778', email: 'long.hv@thp.com.vn', address: '219 Đại lộ Bình Dương, Bình Dương' },
+      { code: 'SUP-0115', name: 'Công ty TNHH FrieslandCampina Việt Nam', contactName: 'Lê Hoàng Nam', phone: '0908115226', email: 'nam.lh@frieslandcampina.com', address: 'Khu phố Bình Đức 1, Thuận An, Bình Dương' },
+      { code: 'SUP-0118', name: 'Công ty TNHH Nestlé Việt Nam', contactName: 'Vũ Thị Minh Thư', phone: '0913442558', email: 'thu.vm@vn.nestle.com', address: 'Lầu 5, Empress Tower, 138 Hai Bà Trưng, Quận 1, TP.HCM' },
+      { code: 'SUP-0121', name: 'Công ty TNHH Nước giải khát Coca-Cola Việt Nam', contactName: 'Đặng Quốc Huy', phone: '0909331772', email: 'huy.dq@coca-cola.com', address: '485 Xa lộ Hà Nội, Thủ Đức, TP.HCM' },
+      { code: 'SUP-0124', name: 'Công ty TNHH Nước giải khát Suntory PepsiCo Việt Nam', contactName: 'Phan Thanh Tùng', phone: '0984662119', email: 'tung.pt@suntorypepsico.vn', address: '88 Đồng Khởi, Quận 1, TP.HCM' },
+      { code: 'SUP-0127', name: 'Công ty CP Mondelez Kinh Đô Việt Nam', contactName: 'Trịnh Thu Thảo', phone: '0938774220', email: 'thao.tt@mdlz.com', address: '138 Hai Bà Trưng, Đa Kao, Quận 1, TP.HCM' },
+      { code: 'SUP-0130', name: 'Công ty TNHH Thực phẩm Orion Vina', contactName: 'Ngô Minh Tuấn', phone: '0972551884', email: 'tuan.nm@orionworld.vn', address: 'KCN Mỹ Phước 2, Bến Cát, Bình Dương' },
+      { code: 'SUP-0133', name: 'Công ty CP Công nghiệp Thực phẩm Liwayway (Oishi)', contactName: 'Lý Gia Bảo', phone: '0902668991', email: 'bao.lg@oishi.com.vn', address: '14 Đường số 5, KCN Việt Nam - Singapore, Bình Dương' },
+      { code: 'SUP-0136', name: 'Công ty TNHH Thực phẩm Sun Resources Việt Nam', contactName: 'Bùi Phương Linh', phone: '0916883445', email: 'linh.bp@sunresources.vn', address: '72 Lê Thánh Tôn, Quận 1, TP.HCM' },
+      { code: 'SUP-0139', name: 'Công ty CP Tập đoàn Trung Nguyên Legend', contactName: 'Hồ Xuân Hiếu', phone: '0945229663', email: 'hieu.hx@trungnguyenlegend.com', address: '82 Bùi Thị Xuân, Quận 1, TP.HCM' },
+      { code: 'SUP-0142', name: 'Công ty CP Chè & Nông sản Cao nguyên Việt', contactName: 'Đinh Thị Hạnh', phone: '0989114775', email: 'hanh.dt@caonguyenviet.vn', address: '215 Quang Trung, TP. Thái Nguyên' },
+      { code: 'SUP-0145', name: 'Công ty TNHH Dầu thực vật Cái Lân (CALOFIC)', contactName: 'Trương Quốc Khánh', phone: '0915338990', email: 'khanh.tq@calofic.com.vn', address: 'KCN Cái Lân, Hạ Long, Quảng Ninh' },
+      { code: 'SUP-0148', name: 'Công ty CP Thành Thành Công - Biên Hòa (TTC AgriS)', contactName: 'Mai Thanh Sơn', phone: '0906772334', email: 'son.mt@ttcagris.com.vn', address: '253 Hoàng Văn Thụ, Tân Bình, TP.HCM' },
+      { code: 'SUP-0151', name: 'Công ty CP Kỹ nghệ Thực phẩm Việt Nam (VIFON)', contactName: 'Lương Ngọc Diệp', phone: '0932445887', email: 'diep.ln@vifon.com.vn', address: '913 Trường Chinh, Tân Phú, TP.HCM' },
+      { code: 'SUP-0154', name: 'Công ty TNHH Quốc tế Unilever Việt Nam', contactName: 'Võ Minh Khôi', phone: '0903889112', email: 'khoi.vm@unilever.com', address: '156 Nguyễn Lương Bằng, Quận 7, TP.HCM' },
+      { code: 'SUP-0157', name: 'Công ty TNHH Lock&Lock Việt Nam', contactName: 'Hà Thu Trang', phone: '0976332118', email: 'trang.ht@locknlock.com', address: '77 Hoàng Văn Thái, Phú Mỹ Hưng, Quận 7, TP.HCM' },
+      { code: 'SUP-0160', name: 'Công ty TNHH Panasonic Việt Nam', contactName: 'Đoàn Anh Dũng', phone: '0982557441', email: 'dung.da@vn.panasonic.com', address: 'Lô J1-J2, KCN Thăng Long, Đông Anh, Hà Nội' },
+      { code: 'SUP-0163', name: 'Công ty CP Chăn nuôi C.P. Việt Nam', contactName: 'Châu Văn Phúc', phone: '0919664332', email: 'phuc.cv@cp.com.vn', address: 'KCN Biên Hòa 2, Biên Hòa, Đồng Nai' },
     ];
     const supplierIds = new Map<string, string>();
     for (const supplier of suppliers) {

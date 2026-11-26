@@ -5,5 +5,13 @@ export function ProductImage({ src, name, size = 'sm' }: { src?: string | null; 
 }
 
 export function ProductIdentity({ name, code, imageUrl }: { name: string; code?: string | null; imageUrl?: string | null }) {
-  return <div className="product-identity"><ProductImage src={imageUrl} name={name}/><span><strong>{name}</strong>{code && <small>{code}</small>}</span></div>;
+  return (
+    <div className="product-identity" style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <ProductImage src={imageUrl} name={name} />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <strong style={{ display: 'block', lineHeight: 1.3 }}>{name}</strong>
+        {code && <small style={{ display: 'block', lineHeight: 1.25 }}>{code}</small>}
+      </span>
+    </div>
+  );
 }

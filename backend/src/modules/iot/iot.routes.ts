@@ -20,7 +20,7 @@ export const iotRoutes = Router();
 startAutomaticUsbWifiSyncWatcher();
 const ok = (data: unknown) => ({ success: true, message: 'Success', data });
 const deviceLimiter = rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false });
-const cameraFrameLimiter = rateLimit({ windowMs: 60_000, limit: 2400, standardHeaders: 'draft-8', legacyHeaders: false });
+const cameraFrameLimiter = rateLimit({ windowMs: 60_000, limit: 15000, standardHeaders: 'draft-8', legacyHeaders: false });
 const accessCode = z.string().trim().min(3).max(80).regex(/^[A-Za-z0-9_-]+$/);
 const accessUid = z.string().trim().min(8).max(32).transform(value => value.replace(/[\s:-]/g, '').toUpperCase()).pipe(z.string().regex(/^[0-9A-F]{8,20}$/));
 const physicalBase = z.object({ eventId: accessCode, deviceId: accessCode, warehouseId: z.string().uuid(), timestamp: z.iso.datetime({ offset: true }) });
@@ -182,13 +182,93 @@ iotRoutes.get('/iot/camera-latest.jpg', (_request, response) => {
   response.send(latest.jpeg);
 });
 
-iotRoutes.get('/iot/camera-stream', (request, response) => {
+iotRoutes.get('/iot/camera-stream', async (request, response) => {
+  request.socket.setNoDelay(true);
+  const recentPushedFrame = getLatestCameraFrame();
+  // Only connect directly to ESP32-CAM :81/stream if the device is NOT already pushing frames to cameraFrameBus!
+  // On Wi-Fi APs with client isolation (or while cameraUploadTask is active), connecting to :81 stalls for 1500ms.
+  if (!recentPushedFrame || Date.now() - recentPushedFrame.updatedAt > 1200) {
+    const { cameraIp } = getCameraDeviceStatus();
+    if (cameraIp) {
+      const upstreamController = new AbortController();
+      const connectTimeout = setTimeout(() => upstreamController.abort(), 700);
+      request.on('close', () => upstreamController.abort());
+      try {
+        const upstream = await fetch(`http://${cameraIp}:81/stream?sid=${Date.now() % 4294967295}`, {
+          signal: upstreamController.signal,
+          headers: { Accept: 'multipart/x-mixed-replace,*/*' },
+        });
+        clearTimeout(connectTimeout);
+        const contentType = upstream.headers.get('content-type') || '';
+        if (upstream.ok && upstream.body && contentType.includes('multipart/')) {
+          response.writeHead(200, {
+            'Content-Type': contentType,
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            Connection: 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'Access-Control-Allow-Origin': '*',
+          });
+          response.flushHeaders();
+          const reader = upstream.body.getReader();
+          const SOI = Buffer.from([0xff, 0xd8]);
+          const EOI = Buffer.from([0xff, 0xd9]);
+          let tapBuf = Buffer.alloc(0);
+          try {
+            while (!response.writableEnded) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              if (value) {
+                const chunk = Buffer.from(value);
+                response.write(chunk);
+                tapBuf = tapBuf.length === 0 ? chunk : Buffer.concat([tapBuf, chunk]);
+                const lastEoi = tapBuf.lastIndexOf(EOI);
+                if (lastEoi >= 2) {
+                  const lastSoi = tapBuf.lastIndexOf(SOI, lastEoi - 2);
+                  if (lastSoi >= 0) {
+                    const jpegFrame = Buffer.from(tapBuf.subarray(lastSoi, lastEoi + 2));
+                    tapBuf = Buffer.from(tapBuf.subarray(lastEoi + 2));
+                    if (jpegFrame.length >= 256 && jpegFrame.length <= 384 * 1024) {
+                      void ingestCameraFrame(
+                        {
+                          eventId: `stream-${Date.now()}`,
+                          deviceId: 'FRESHMART-CAMERA-IN-01',
+                          warehouseId: '00000000-0000-0000-0000-000000000000',
+                          timestamp: new Date(),
+                        },
+                        jpegFrame,
+                        true,
+                      );
+                    }
+                  } else {
+                    tapBuf = Buffer.from(tapBuf.subarray(lastEoi + 2));
+                  }
+                } else if (tapBuf.length > 384 * 1024) {
+                  tapBuf = Buffer.alloc(0);
+                }
+              }
+            }
+          } catch {
+            // client disconnected or stream ended
+          } finally {
+            await reader.cancel().catch(() => {});
+            if (!response.writableEnded) response.end();
+          }
+          return;
+        }
+      } catch {
+        clearTimeout(connectTimeout);
+      }
+    }
+  }
+
   response.writeHead(200, {
     'Content-Type': 'multipart/x-mixed-replace;boundary=freshmartframe',
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*',
   });
+  response.flushHeaders();
   let closed = false;
   const sendFrame = (frame: { jpeg: Buffer }) => {
     if (closed || response.writableEnded) return;

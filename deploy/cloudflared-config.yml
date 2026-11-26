@@ -1,0 +1,15 @@
+tunnel: a7fc9fdf-5423-4757-ba90-816f9d7c060d
+credentials-file: /etc/cloudflared/tunnel.json
+
+ingress:
+  - hostname: freshmart-iot.store
+    path: /api/v1
+    service: http://backend:4000
+  - hostname: freshmart-iot.store
+    path: /socket.io
+    service: http://backend:4000
+  - hostname: freshmart-iot.store
+    service: http://web-admin:3000
+  - hostname: api.freshmart-iot.store
+    service: http://backend:4000
+  - service: http_status:404

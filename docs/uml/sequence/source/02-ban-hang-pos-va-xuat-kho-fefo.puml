@@ -1,0 +1,100 @@
+@startuml
+title Sơ đồ tuần tự: Bán hàng POS, xuất kho theo FEFO và thanh toán
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+hide footbox
+
+actor "Thu ngân" as Cashier
+boundary "Giao diện POS" as POS
+control "InvoiceRoutes" as Route
+control "InvoicesService" as Service
+control "LotStock" as Lot
+database "SQL Server\n(Prisma)" as DB
+control "Socket.IO\nRealtime" as IO
+
+Cashier -> POS : Chọn sản phẩm, thanh toán\nvà xác nhận tạo hóa đơn
+activate POS
+
+POS -> Route : POST /api/v1/invoices
+activate Route
+
+Route -> Route : Xác thực JWT,\nkiểm tra quyền invoices.create
+
+Route -> Service : createInvoice(user, input)
+activate Service
+
+Service -> DB : Truy vấn ca làm việc, kho xuất,\nkhách hàng và danh sách SKU
+activate DB
+DB --> Service : Dữ liệu ca, kho và SKU
+deactivate DB
+
+alt Ca chưa mở, sai quyền, QR cần PayOS hoặc lệch thanh toán
+  Service --> Route : Ném AppError (400/403/404/409)
+  Route --> POS : Phản hồi lỗi nghiệp vụ
+  POS --> Cashier : Hiển thị thông báo lỗi
+else Điều kiện hợp lệ (Serializable Transaction)
+  opt Có mã khuyến mãi FEFO
+    Service -> DB : Xác minh lô áp mã FEFO\nvà tổng chiết khấu
+    activate DB
+    DB --> Service : Kết quả xác minh FEFO
+    deactivate DB
+  end
+
+  loop Từng SKU trong hóa đơn
+    Service -> DB : Kiểm tra tồn kho khả dụng
+    activate DB
+    DB --> Service : Bản ghi Inventory
+    deactivate DB
+
+    alt Tồn khả dụng < số lượng bán
+      Service --> Route : Rollback & ném 409 INSUFFICIENT_STOCK
+      Route --> POS : HTTP 409 Không đủ tồn kho
+      POS --> Cashier : Cảnh báo hết hàng
+    else Đủ tồn kho
+      Service -> Lot : takeLots(tx, stockId, sold, SALE)
+      activate Lot
+      Lot -> DB : Truy vấn lô AVAILABLE chưa hết hạn\nsắp theo expiresAt tăng dần (FEFO)
+      activate DB
+      DB --> Lot : Danh sách lô FEFO
+      deactivate DB
+
+      Lot -> DB : Trừ tồn từng lô và ghi LotMovement
+      activate DB
+      DB --> Lot : Xác nhận trừ lô
+      deactivate DB
+      Lot --> Service : Hoàn tất xuất lô
+      deactivate Lot
+
+      Service -> DB : Giảm onHand và ghi InventoryTransaction
+      activate DB
+      DB --> Service : Xác nhận cập nhật kho
+      deactivate DB
+    end
+  end
+
+  Service -> DB : Cập nhật doanh thu ca, lưu Invoice,\nPayment, Receivable (nếu ghi nợ) và AuditLog
+  activate DB
+  DB --> Service : Commit giao dịch & trả Invoice
+  deactivate DB
+
+  Service ->> IO : publishInventoryUpdate(warehouseId, SALE)
+  Service --> Route : Hóa đơn đã hoàn tất
+  deactivate Service
+
+  Route --> POS : HTTP 201 Created + hóa đơn
+  deactivate Route
+
+  POS --> Cashier : Hiển thị hóa đơn thành công
+end
+
+deactivate POS
+@enduml

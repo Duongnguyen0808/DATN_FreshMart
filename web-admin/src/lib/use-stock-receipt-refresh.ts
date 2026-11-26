@@ -13,8 +13,6 @@ export function useStockReceiptRefresh(refresh: () => void) {
       seen.add(event.goodsReceiptId);
       callback.current();
     });
-    const onFocus = () => callback.current();
-    window.addEventListener('focus', onFocus);
-    return () => { unsubscribe(); window.removeEventListener('focus', onFocus); };
+    return () => { unsubscribe(); };
   }, []);
 }

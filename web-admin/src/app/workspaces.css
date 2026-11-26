@@ -6,8 +6,8 @@
   .retail-ui .pos-workspace .suite-heading p { font-size: 12px; }
   .retail-ui .pos-workspace .sale-layout { display: grid; grid-template-columns: minmax(0,1fr) 380px; align-items: start; gap: 18px; }
   .retail-ui .pos-sessionbar { grid-column: 1 / -1; border: 1px solid #dfe5e1; border-radius: 8px; background: #fff; }
-  .retail-ui .pos-sessionbar .sale-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; padding: 14px 18px; }
-  .retail-ui .pos-sessionbar label { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 8px 12px; align-items: center; font-size: 12px; color: #738177; }
+  .retail-ui .pos-sessionbar .sale-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; gap: 20px; padding: 14px 18px; }
+  .retail-ui .pos-sessionbar label { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 6px 12px; align-items: center; align-self: start; font-size: 12px; color: #738177; margin: 0; }
   .retail-ui .pos-sessionbar select { width: 100%; min-width: 0; height: 36px; border: 1px solid #dce3de; border-radius: 5px; background: #fafcfb; padding: 6px 10px; }
   .retail-ui .pos-sessionbar .sale-shift-cashier { grid-column: 2; font-size: 10px; }
   .retail-ui .pos-workspace .sale-products { min-width: 0; border: 0; box-shadow: none; background: transparent; overflow: visible; }
@@ -129,8 +129,7 @@
   .retail-ui .suite-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-top: 1px solid #e5ebe6; color: #829287; font-size: 12px; }
   /* Retire older page-specific blue table and filter treatments. */
   body.retail-ui .commerce-shell .suite-page > .suite-panel { min-height: 0; border-color: #dfe6e1; box-shadow: none; overflow: hidden; }
-  body.retail-ui .commerce-shell .suite-page .suite-panel > :is(.ui-tabbar,.suite-filters) { background: #fff; border-color: #e4eae5; padding-inline: 18px; }
-  body.retail-ui .commerce-shell .suite-page .suite-panel .ui-tabbar > .ui-tab { border-radius: 0; background: transparent; box-shadow: none; min-height: 48px; }
+  body.retail-ui .commerce-shell .suite-page .suite-panel > .suite-filters { background: #fff; border-color: #e4eae5; padding-inline: 18px; }
   body.retail-ui .commerce-shell .suite-page .suite-panel table th { background: #f6f8f6; color: #738378; border-color: #e4eae5; font-size: 11px; font-weight: 500; }
   body.retail-ui .commerce-shell .suite-page .suite-panel table td { border-color: #edf1ed; font-size: 13px; }
   body.retail-ui .commerce-shell .suite-page .suite-panel table tbody tr:not(.product-row-selected):hover { background: #f6faf7; }

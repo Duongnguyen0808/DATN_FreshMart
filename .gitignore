@@ -44,3 +44,13 @@ iot/quirc-source-backup/
 design-references/
 .impeccable-tools/
 .taste-skill/
+
+# Local cleanup & VPS runtime secrets
+cleanup-android-flutter.*
+windows-component-*.txt
+deploy/tunnel.json
+deploy/*.gz
+deploy/.env
+deploy/.env.*
+mobile-app/dist/
+mobile-app/.expo/

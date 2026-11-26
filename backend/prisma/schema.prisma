@@ -1161,3 +1161,92 @@ model IotInboundParcel {
   @@index([warehouseId, status])
   @@map("iot_inbound_parcels")
 }
+
+model DailyChecklistItem {
+  id            String    @id @default(uuid()) @db.NVarChar(191)
+  storeId       String    @db.NVarChar(191)
+  dateKey       String    @db.NVarChar(20)
+  category      String    @db.NVarChar(50)
+  title         String    @db.NVarChar(255)
+  description   String?   @db.NVarChar(Max)
+  sortOrder     Int       @default(0)
+  completed     Boolean   @default(false)
+  completedById String?   @db.NVarChar(191)
+  completedByName String? @db.NVarChar(191)
+  completedAt   DateTime?
+  note          String?   @db.NVarChar(Max)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([storeId, dateKey])
+  @@map("daily_checklist_items")
+}
+
+model QuickStocktakeReport {
+  id             String    @id @default(uuid()) @db.NVarChar(191)
+  code           String    @unique @db.NVarChar(191)
+  storeId        String    @db.NVarChar(191)
+  warehouseId    String?   @db.NVarChar(191)
+  skuId          String    @db.NVarChar(191)
+  skuCode        String    @db.NVarChar(191)
+  barcode        String    @db.NVarChar(191)
+  productName    String    @db.NVarChar(255)
+  systemQuantity Int
+  actualQuantity Int
+  difference     Int
+  note           String?   @db.NVarChar(Max)
+  status         String    @default("PENDING") @db.NVarChar(50)
+  reportedById   String    @db.NVarChar(191)
+  reportedByName String    @db.NVarChar(191)
+  reviewedById   String?   @db.NVarChar(191)
+  reviewedByName String?   @db.NVarChar(191)
+  reviewedAt     DateTime?
+  reviewNote     String?   @db.NVarChar(Max)
+  createdAt      DateTime  @default(now())
+
+  @@index([storeId, status, createdAt])
+  @@index([reportedById, createdAt])
+  @@map("quick_stocktake_reports")
+}
+
+model IncidentReport {
+  id             String    @id @default(uuid()) @db.NVarChar(191)
+  code           String    @unique @db.NVarChar(191)
+  storeId        String    @db.NVarChar(191)
+  warehouseId    String?   @db.NVarChar(191)
+  type           String    @db.NVarChar(50)
+  title          String    @db.NVarChar(255)
+  description    String    @db.NVarChar(Max)
+  relatedCode    String?   @db.NVarChar(191)
+  relatedName    String?   @db.NVarChar(255)
+  imageUrl       String?   @db.NVarChar(Max)
+  status         String    @default("OPEN") @db.NVarChar(50)
+  reportedById   String    @db.NVarChar(191)
+  reportedByName String    @db.NVarChar(191)
+  handledById    String?   @db.NVarChar(191)
+  handledByName  String?   @db.NVarChar(191)
+  handledAt      DateTime?
+  resolutionNote String?   @db.NVarChar(Max)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([storeId, status, createdAt])
+  @@index([reportedById, createdAt])
+  @@map("incident_reports")
+}
+
+model MobileActivityLog {
+  id           String   @id @default(uuid()) @db.NVarChar(191)
+  userId       String   @db.NVarChar(191)
+  userName     String   @db.NVarChar(191)
+  storeId      String?  @db.NVarChar(191)
+  activityType String   @db.NVarChar(50)
+  title        String   @db.NVarChar(255)
+  detail       String?  @db.NVarChar(Max)
+  targetCode   String?  @db.NVarChar(191)
+  createdAt    DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([storeId, createdAt])
+  @@map("mobile_activity_logs")
+}

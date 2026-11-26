@@ -49,7 +49,7 @@ function extractLatestJpeg(buffer: Uint8Array): { frame: Uint8Array | null; rema
   };
 }
 
-export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Array) => void } = {}) {
+export function CameraPreview({ onFrameBytes, compact = false }: { onFrameBytes?: (bytes: Uint8Array) => void; compact?: boolean } = {}) {
   const [address, setAddress] = useState('');
   const [connection, setConnection] = useState<Connection | null>(null);
   const [status, setStatus] = useState<CameraState>('idle');
@@ -142,7 +142,7 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
       if (statusRef.current !== 'connected' && statusRef.current !== 'connecting') {
         void pollDeviceIp(false);
       }
-    }, 2000);
+    }, 900);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -164,33 +164,42 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
     const controller = new AbortController();
     let active = true;
     let rendering = false;
+    let pendingBytes: Uint8Array | null = null;
 
     const showFrame = async (bytes: Uint8Array) => {
-      if (!active || rendering || bytes.byteLength < 64) return;
+      if (!active || bytes.byteLength < 64) return;
+      if (rendering) {
+        // Keep only the single newest frame while the previous frame is decoding so we never drop behind real-time motion!
+        pendingBytes = bytes;
+        return;
+      }
       rendering = true;
+      let currentBytes: Uint8Array | null = bytes;
       try {
-        const next = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'image/jpeg' }));
-        const image = new Image();
-        image.src = next;
-        try {
-          await image.decode();
-        } catch {
-          URL.revokeObjectURL(next);
-          return;
-        }
-        if (!active) {
-          URL.revokeObjectURL(next);
-          return;
-        }
-        const previous = currentBlobUrlRef.current;
-        currentBlobUrlRef.current = next;
-        setFrame(next);
-        onFrameBytesRef.current?.(bytes);
-        if (statusRef.current !== 'connected') {
-          updateStatus('connected');
-        }
-        if (previous && previous !== next) {
-          window.setTimeout(() => URL.revokeObjectURL(previous), 400);
+        while (active && currentBytes) {
+          const frameBytes = currentBytes;
+          currentBytes = null;
+          const ab = new ArrayBuffer(frameBytes.byteLength);
+          new Uint8Array(ab).set(frameBytes);
+          const next = URL.createObjectURL(new Blob([ab], { type: 'image/jpeg' }));
+          if (!active) {
+            URL.revokeObjectURL(next);
+            return;
+          }
+          const previous = currentBlobUrlRef.current;
+          currentBlobUrlRef.current = next;
+          setFrame(next);
+          onFrameBytesRef.current?.(frameBytes);
+          if (statusRef.current !== 'connected') {
+            updateStatus('connected');
+          }
+          if (previous && previous !== next) {
+            window.setTimeout(() => URL.revokeObjectURL(previous), 250);
+          }
+          if (pendingBytes) {
+            currentBytes = pendingBytes;
+            pendingBytes = null;
+          }
         }
       } finally {
         rendering = false;
@@ -204,33 +213,46 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]),
       });
 
-    const backendLatestUrl = () => {
+    const backendApiBase = () => {
+      const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').trim().replace(/\/$/, '');
+      if (apiBase) return apiBase;
       const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-      return `http://${host}:4000/api/v1/iot/camera-latest.jpg?t=${Date.now()}`;
+      return `http://${host}:4000/api/v1`;
     };
+
+    const backendLatestUrl = () => `${backendApiBase()}/iot/camera-latest.jpg?t=${Date.now()}`;
+    const backendStreamUrl = () => `${backendApiBase()}/iot/camera-stream?sid=${id}`;
+
+    const isMixedContentBlocked =
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      origin.startsWith('http://');
 
     const run = async () => {
       updateStatus('connecting');
-      setMessage('Đang mở luồng video ESP32-CAM…');
-      try {
-        await request(`${origin}/preview/stop`, 700);
-      } catch {
-        /* Ignore if no prior viewer was active */
+      setMessage('Đang mở luồng video tốc độ cao ESP32-CAM…');
+
+      if (!isMixedContentBlocked) {
+        try {
+          await request(`${origin}/preview/stop`, 700);
+        } catch {
+          /* Ignore if no prior viewer was active */
+        }
+        if (!active) return;
       }
-      if (!active) return;
 
       const streamController = new AbortController();
       let lastFrame = Date.now();
       const watchdog = window.setInterval(() => {
-        if (Date.now() - lastFrame > 4500) streamController.abort();
+        if (Date.now() - lastFrame > 5500) streamController.abort();
       }, 500);
 
       try {
-        const streamUrl = new URL(origin);
-        streamUrl.port = '81';
-        streamUrl.pathname = '/stream';
-        streamUrl.searchParams.set('sid', String(id));
-        const response = await fetch(streamUrl, {
+        // Always connect to Backend's zero-wait cameraFrameBus MJPEG relay first!
+        // Because ESP32-CAM pushes frames directly to Backend over persistent HTTP Keep-Alive,
+        // the backend relay responds in <5ms even on Wi-Fi routers with AP client isolation.
+        const streamTarget = backendStreamUrl();
+        const response = await fetch(streamTarget, {
           cache: 'no-store',
           credentials: 'omit',
           signal: AbortSignal.any([controller.signal, streamController.signal]),
@@ -265,7 +287,7 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
           await reader.cancel().catch(() => {});
         }
       } catch {
-        /* Fallback to rapid snapshot / backend relay if port 81 stream drops */
+        /* Fallback to rapid snapshot / backend relay if stream drops */
       } finally {
         window.clearInterval(watchdog);
         streamController.abort();
@@ -276,6 +298,9 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
       let failures = 0;
       while (active) {
         try {
+          if (isMixedContentBlocked) {
+            throw new Error('use https backend relay');
+          }
           const response = await request(`${origin}/${endpoint}?t=${Date.now()}`, 2000);
           if (!response.ok || !response.headers.get('content-type')?.includes('image/')) throw new Error('no camera image');
           await showFrame(new Uint8Array(await response.arrayBuffer()));
@@ -287,7 +312,7 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
           if (!active) return;
           // Try backend relay frame (pushed directly by ESP32-CAM) before counting a failure
           try {
-            const relayResp = await request(backendLatestUrl(), 1500);
+            const relayResp = await request(backendLatestUrl(), 2500);
             if (relayResp.ok && relayResp.headers.get('content-type')?.includes('image/')) {
               await showFrame(new Uint8Array(await relayResp.arrayBuffer()));
               failures = 0;
@@ -325,45 +350,57 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
     };
   }, [connection, updateStatus]);
 
-  const connect = (event: React.FormEvent) => {
+  const connect = (event: { preventDefault(): void }) => {
     event.preventDefault();
     openAddress(address);
   };
 
   return (
-    <section className="li-camera-preview">
-      <h3>Hình trực tiếp từ ESP32-CAM</h3>
-      <p>Đồng bộ Wi-Fi & IP siêu tốc với Laptop (tự động lấy nét tương phản QR).</p>
-      <form onSubmit={connect}>
-        <label htmlFor="esp-camera-ip">Địa chỉ IP camera</label>
-        <div>
-          <input
-            id="esp-camera-ip"
-            value={address}
-            onChange={event => setAddress(event.target.value)}
-            placeholder="Tự động nhận IP (VD: 192.168.1.86)"
-            autoComplete="off"
-          />
-          <button type="submit">
-            {status === 'connected' ? 'Làm mới' : status === 'error' ? 'Thử lại' : status === 'connecting' ? 'Đang mở…' : 'Kết nối'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void syncWifiWithLaptop()}
-            disabled={syncing}
-            style={{ background: '#0c5e58' }}
-          >
-            {syncing ? 'Đang đồng bộ…' : 'Đồng bộ Wi-Fi'}
-          </button>
-        </div>
-      </form>
+    <section className={`li-camera-preview${compact ? ' is-compact' : ''}`}>
+      {!compact && (
+        <>
+          <h3>Hình trực tiếp từ ESP32-CAM</h3>
+          <p>Đồng bộ Wi-Fi & IP siêu tốc với Laptop (tự động lấy nét tương phản QR).</p>
+          <div className="li-camera-controls">
+            <label htmlFor="esp-camera-ip">Địa chỉ IP camera</label>
+            <div>
+              <input
+                id="esp-camera-ip"
+                value={address}
+                onChange={event => setAddress(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') connect(event);
+                }}
+                placeholder="Tự động nhận IP (VD: 192.168.1.86)"
+                autoComplete="off"
+              />
+              <button type="button" onClick={() => openAddress(address)}>
+                {status === 'connected' ? 'Làm mới' : status === 'error' ? 'Thử lại' : status === 'connecting' ? 'Đang mở…' : 'Kết nối'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void syncWifiWithLaptop()}
+                disabled={syncing}
+                style={{ background: '#0c5e58' }}
+              >
+                {syncing ? 'Đang đồng bộ…' : 'Đồng bộ Wi-Fi'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       <div className="li-camera-image" aria-busy={status === 'connecting'}>
         {frame && status !== 'error' && (
           <img
             src={frame}
             alt="Hình trực tiếp từ ESP32-CAM"
+            decoding="async"
             onError={() => setFrame('')}
-            style={{ filter: 'contrast(1.1) brightness(1.03)', willChange: 'contents' }}
+            style={{
+              filter: 'contrast(1.08) brightness(1.02)',
+              imageRendering: 'auto',
+              transform: 'translateZ(0)',
+            }}
           />
         )}
         <span className="li-camera-target" aria-hidden="true" />
@@ -378,9 +415,19 @@ export function CameraPreview({ onFrameBytes }: { onFrameBytes?: (bytes: Uint8Ar
           </span>
         )}
       </div>
-      <small className={`li-camera-status ${status}`} role="status">
-        {message}
-      </small>
+      <div className="li-camera-foot">
+        <small className={`li-camera-status ${status}`} role="status">
+          {message}
+        </small>
+        {compact && status === 'error' && (
+          <div className="li-camera-compact-actions">
+            <button type="button" onClick={() => openAddress(address)}>Thử lại</button>
+            <button type="button" onClick={() => void syncWifiWithLaptop()} disabled={syncing}>
+              {syncing ? 'Đang đồng bộ…' : 'Đồng bộ Wi-Fi'}
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }

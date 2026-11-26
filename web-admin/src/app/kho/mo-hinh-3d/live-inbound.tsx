@@ -13,6 +13,8 @@ import { api, errorMessage } from '../../../lib/auth-api';
 import { getInventory, type Inventory } from '../../../lib/inventory-api';
 import { getWarehouses, type Warehouse } from '../../../lib/organization-api';
 import { getPurchaseOrders, type PurchaseOrder } from '../../../lib/purchase-orders-api';
+import { createFefoRiskTransfer, getFefoExpiryRisks, type FefoExpiryRiskItem } from '../../../lib/forecasts-api';
+import { createTransfer, dispatchTransfer, getTransfer, getTransfers, receiveTransfer, type Transfer } from '../../../lib/transfers-api';
 import type { IotEvent } from '../../../lib/iot-api';
 import { subscribeIotEvents, subscribeInventoryUpdates } from '../../../lib/iot-realtime';
 import type { DemoState } from './warehouse-twin-scene';
@@ -40,9 +42,11 @@ const TIMELINE: Record<DemoFlow, TimelineStep[]> = {
     { title: 'Đưa lên kệ', detail: 'Xe nâng cất hàng vào kho', states: ['MOVE_TO_STORAGE', 'STORED'] },
   ],
   transfer: [
-    { title: '1. Lấy hàng & Xuất kho', detail: 'Xe nâng lấy pallet và xếp lên xe tại kho nguồn', states: ['TRANSFER_PREPARING', 'FORKLIFT_PICKUP', 'MOVE_TO_OUTBOUND', 'IOT_CAMERA_OUT_SIMULATED', 'FORKLIFT_DELIVER_TO_TRUCK', 'TRANSFER_LOADING_TRUCK', 'WAITING_DISPATCH_CONFIRM', 'DISPATCHED'] },
-    { title: '2. Vận chuyển', detail: 'Xe tải chở hàng từ kho nguồn sang kho đích', states: ['IN_TRANSIT', 'DESTINATION_ARRIVAL'] },
-    { title: '3. Nhận hàng & Cất kệ', detail: 'Dỡ hàng tại kho đích và xe nâng đưa vào kệ', states: ['DESTINATION_PALLET_PICKUP', 'IOT_CAMERA_IN_SIMULATED', 'WAITING_RECEIVE_CONFIRM', 'RECEIVED', 'MOVE_TO_STORAGE', 'STORED'] },
+    { title: 'Lấy hàng từ kệ nguồn', detail: 'Xe nâng vào lối kệ lấy pallet cần chuyển', states: ['TRANSFER_PREPARING', 'FORKLIFT_PICKUP'] },
+    { title: 'ESP32-CAM quét xuất', detail: 'Đưa kiện qua cổng xuất và đọc tem QR phiếu', states: ['MOVE_TO_OUTBOUND', 'IOT_CAMERA_OUT_SIMULATED', 'WAITING_DISPATCH_CONFIRM'] },
+    { title: 'Xếp lên xe & Vận chuyển', detail: 'Đưa pallet lên xe tải, rời kho nguồn sang kho đích', states: ['FORKLIFT_DELIVER_TO_TRUCK', 'TRANSFER_LOADING_TRUCK', 'DISPATCHED', 'IN_TRANSIT', 'DESTINATION_ARRIVAL'] },
+    { title: 'ESP32-CAM quét nhận', detail: 'Dỡ hàng tại kho đích và quét QR đối chiếu', states: ['DESTINATION_PALLET_PICKUP', 'IOT_CAMERA_IN_SIMULATED', 'WAITING_RECEIVE_CONFIRM', 'RECEIVED'] },
+    { title: 'Đưa lên kệ kho đích', detail: 'Xe nâng cất hàng vào kệ và đồng bộ tồn kho', states: ['MOVE_TO_STORAGE', 'STORED'] },
   ],
 };
 const ACCESS_TIMELINE: Record<AccessKind, { title: string; detail: string; phases: AccessPhase[] }[]> = {
@@ -73,13 +77,22 @@ const ACCESS_NAMES: Record<AccessKind, string> = { authorized: 'Truy cập cửa
 // Animation-driven transitions (scene calls onMotionComplete when a movement finishes).
 const NEXT_ON_MOTION: Record<DemoFlow, Partial<Record<DemoState, DemoState>>> = {
   inbound: { TRUCK_APPROACHING: 'TRUCK_DOCKING', TRUCK_DOCKING: 'TRUCK_UNLOADING', TRUCK_UNLOADING: 'FORKLIFT_TO_TRUCK', FORKLIFT_TO_TRUCK: 'PALLET_UNLOADING', PALLET_UNLOADING: 'IOT_CAMERA_SIMULATED', IOT_CAMERA_SIMULATED: 'WAITING_CONFIRMATION', MOVE_TO_STORAGE: 'STORED' },
-  transfer: { TRANSFER_PREPARING: 'FORKLIFT_PICKUP', FORKLIFT_PICKUP: 'MOVE_TO_OUTBOUND', MOVE_TO_OUTBOUND: 'FORKLIFT_DELIVER_TO_TRUCK', FORKLIFT_DELIVER_TO_TRUCK: 'TRANSFER_LOADING_TRUCK', IN_TRANSIT: 'DESTINATION_ARRIVAL', DESTINATION_ARRIVAL: 'DESTINATION_PALLET_PICKUP', DESTINATION_PALLET_PICKUP: 'MOVE_TO_STORAGE', MOVE_TO_STORAGE: 'STORED' },
+  transfer: { TRANSFER_PREPARING: 'FORKLIFT_PICKUP', FORKLIFT_PICKUP: 'MOVE_TO_OUTBOUND', MOVE_TO_OUTBOUND: 'IOT_CAMERA_OUT_SIMULATED', FORKLIFT_DELIVER_TO_TRUCK: 'TRANSFER_LOADING_TRUCK', IN_TRANSIT: 'DESTINATION_ARRIVAL', DESTINATION_ARRIVAL: 'DESTINATION_PALLET_PICKUP', DESTINATION_PALLET_PICKUP: 'IOT_CAMERA_IN_SIMULATED', MOVE_TO_STORAGE: 'STORED' },
 };
 // Timed transitions for states without a movement of their own.
 const NEXT_ON_TIMER: Record<DemoFlow, Partial<Record<DemoState, [DemoState, number]>>> = {
   inbound: { GOODS_RECEIVED: ['MOVE_TO_STORAGE', 1000], STORED: ['COMPLETE', 1000] },
-  transfer: { IOT_CAMERA_OUT_SIMULATED: ['FORKLIFT_DELIVER_TO_TRUCK', 800], TRANSFER_LOADING_TRUCK: ['DISPATCHED', 1800], DISPATCHED: ['IN_TRANSIT', 700], RECEIVED: ['MOVE_TO_STORAGE', 800], STORED: ['COMPLETE', 1000] },
+  transfer: { IOT_CAMERA_OUT_SIMULATED: ['FORKLIFT_DELIVER_TO_TRUCK', 800], DISPATCHED: ['IN_TRANSIT', 700], RECEIVED: ['MOVE_TO_STORAGE', 800], STORED: ['COMPLETE', 1000] },
 };
+
+function uint8ToBase64DataUrl(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return `data:image/jpeg;base64,${btoa(binary)}`;
+}
 
 export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' }) {
   const [prepareOpen, setPrepareOpen] = useState(false);
@@ -117,6 +130,17 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const [queue, setQueue] = useState<IotEvent[]>([]), [selected, setSelected] = useState<Inventory | null>(null), [zone, setZone] = useState('overview');
   // Inbound waits for a real camera-code event; transfer remains a simulated visualization.
   const [flow, setFlow] = useState<DemoFlow>('inbound'), [destId, setDestId] = useState(''), [transferSkuId, setTransferSkuId] = useState('');
+  const [transferQty, setTransferQty] = useState(5);
+  const [useRealTransfer, setUseRealTransfer] = useState(true);
+  const [selectedExistingTransferId, setSelectedExistingTransferId] = useState('');
+  const [fefoRisks, setFefoRisks] = useState<FefoExpiryRiskItem[]>([]);
+  const [realTransfers, setRealTransfers] = useState<Transfer[]>([]);
+  const [selectedFefoRisk, setSelectedFefoRisk] = useState<FefoExpiryRiskItem | null>(null);
+  const [activeTransfer, setActiveTransfer] = useState<Transfer | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState('');
+  const transferFrameRef = useRef<{ bytes: Uint8Array; at: number } | null>(null);
+  const transferScanInFlight = useRef(false);
   const [destItems, setDestItems] = useState<Inventory[]>([]);
   const [campusStock, setCampusStock] = useState<Record<string, Inventory[]>>({});
   useEffect(() => {
@@ -270,6 +294,14 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     return () => { active = false; clearInterval(timer); };
   }, [section, motion, prepared, warehouseId]);
   const onMotionComplete = (state: DemoState) => {
+    if (flow === 'transfer' && state === 'TRANSFER_LOADING_TRUCK') {
+      setMotion(activeTransfer ? 'WAITING_DISPATCH_CONFIRM' : 'DISPATCHED');
+      return;
+    }
+    if (flow === 'transfer' && state === 'IOT_CAMERA_IN_SIMULATED') {
+      setMotion(activeTransfer ? 'WAITING_RECEIVE_CONFIRM' : 'RECEIVED');
+      return;
+    }
     const next = NEXT_ON_MOTION[flow][state];
     if (next) setMotion(next);
     if (state === 'MOVE_TO_STORAGE') setZone('storage-a');
@@ -283,7 +315,102 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
     loadWarehouseStock(destId).then(rows => { if (alive) setDestItems(rows); }).catch(() => {});
     return () => { alive = false; };
   }, [flow, destId]);
-  const resetDemo = () => { demoSession.current = null; setPrepared(null); setScanQueue([]); setQueue([]); setPaused(false); setMotion('IDLE'); setZone('overview'); access.stop(); };
+  useEffect(() => {
+    if (section !== 'scene' || flow !== 'transfer') return;
+    let alive = true;
+    void Promise.all([
+      getFefoExpiryRisks(undefined, 14).catch(() => null),
+      getTransfers({ status: 'all', page: 1 }).catch(() => null),
+    ]).then(([risks, list]) => {
+      if (!alive) return;
+      if (risks?.items) {
+        setFefoRisks(risks.items.filter(item => item.recommendedTransferBranch && item.atRiskQuantity > 0));
+      }
+      if (list?.items) {
+        setRealTransfers(list.items.filter(t => t.status === 'READY' || t.status === 'IN_TRANSIT'));
+      }
+    });
+    return () => { alive = false; };
+  }, [section, flow, setupOpen, warehouseId]);
+  const confirmTransferStep = useCallback(async (via: 'camera' | 'manual') => {
+    if (!activeTransfer || transferBusy) return;
+    setTransferBusy(true);
+    setTransferError('');
+    try {
+      if (motionRef.current === 'WAITING_DISPATCH_CONFIRM') {
+        const updated = await dispatchTransfer(
+          activeTransfer.id,
+          via === 'camera' ? 'Quét QR xuất kho qua ESP32-CAM tại mô hình 3D' : 'Xác nhận xuất kho trên mô hình 3D',
+        );
+        setActiveTransfer(updated);
+        setNotice(`Đã quét xuất kho phiếu ${updated.code}. Xe vận chuyển sang ${updated.destinationWarehouse.name}.`);
+        setMotion('DISPATCHED');
+        void refresh(updated.sourceWarehouseId);
+      } else if (motionRef.current === 'WAITING_RECEIVE_CONFIRM') {
+        const updated = await receiveTransfer(activeTransfer.id, {
+          note: via === 'camera' ? 'Quét QR nhận hàng qua ESP32-CAM tại mô hình 3D' : 'Xác nhận nhận hàng tại kho đích',
+          items: activeTransfer.items.map(it => ({
+            skuId: it.skuId,
+            quantity: it.approvedQuantity ?? it.dispatchedQuantity ?? it.requestedQuantity,
+            discrepancyReason: null,
+          })),
+        });
+        setActiveTransfer(updated);
+        setNotice(`Hoàn tất phiếu ${updated.code} · Đã cộng tồn kho thực tế tại ${updated.destinationWarehouse.name}.`);
+        setMotion('RECEIVED');
+        void refresh(updated.sourceWarehouseId);
+        if (destId) void loadWarehouseStock(destId).then(setDestItems).catch(() => {});
+      }
+    } catch (e) {
+      setTransferError(errorMessage(e));
+    } finally {
+      setTransferBusy(false);
+    }
+  }, [activeTransfer, transferBusy, refresh, destId]);
+  useEffect(() => {
+    if (section !== 'scene' || flow !== 'transfer' || !activeTransfer) return;
+    if (motion !== 'WAITING_DISPATCH_CONFIRM' && motion !== 'WAITING_RECEIVE_CONFIRM') {
+      transferScanInFlight.current = false;
+      return;
+    }
+    let alive = true;
+    const expectedCode = activeTransfer.code.toUpperCase();
+    const expectedBarcodes = new Set(activeTransfer.items.map(i => i.sku.barcode?.trim().toUpperCase()).filter(Boolean));
+    const timer = window.setInterval(async () => {
+      if (!alive || transferScanInFlight.current || transferBusy) return;
+      transferScanInFlight.current = true;
+      try {
+        // Ask backend to decode its in-memory latestFrame first (0 base64 upload overhead, keeps 25 FPS stream silky smooth!)
+        let res = await api<{ decoded: boolean; reason?: string; code: string | null; resolvedBarcode: string | null }>('iot/camera/pos-scan', 'POST', { source: 'esp32' }, 2500);
+        if (!res.decoded && res.reason === 'NO_CAMERA_FRAME') {
+          const recent = transferFrameRef.current;
+          if (recent && Date.now() - recent.at < 2000) {
+            res = await api<{ decoded: boolean; reason?: string; code: string | null; resolvedBarcode: string | null }>(
+              'iot/camera/pos-scan',
+              'POST',
+              { source: 'image', imageDataUrl: uint8ToBase64DataUrl(recent.bytes) },
+              2500,
+            );
+          }
+        }
+        const scanned = res.code?.trim().toUpperCase() ?? '';
+        const resolved = res.resolvedBarcode?.trim().toUpperCase() ?? '';
+        if (alive && res.decoded && (scanned === expectedCode || (scanned && expectedBarcodes.has(scanned)) || (resolved && expectedBarcodes.has(resolved)))) {
+          await confirmTransferStep('camera');
+        }
+      } catch {
+        // Ignore transient camera frame poll errors
+      } finally {
+        transferScanInFlight.current = false;
+      }
+    }, 450);
+    return () => {
+      alive = false;
+      transferScanInFlight.current = false;
+      window.clearInterval(timer);
+    };
+  }, [section, flow, activeTransfer, motion, transferBusy, confirmTransferStep]);
+  const resetDemo = () => { demoSession.current = null; setPrepared(null); setActiveTransfer(null); setTransferError(''); transferScanInFlight.current = false; setScanQueue([]); setQueue([]); setPaused(false); setMotion('IDLE'); setZone('overview'); access.stop(); };
   const chooseFlow = (next: DemoFlow) => { if (next === flow && !accessKind) return; resetDemo(); setMovingEvent(null); setAccessKind(null); setDoorInspector(false); setFlow(next); };
   const chooseAccess = (next: AccessKind) => { if (next === accessKind) return; resetDemo(); setMovingEvent(null); setAccessKind(next); setDoorInspector(false); };
   const startDemo = () => { if (accessKind) { void access.start(accessKind); return; } if (flow === 'transfer') { setSetupOpen(true); return; } setPrepareOpen(true); };
@@ -436,20 +563,92 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   const running = accessKind ? access.busy || !['IDLE', 'COMPLETE', 'ALERT', 'WAITING_REAL'].includes(access.phase) : motion !== 'IDLE' && motion !== 'COMPLETE';
   const destination = warehouses.find(w => w.id === destId);
   const transferItem = stocked.find(i => i.skuId === transferSkuId) ?? stocked[0];
+  const sortedFefoRisks = useMemo(
+    () => [...fefoRisks].sort((a, b) => Number(b.warehouseId === warehouseId) - Number(a.warehouseId === warehouseId) || a.daysRemaining - b.daysRemaining),
+    [fefoRisks, warehouseId],
+  );
+  const selectedExistingTransfer = realTransfers.find(t => t.id === selectedExistingTransferId) ?? null;
+  const startTransferDemo = async () => {
+    setTransferError('');
+    if (selectedExistingTransfer) {
+      setWarehouseId(selectedExistingTransfer.sourceWarehouseId);
+      setDestId(selectedExistingTransfer.destinationWarehouseId);
+      setTransferSkuId(selectedExistingTransfer.items[0]?.skuId ?? '');
+      setActiveTransfer(selectedExistingTransfer);
+      setSetupOpen(false);
+      setRun(n => n + 1);
+      setPaused(false);
+      setMovingEvent(null);
+      setZone(selectedExistingTransfer.status === 'IN_TRANSIT' ? 'receiving' : 'shipping');
+      setMotion(selectedExistingTransfer.status === 'IN_TRANSIT' ? 'DESTINATION_ARRIVAL' : 'TRANSFER_PREPARING');
+      return;
+    }
+    if (!destination || !transferItem) return;
+    const safeQty = Math.max(1, Math.min(Math.round(transferQty) || 1, transferItem.onHand));
+    if (useRealTransfer) {
+      setTransferBusy(true);
+      try {
+        let createdId = '';
+        if (
+          selectedFefoRisk &&
+          selectedFefoRisk.warehouseId === warehouseId &&
+          selectedFefoRisk.recommendedTransferBranch?.warehouseId === destId &&
+          selectedFefoRisk.skuId === transferItem.skuId
+        ) {
+          const res = await createFefoRiskTransfer({
+            sourceWarehouseId: warehouseId,
+            destinationWarehouseId: destId,
+            skuId: transferItem.skuId,
+            quantity: safeQty,
+            lotCode: selectedFefoRisk.lotCode,
+          });
+          createdId = res.id;
+        } else {
+          const created = await createTransfer({
+            sourceWarehouseId: warehouseId,
+            destinationWarehouseId: destId,
+            reason: `Điều chuyển từ mô hình 3D · ${transferItem.sku.product.name}`,
+            items: [{ skuId: transferItem.skuId, quantity: safeQty }],
+          });
+          createdId = created.id;
+        }
+        const fullTransfer = await getTransfer(createdId);
+        setActiveTransfer(fullTransfer);
+        setSetupOpen(false);
+        setRun(n => n + 1);
+        setPaused(false);
+        setMovingEvent(null);
+        setZone('shipping');
+        setMotion(fullTransfer.status === 'IN_TRANSIT' ? 'DESTINATION_ARRIVAL' : 'TRANSFER_PREPARING');
+      } catch (e) {
+        setTransferError(errorMessage(e));
+      } finally {
+        setTransferBusy(false);
+      }
+      return;
+    }
+    setActiveTransfer(null);
+    setSetupOpen(false);
+    setRun(n => n + 1);
+    setPaused(false);
+    setMovingEvent(null);
+    setZone('shipping');
+    setMotion('TRANSFER_PREPARING');
+  };
   const timeline = accessKind ? ACCESS_TIMELINE[accessKind] : TIMELINE[flow];
   const activeStep = accessKind ? (access.phase === 'IDLE' ? -1 : Math.max(0, ACCESS_TIMELINE[accessKind].findIndex(step => step.phases.includes(access.phase)))) : motion === 'COMPLETE' ? timeline.length : TIMELINE[flow].findIndex(step => step.states.includes(motion));
   const shownStep = Math.max(0, activeStep + (activeStep < 0 && motion !== 'IDLE' ? 1 : 0));
   const motionLabel = accessKind ? (access.phase === 'IDLE' ? 'Sẵn sàng' : access.phase === 'ALERT' ? 'Cảnh báo cửa kho' : access.phase === 'COMPLETE' ? 'Hoàn tất phiên ra vào kho' : access.phase === 'WAITING_REAL' ? 'Chờ tín hiệu ESP32' : access.phase === 'WAITING_ALERT' ? 'Đang theo dõi thời gian mở cửa' : access.phase === 'APPROACH' ? 'Nhân viên đang đến cửa' : access.phase === 'SCANNING' ? 'Chờ quét thẻ nhân viên…' : access.phase === 'VERIFYING' ? 'Backend đang xác thực thẻ' : access.phase === 'GRANTED' ? 'Đã xác thực nhân viên' : access.phase === 'OPENING' ? 'Cửa cuốn đang mở' : access.phase === 'ENTERING' ? 'Nhân viên đang vào kho' : access.phase === 'WAITING_CLOSE' ? 'Chờ cảm biến báo cửa đóng…' : 'Cửa cuốn đang đóng') : paused ? 'Tạm dừng' : motion === 'IDLE' ? 'Sẵn sàng' : motion === 'COMPLETE' ? 'Hoàn tất luồng' : motion === 'WAITING_CONFIRMATION' ? 'Chờ camera quét mã kiện' : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Chờ xác nhận xuất kho' : motion === 'WAITING_RECEIVE_CONFIRM' ? 'Chờ xác nhận nhận hàng' : 'Đang chạy mô phỏng';
-  const motionHint = accessKind ? (access.error || access.activeAlerts[0]?.message || (access.phase === 'WAITING_ALERT' || (access.phase === 'ALERT' && access.activeAlerts.some(a => a.type === 'DOOR_OPEN_TOO_LONG')) ? ('Cửa mở ' + access.elapsedOpenSeconds + ' giây · giới hạn ' + access.openLimit + ' giây.') : '') || (access.phase === 'GRANTED' ? access.lastAccess?.employee?.name : '') || access.notice || (accessKind === 'authorized' ? 'Nhân viên → RFID → xác thực → mở cửa → vào kho → đóng cửa' : accessKind === 'unauthorized' ? 'Cửa mở không có thẻ hợp lệ → cảnh báo → lưu nhật ký' : 'Quét thẻ → mở cửa → quá thời gian → cảnh báo → đóng cửa')) : motion === 'IDLE' ? (flow === 'inbound' ? 'Xe đến → dỡ hàng → camera đọc mã kiện → xác nhận nhập → cất lên kệ' : 'Bấm Chạy demo: toàn bộ luồng là mô phỏng, không đổi tồn kho')
+  const motionHint = accessKind ? (access.error || access.activeAlerts[0]?.message || (access.phase === 'WAITING_ALERT' || (access.phase === 'ALERT' && access.activeAlerts.some(a => a.type === 'DOOR_OPEN_TOO_LONG')) ? ('Cửa mở ' + access.elapsedOpenSeconds + ' giây · giới hạn ' + access.openLimit + ' giây.') : '') || (access.phase === 'GRANTED' ? access.lastAccess?.employee?.name : '') || access.notice || (accessKind === 'authorized' ? 'Nhân viên → RFID → xác thực → mở cửa → vào kho → đóng cửa' : accessKind === 'unauthorized' ? 'Cửa mở không có thẻ hợp lệ → cảnh báo → lưu nhật ký' : 'Quét thẻ → mở cửa → quá thời gian → cảnh báo → đóng cửa')) : motion === 'IDLE' ? (flow === 'inbound' ? 'Xe đến → dỡ hàng → camera đọc mã kiện → xác nhận nhập → cất lên kệ' : 'Hỗ trợ AI FEFO đề xuất chuyển kho + quét QR ESP32-CAM xác nhận xuất/nhập thật')
     : motion === 'WAITING_CONFIRMATION' ? 'ESP32-CAM: quét tem QR của kiện đang chờ nhận.'
-    : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Bấm Xác nhận xuất kho để xe rời kho'
-    : motion === 'WAITING_RECEIVE_CONFIRM' ? 'Bấm Xác nhận nhận hàng tại kho đích'
-    : motion === 'COMPLETE' ? (flow === 'inbound' ? 'Đã nhập kho và cất hàng. Có thể xem phiếu nhập và tồn kho.' : 'Phiếu thật thực hiện ở trang Phiếu điều chuyển')
-    : movingEvent?.automationMessage ?? (flow === 'inbound' ? 'Cảnh minh họa, không tự cộng tồn' : `Mô phỏng ${transferItem?.sku.product.name ?? 'pallet'} → ${destination?.name ?? 'kho đích'}`);
+    : motion === 'WAITING_DISPATCH_CONFIRM' ? (activeTransfer ? `ESP32-CAM: quét mã QR phiếu ${activeTransfer.code} để xuất kho thật` : 'Bấm Xác nhận xuất kho để xe rời kho')
+    : motion === 'WAITING_RECEIVE_CONFIRM' ? (activeTransfer ? `ESP32-CAM: quét mã QR phiếu ${activeTransfer.code} tại kho đích` : 'Bấm Xác nhận nhận hàng tại kho đích')
+    : motion === 'COMPLETE' ? (flow === 'inbound' ? 'Đã nhập kho và cất hàng. Có thể xem phiếu nhập và tồn kho.' : activeTransfer ? `Đã hoàn tất phiếu thật ${activeTransfer.code} · tồn kho đã đồng bộ` : 'Hoàn tất mô phỏng chuyển hàng; bật Thực thi phiếu thật để cập nhật tồn')
+    : movingEvent?.automationMessage ?? (flow === 'inbound' ? 'Cảnh minh họa, không tự cộng tồn' : `${activeTransfer ? activeTransfer.code : 'Mô phỏng'} · ${activeTransfer?.items[0]?.sku.product.name ?? transferItem?.sku.product.name ?? 'pallet'} → ${destination?.name ?? 'kho đích'}`);
   const tone = (status?: string | null) => status === 'RECEIVED' ? 'ok' : status === 'WAITING_CONFIRMATION' || status === 'READY' ? 'wait' : status === 'BLOCKED' || status === 'UNREGISTERED' ? 'bad' : 'neutral';
   const scanStepStatus = useMemo(() => {
     if (access.phase === 'SCANNING') {
-      return { text: '⏳ Đang chờ quét thẻ RC522…', tone: 'wait' };
+      return { text: 'Đang chờ quét thẻ RC522…', tone: 'wait' };
     }
     if (access.lastAccess) {
       const scanAgeMs = Date.now() - new Date(access.lastAccess.occurredAt).getTime();
@@ -473,7 +672,216 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
   }, [access.phase, access.lastAccess]);
   return <main className="live-inbound">
     {prepareOpen && <PrepareCameraDemo orders={orders} parcels={parcels} warehouses={warehouses} warehouseId={warehouseId} onWarehouseChange={id => { setLoadedWarehouse(''); setWarehouseId(id); }} onClose={() => { setPrepareOpen(false); void refresh(warehouseId).catch(e => setError(errorMessage(e))); }} onStart={parcel => { dismissedTagIds.current.clear(); demoSession.current = { parcel, started: Date.now() }; setPrepared(parcel); void refresh(warehouseId).catch(e => setError(errorMessage(e))); setPrepareOpen(false); setScanQueue([]); setQueue([]); setRun(n => n + 1); setPaused(false); setMovingEvent(null); setZone('receiving'); setMotion('TRUCK_APPROACHING'); }} />}
-    {setupOpen && <div className="ui-modal" role="presentation"><div className="ui-modal-card" role="dialog" aria-modal="true" aria-labelledby="demo-setup-title"><header><h2 id="demo-setup-title">{accessKind ? 'Chọn kho truy cập' : 'Chuẩn bị chuyển hàng'}</h2><button type="button" aria-label="Đóng" onClick={() => setSetupOpen(false)}>×</button></header><div className="li-form"><label>{accessKind ? 'Chi nhánh · kho' : 'Chi nhánh · kho nguồn'}<select value={warehouseId} onChange={e => { setLoadedWarehouse(''); setWarehouseId(e.target.value); setTransferSkuId(''); }}>{warehouses.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label>{!accessKind && <><label>Chi nhánh · kho đích<select value={destId} onChange={e => setDestId(e.target.value)}>{!destinations.length && <option value="">Cần ít nhất 2 kho</option>}{destinations.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label><label>Hàng chuyển (minh họa)<select value={transferItem?.skuId ?? ''} disabled={loadedWarehouse !== warehouseId || !stocked.length} onChange={e => setTransferSkuId(e.target.value)}>{loadedWarehouse !== warehouseId ? <option value="">Đang tải hàng...</option> : !stocked.length ? <option value="">Kho nguồn chưa có tồn</option> : stocked.map(i => <option key={i.skuId} value={i.skuId}>{i.sku.product.name} · tồn {i.onHand} {i.sku.product.unit}</option>)}</select></label><p className="li-muted">Đây là mô phỏng; phiếu chuyển hàng thật được tạo tại <Link href="/dieu-chuyen">Điều chuyển</Link>.</p></>}</div><footer><button type="button" disabled={accessKind ? loadedWarehouse !== warehouseId || !access.device || !access.door : loadedWarehouse !== warehouseId || !destination || !transferItem} onClick={() => { setSetupOpen(false); if (accessKind) { void access.start(accessKind); return; } setRun(n => n + 1); setPaused(false); setMovingEvent(null); setZone('shipping'); setMotion('TRANSFER_PREPARING'); }}>Bắt đầu demo</button></footer></div></div>}
+    {setupOpen && (
+      <div className="ui-modal" role="presentation">
+        <div
+          className="ui-modal-card li-setup-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="demo-setup-title"
+          style={{ width: 'min(760px, calc(100vw - 32px))', padding: 0, overflow: 'hidden', borderRadius: 16 }}
+        >
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 24px', borderBottom: '1px solid #e2e8f0', background: '#ffffff' }}>
+            <div>
+              <h2 id="demo-setup-title" style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
+                {accessKind ? 'Chọn kho truy cập' : 'Chuẩn bị điều chuyển giữa kho'}
+              </h2>
+              {!accessKind && (
+                <p style={{ margin: '3px 0 0', fontSize: 13, color: '#64748b' }}>
+                  Chọn kho nguồn, kho đích và mặt hàng cần điều chuyển để chạy mô phỏng hoặc thực thi phiếu thật.
+                </p>
+              )}
+            </div>
+            <button type="button" className="li-close" aria-label="Đóng" onClick={() => setSetupOpen(false)}>×</button>
+          </header>
+          <div
+            className="li-form"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: '16px 18px',
+              padding: '20px 24px',
+              margin: 0,
+            }}
+          >
+            {!accessKind && (
+              <div
+                className="li-transfer-recs"
+                style={{
+                  gridColumn: '1 / -1',
+                  display: 'grid',
+                  gap: 10,
+                  padding: '13px 16px',
+                  border: '1px solid #c7d2fe',
+                  borderRadius: 12,
+                  background: 'linear-gradient(135deg, #f8faff 0%, #f0fdfa 100%)',
+                }}
+              >
+                <div className="li-transfer-recs-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 13.5, fontWeight: 700, color: '#312e81' }}>
+                    Gợi ý chuyển kho lô cận hạn (AI × Nhu cầu 14 ngày)
+                  </strong>
+                  <small style={{ margin: 0, fontSize: 12.5, color: '#475569' }}>
+                    {sortedFefoRisks.length ? `${sortedFefoRisks.length} gợi ý khả dụng — bấm để điền nhanh` : 'Hiện chưa có lô cận hạn cần chuyển gấp'}
+                  </small>
+                </div>
+                {sortedFefoRisks.length > 0 && (
+                  <div className="li-transfer-rec-list">
+                    {sortedFefoRisks.slice(0, 6).map(risk => {
+                      const target = risk.recommendedTransferBranch!;
+                      const recQty = Math.max(1, Math.min(risk.lotQuantity, risk.atRiskQuantity, target.absorbableQuantity || risk.atRiskQuantity));
+                      const isSelected = selectedFefoRisk?.lotId === risk.lotId && !selectedExistingTransferId;
+                      return (
+                        <button
+                          key={risk.lotId}
+                          type="button"
+                          className={`li-transfer-rec-item${isSelected ? ' selected' : ''}`}
+                          onClick={() => {
+                            setSelectedExistingTransferId('');
+                            setSelectedFefoRisk(risk);
+                            if (risk.warehouseId !== warehouseId) setLoadedWarehouse('');
+                            setWarehouseId(risk.warehouseId);
+                            setDestId(target.warehouseId);
+                            setTransferSkuId(risk.skuId);
+                            setTransferQty(recQty);
+                            setUseRealTransfer(true);
+                          }}
+                        >
+                          <div className="li-transfer-rec-info">
+                            <ProductImage src={risk.imageUrl} name={risk.productName} size="sm" />
+                            <div className="li-transfer-rec-copy">
+                              <strong>{risk.productName} · Lô {risk.lotCode}</strong>
+                              <span>{risk.warehouseName} → {target.warehouseName} · Đề xuất {recQty} {risk.unit} ({target.storeName} tiêu thụ {target.dailyDemandRate.toFixed(1)}/ngày)</span>
+                            </div>
+                          </div>
+                          <span className="li-transfer-rec-pill">Còn {risk.daysRemaining} ngày</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {!accessKind && realTransfers.length > 0 && (
+              <label
+                className="li-setup-field-full"
+                style={{ gridColumn: '1 / -1', display: 'grid', gap: 7, margin: 0, fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}
+              >
+                <span>Chọn phiếu điều chuyển có sẵn ({realTransfers.length} phiếu)</span>
+                <select
+                  value={selectedExistingTransferId}
+                  onChange={e => setSelectedExistingTransferId(e.target.value)}
+                  style={{ height: 44, minHeight: 44, padding: '0 14px', fontSize: 14, fontWeight: 500, borderRadius: 9, border: '1px solid #cbd5e1', width: '100%' }}
+                >
+                  <option value="">+ Tạo phiếu mới / Chạy theo cấu hình bên dưới</option>
+                  {realTransfers.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.code} · {t.sourceWarehouse.name} → {t.destinationWarehouse.name} ({t.items[0]?.sku.product.name ?? 'Hàng'} · SL {t.totalRequested} · {t.status === 'IN_TRANSIT' ? 'Đang vận chuyển' : 'Chờ xuất'})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {!selectedExistingTransfer && (
+              <>
+                <label style={{ display: 'grid', gap: 7, margin: 0, fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>
+                  <span>{accessKind ? 'Chi nhánh · kho' : 'Chi nhánh · kho nguồn'}</span>
+                  <select
+                    value={warehouseId}
+                    onChange={e => { setLoadedWarehouse(''); setWarehouseId(e.target.value); setTransferSkuId(''); setSelectedFefoRisk(null); }}
+                    style={{ height: 44, minHeight: 44, padding: '0 14px', fontSize: 14, fontWeight: 500, borderRadius: 9, border: '1px solid #cbd5e1', width: '100%' }}
+                  >
+                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}
+                  </select>
+                </label>
+                {!accessKind && (
+                  <>
+                    <label style={{ display: 'grid', gap: 7, margin: 0, fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>
+                      <span>Chi nhánh · kho đích</span>
+                      <select
+                        value={destId}
+                        onChange={e => { setDestId(e.target.value); setSelectedFefoRisk(null); }}
+                        style={{ height: 44, minHeight: 44, padding: '0 14px', fontSize: 14, fontWeight: 500, borderRadius: 9, border: '1px solid #cbd5e1', width: '100%' }}
+                      >
+                        {!destinations.length && <option value="">Cần ít nhất 2 kho</option>}
+                        {destinations.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: 'grid', gap: 7, margin: 0, fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>
+                      <span>Sản phẩm điều chuyển</span>
+                      <select
+                        value={transferItem?.skuId ?? ''}
+                        disabled={loadedWarehouse !== warehouseId || !stocked.length}
+                        onChange={e => { setTransferSkuId(e.target.value); setSelectedFefoRisk(null); }}
+                        style={{ height: 44, minHeight: 44, padding: '0 14px', fontSize: 14, fontWeight: 500, borderRadius: 9, border: '1px solid #cbd5e1', width: '100%' }}
+                      >
+                        {loadedWarehouse !== warehouseId ? <option value="">Đang tải hàng...</option> : !stocked.length ? <option value="">Kho nguồn chưa có tồn</option> : stocked.map(i => <option key={i.skuId} value={i.skuId}>{i.sku.product.name} · tồn {i.onHand} {i.sku.product.unit}</option>)}
+                      </select>
+                    </label>
+                    <label style={{ display: 'grid', gap: 7, margin: 0, fontSize: 13.5, fontWeight: 600, color: '#1e293b' }}>
+                      <span>Số lượng chuyển ({transferItem?.sku.product.unit ?? 'đơn vị'})</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={transferItem?.onHand ?? 1}
+                        value={transferQty}
+                        onChange={e => setTransferQty(Math.max(1, Number(e.target.value) || 1))}
+                        disabled={!transferItem}
+                        style={{ height: 44, minHeight: 44, padding: '0 14px', fontSize: 14.5, fontWeight: 600, borderRadius: 9, border: '1px solid #cbd5e1', width: '100%' }}
+                      />
+                    </label>
+                    <label
+                      className="live-checkbox li-setup-field-full"
+                      style={{
+                        gridColumn: '1 / -1',
+                        display: 'flex',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'flex-start',
+                        gap: 10,
+                        padding: '11px 14px',
+                        margin: '2px 0 0',
+                        height: 'auto',
+                        minHeight: 44,
+                        borderRadius: 10,
+                        background: '#f8fafc',
+                        border: '1px solid #e2e8f0',
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        color: '#0f172a',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={useRealTransfer}
+                        onChange={e => setUseRealTransfer(e.target.checked)}
+                        style={{ width: 18, height: 18, margin: 0, flexShrink: 0, accentColor: '#0f766e' }}
+                      />
+                      <span>Tạo phiếu điều chuyển thật & Quét QR qua ESP32-CAM (trừ / cộng tồn kho thực tế)</span>
+                    </label>
+                  </>
+                )}
+              </>
+            )}
+            {transferError && <p role="alert" className="live-error li-setup-field-full" style={{ gridColumn: '1 / -1', margin: 0 }}>{transferError}</p>}
+          </div>
+          <footer style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: '14px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <button type="button" className="li-ghost" onClick={() => setSetupOpen(false)} style={{ height: 40, padding: '0 16px', borderRadius: 9 }}>
+              Đóng
+            </button>
+            <button
+              type="button"
+              disabled={transferBusy || (accessKind ? loadedWarehouse !== warehouseId || !access.device || !access.door : (!selectedExistingTransfer && (loadedWarehouse !== warehouseId || !destination || !transferItem)))}
+              onClick={() => { if (accessKind) { setSetupOpen(false); void access.start(accessKind); return; } void startTransferDemo(); }}
+              style={{ height: 40, padding: '0 18px', borderRadius: 9, fontWeight: 600 }}
+            >
+              {transferBusy ? 'Đang tạo phiếu…' : 'Bắt đầu chuyển hàng'}
+            </button>
+          </footer>
+        </div>
+      </div>
+    )}
     {prepared && <section className="li-card" style={{ padding: 16 }}><strong>Kiện đang demo: {prepared.product?.name}</strong><p>{prepared.quantity} {prepared.product?.unit} · {prepared.purchaseOrderCode} · {prepared.deviceId}</p><small>Đưa phiếu QR trước camera khi đến bước Camera quét kiện.</small></section>}
     {scan && createPortal(<div className="rfid-dialog-backdrop"><div className={`rfid-dialog${scan.processed ? ' is-processed' : ''}`} role="dialog" aria-modal="true" aria-labelledby="rfid-dialog-title" ref={dialogRef} tabIndex={-1}>
       {scan.processed ? <>
@@ -577,25 +985,23 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
       <div className="li-head-actions">
         {section !== 'scene' && <label className="li-select">Kho nhận<select disabled={running} value={warehouseId} onChange={e => setWarehouseId(e.target.value)}>{warehouses.map(w => <option key={w.id} value={w.id}>{w.store.name} · {w.name}</option>)}</select></label>}
         <div className="li-head-nav">
-          <Link className="li-nav-card" href={section === 'scene' ? '/kho/mo-hinh-3d/camera' : '/kho/mo-hinh-3d'}><span>{section === 'scene' ? '▣' : '◈'}</span><strong>{section === 'scene' ? 'Kiện hàng & tem QR' : 'Mô hình kho 3D'}</strong><small>{section === 'scene' ? 'Đăng ký và in mã kiện' : 'Quay lại sơ đồ kho'}</small></Link>
-          {section === 'scene' && <Link className="li-nav-card" href="/dieu-chuyen"><span>⇄</span><strong>Phiếu điều chuyển</strong><small>Tạo và theo dõi chuyển kho</small></Link>}
+          {section !== 'scene' && <Link className="outline-button li-top-btn" href="/kho/mo-hinh-3d">Mô hình kho 3D</Link>}
+          {section === 'scene' && <Link className="outline-button li-top-btn" href="/dieu-chuyen">Phiếu điều chuyển</Link>}
           {section === 'scene' && (
-            <button type="button" className="li-nav-card li-nav-btn" onClick={() => setStaffModalOpen(true)}>
-              <span>📇</span>
-              <strong>Gán thẻ nhân viên</strong>
-              <small>Thẻ RFID & Nhân viên kho</small>
+            <button type="button" className="outline-button li-top-btn" onClick={() => setStaffModalOpen(true)}>
+              Gán thẻ nhân viên (RFID)
             </button>
           )}
-
         </div>
       </div>
     </header>
     {error && <p role="alert" className="live-error">{error}</p>}
     {notice && <p role="status" className="li-notice">{notice}</p>}
     {section === 'scene' && !accessKind && flow === 'inbound' && motion === 'WAITING_CONFIRMATION' && <EspStation connected={connected} latest={events.find(isEspEvent)} waiting={motion === 'WAITING_CONFIRMATION'}/>}
-    {section === 'scene' && flow === 'inbound' && motion === 'WAITING_CONFIRMATION' && prepared && !scan && createPortal(<div className="li-qr-backdrop"><section className="li-qr-modal" role="dialog" aria-modal="true" aria-labelledby="li-qr-title"><div className="li-qr-header"><span className="li-qr-badge">BƯỚC 3 · ESP32-CAM</span><h2 id="li-qr-title">Quét mã kiện hàng</h2><p>Đưa mã QR trước camera và nhìn hình bên cạnh để canh.</p></div><div className="li-qr-columns"><div className="li-qr-content"><div className="li-qr-code"><QRCodeSVG value={prepared.tagId} size={300} marginSize={4} level="M"/></div><strong>{prepared.product?.name}</strong><p>{prepared.quantity} {prepared.product?.unit} · {prepared.purchaseOrderCode}</p><code>{prepared.tagId}</code><p className="li-qr-wait"><span/> Đang chờ camera đọc mã…</p></div><CameraPreview/></div><button type="button" className="li-ghost" onClick={resetDemo}>Hủy demo</button></section></div>, document.body)}
+    {section === 'scene' && flow === 'inbound' && motion === 'WAITING_CONFIRMATION' && prepared && !scan && createPortal(<div className="li-qr-backdrop"><section className="li-qr-modal" role="dialog" aria-modal="true" aria-labelledby="li-qr-title"><div className="li-qr-header"><span className="li-qr-badge">BƯỚC 3 · ESP32-CAM</span><h2 id="li-qr-title">Quét mã kiện hàng</h2><p>Đưa mã QR trước camera và nhìn hình bên cạnh để canh.</p></div><div className="li-qr-columns"><div className="li-qr-content"><div className="li-qr-code"><QRCodeSVG value={prepared.tagId} size={260} marginSize={4} level="M"/></div><strong>{prepared.product?.name}</strong><p>{prepared.quantity} {prepared.product?.unit} · {prepared.purchaseOrderCode}</p><code>{prepared.tagId}</code><p className="li-qr-wait"><span/> Đang chờ camera đọc mã…</p></div><CameraPreview compact/></div><div className="li-qr-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}><button type="button" className="li-qr-cancel-btn" onClick={resetDemo} style={{ minWidth: 140, height: 42, padding: '0 20px', borderRadius: 9, border: '1px solid #dc2626', background: '#dc2626', color: '#ffffff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}>Hủy demo</button></div></section></div>, document.body)}
+    {section === 'scene' && flow === 'transfer' && activeTransfer && (motion === 'WAITING_DISPATCH_CONFIRM' || motion === 'WAITING_RECEIVE_CONFIRM') && createPortal(<div className="li-qr-backdrop"><section className="li-qr-modal" role="dialog" aria-modal="true" aria-labelledby="li-transfer-qr-title"><div className="li-qr-header"><span className="li-qr-badge">{motion === 'WAITING_DISPATCH_CONFIRM' ? 'XUẤT KHO · QUÉT QR ESP32-CAM' : 'NHẬN KHO ĐÍCH · QUÉT QR ESP32-CAM'}</span><h2 id="li-transfer-qr-title">{motion === 'WAITING_DISPATCH_CONFIRM' ? 'Quét QR xác nhận xuất kho thật' : 'Quét QR xác nhận nhận hàng tại kho đích'}</h2><p>Đưa mã QR phiếu {activeTransfer.code} (hoặc mã vạch SKU) trước ESP32-CAM để cập nhật tồn kho thực tế.</p></div><div className="li-qr-columns"><div className="li-qr-content"><div className="li-qr-code"><QRCodeSVG value={activeTransfer.code} size={260} marginSize={4} level="M"/></div><strong>{activeTransfer.items[0]?.sku.product.name ?? 'Lô hàng điều chuyển'}</strong><p>{activeTransfer.sourceWarehouse.name} → {activeTransfer.destinationWarehouse.name} · SL {activeTransfer.totalRequested}</p><code>{activeTransfer.code}</code><p className="li-qr-wait"><span/> {transferBusy ? 'Đang cập nhật tồn kho…' : 'Đang chờ ESP32-CAM đọc mã phiếu…'}</p>{transferError && <p role="alert" className="live-error">{transferError}</p>}</div><CameraPreview compact onFrameBytes={bytes => { transferFrameRef.current = { bytes, at: Date.now() }; }}/></div><div className="li-qr-actions" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 18, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}><button type="button" className="li-qr-cancel-btn" onClick={resetDemo} disabled={transferBusy} style={{ minWidth: 130, height: 42, padding: '0 22px', borderRadius: 9, border: '1px solid #dc2626', background: '#dc2626', color: '#ffffff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 6px rgba(220, 38, 38, 0.22)' }}>Hủy</button><button type="button" className="li-qr-confirm-btn" disabled={transferBusy} onClick={() => void confirmTransferStep('manual')} style={{ minWidth: 220, height: 42, padding: '0 24px', borderRadius: 9, border: '1px solid #0f766e', background: '#0f766e', color: '#ffffff', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', boxShadow: '0 2px 6px rgba(15, 118, 110, 0.22)' }}>{transferBusy ? 'Đang xác nhận…' : motion === 'WAITING_DISPATCH_CONFIRM' ? 'Xác nhận xuất kho thủ công' : 'Xác nhận nhận hàng thủ công'}</button></div></section></div>, document.body)}
     {section === 'scene' && <><section className="li-card li-flow">
-      <div className="li-flow-select"><label>Luồng demo<select aria-label="Luồng demo" value={accessKind ? 'access' : flow} disabled={running} onChange={e => { const value = e.target.value; if (value === 'inbound' || value === 'transfer') chooseFlow(value); else chooseAccess('authorized'); }}><option value="inbound">Nhập hàng từ nhà cung cấp</option><option value="transfer">Chuyển hàng giữa kho</option><option value="access">Truy cập cửa kho</option></select></label>{accessKind && <label>Tình huống<select aria-label="Tình huống" value={accessKind} disabled={running || access.monitor.mode === 'REAL_IOT'} onChange={e => chooseAccess(e.target.value as AccessKind)}><option value="authorized">Bình thường</option><option value="unauthorized">Mở cửa trái phép</option><option value="open-too-long">Cửa mở quá lâu</option></select></label>}<small>{accessKind ? 'RFID nhận diện nhân viên · Reed Switch theo dõi cửa · backend kiểm tra quyền và lưu log' : flow === 'inbound' ? 'ESP32-CAM quét QR kiện hàng; xác nhận mới cập nhật tồn kho.' : 'Luồng chuyển hàng chỉ minh họa trong mô hình; phiếu thật tạo ở mục Điều chuyển.'}</small>{accessKind && <span className={`li-access-badge ${access.monitor.mode === 'REAL_IOT' ? 'real' : ''}`}>{access.monitor.mode === 'REAL_IOT' ? '● REAL IOT' : '◇ SIMULATION'}</span>}</div>
+      <div className="li-flow-select"><label>Luồng demo<select aria-label="Luồng demo" value={accessKind ? 'access' : flow} disabled={running} onChange={e => { const value = e.target.value; if (value === 'inbound' || value === 'transfer') chooseFlow(value); else chooseAccess('authorized'); }}><option value="inbound">Nhập hàng từ nhà cung cấp</option><option value="transfer">Chuyển hàng giữa kho</option><option value="access">Truy cập cửa kho</option></select></label>{accessKind && <label>Tình huống<select aria-label="Tình huống" value={accessKind} disabled={running || access.monitor.mode === 'REAL_IOT'} onChange={e => chooseAccess(e.target.value as AccessKind)}><option value="authorized">Bình thường</option><option value="unauthorized">Mở cửa trái phép</option><option value="open-too-long">Cửa mở quá lâu</option></select></label>}<small>{accessKind ? 'RFID nhận diện nhân viên · Reed Switch theo dõi cửa · backend kiểm tra quyền và lưu log' : flow === 'inbound' ? 'ESP32-CAM quét QR kiện hàng; xác nhận mới cập nhật tồn kho.' : 'Gợi ý điều chuyển cận hạn + Quét QR ESP32-CAM cập nhật phiếu chuyển thật.'}</small>{accessKind && <span className={`li-access-badge ${access.monitor.mode === 'REAL_IOT' ? 'real' : ''}`}>{access.monitor.mode === 'REAL_IOT' ? '● REAL IOT' : '◇ SIMULATION'}</span>}</div>
     </section>
     <section className="li-card li-scene-card">
         <div className="li-timeline" aria-label={`Tiến trình ${accessKind ? ACCESS_NAMES[accessKind] : flow === 'inbound' ? 'nhập hàng' : 'điều chuyển'}, ${timeline.length} bước`}>
@@ -629,14 +1035,14 @@ export function LiveInbound({ section = 'scene' }: { section?: 'scene' | 'rfid' 
               .map(w => ({ id: w.id, name: w.name, code: w.code, storeName: w.store.name,
                 items: w.id === warehouse.id ? stocked : flow === 'transfer' && w.id === destId ? destItems.filter(i => i.onHand > 0) : campusStock[w.id] ?? [] }))}
             transferMode={flow === 'transfer'} items={stocked.slice(0, 9)} selectedItem={selected} onSelectItem={setSelected} selectedZone={zone} onSelectZone={setZone} demoState={motion} demoPaused={paused}
-            demoProduct={flow === 'transfer' ? (transferItem ? { ...transferItem.sku.product, code: transferItem.sku.code } : null) : (prepared?.product ? { ...prepared.product, code: prepared.tagId } : null) ?? movingStock?.sku.product ?? (movingEvent?.mappedSku ? { ...movingEvent.mappedSku.product, code: movingEvent.mappedSku.code } : null)}
+            demoProduct={flow === 'transfer' ? ((activeTransfer?.items[0]?.sku.product ? { ...activeTransfer.items[0].sku.product, code: activeTransfer.code } : null) ?? (transferItem ? { ...transferItem.sku.product, code: transferItem.sku.code } : null)) : (prepared?.product ? { ...prepared.product, code: prepared.tagId } : null) ?? movingStock?.sku.product ?? (movingEvent?.mappedSku ? { ...movingEvent.mappedSku.product, code: movingEvent.mappedSku.code } : null)}
             demoInventory={flow === 'transfer' ? transferItem : movingStock} speedMultiplier={speedMultiplier}/>}
           <div className="live-scene-status" aria-live="polite">
             <span className={`li-dot ${running ? 'on' : ''}`} /><div><span className={`li-flow-tag ${accessKind ? access.phase === 'ALERT' ? 'alert' : 'access' : flow}`}>{accessKind ? `IOT · ${ACCESS_NAMES[accessKind].toUpperCase()}` : flow === 'inbound' ? 'LUỒNG 1 · NHẬP HÀNG' : 'LUỒNG CHUYỂN HÀNG'}</span><strong>{motionLabel}</strong><small>{motionHint}{!accessKind && queue.length > 0 && ` · ${queue.length} kiện chờ hiển thị`}</small></div>
           </div>
           <div className="live-demo-controls">
-            {!accessKind && motion === 'WAITING_DISPATCH_CONFIRM' && <button onClick={() => setMotion('DISPATCHED')}>Xác nhận xuất kho</button>}
-            {!accessKind && motion === 'WAITING_RECEIVE_CONFIRM' && <button onClick={() => setMotion('RECEIVED')}>Xác nhận nhận hàng</button>}
+            {!accessKind && motion === 'WAITING_DISPATCH_CONFIRM' && <button disabled={transferBusy} onClick={() => { if (activeTransfer) void confirmTransferStep('manual'); else setMotion('DISPATCHED'); }}>{transferBusy ? 'Đang xử lý…' : 'Xác nhận xuất kho'}</button>}
+            {!accessKind && motion === 'WAITING_RECEIVE_CONFIRM' && <button disabled={transferBusy} onClick={() => { if (activeTransfer) void confirmTransferStep('manual'); else setMotion('RECEIVED'); }}>{transferBusy ? 'Đang xử lý…' : 'Xác nhận nhận hàng'}</button>}
             {accessKind && access.door?.state === 'OPEN' && access.monitor.mode === 'SIMULATION' && <button className="li-ghost" disabled={access.busy} onClick={() => void access.close()}>Đóng cửa kết thúc</button>}
             {!running && <button disabled={!warehouseId || (accessKind ? !access.canSimulate : flow === 'inbound' && (!canReceive || queue.length > 0))} onClick={startDemo}>▶ {(accessKind ? access.phase : motion) === 'COMPLETE' ? 'Chạy lại' : 'Chạy demo'}</button>}
             {running && (accessKind ? <button className="li-ghost" onClick={resetDemo}>Dừng theo dõi</button> : <><button className="li-ghost" onClick={() => setPaused(v => !v)}>{paused ? 'Tiếp tục' : 'Tạm dừng'}</button><button className="li-ghost" onClick={resetDemo}>Đặt lại</button></>)}

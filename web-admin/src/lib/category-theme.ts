@@ -2,15 +2,15 @@ import type { CSSProperties } from 'react';
 
 type CategoryKey = { id?: string; code?: string; name?: string };
 const themes = {
-  all: { ink: '#087f78', fill: '#e8f8f5', border: '#a7ded7', selected: '#cbefea', icon: 'grid' },
-  peach: { ink: '#96451d', fill: '#fff0e5', border: '#f0c6a6', selected: '#ffdfc8', icon: 'cookie' },
-  lavender: { ink: '#7041a0', fill: '#f4edfc', border: '#d8c4ed', selected: '#e7d7f6', icon: 'sparkles' },
-  sky: { ink: '#1b6394', fill: '#eaf6ff', border: '#b4d9f1', selected: '#d0eaff', icon: 'bottle' },
-  indigo: { ink: '#484b9c', fill: '#eeeefe', border: '#c7c8ee', selected: '#ddddfa', icon: 'home' },
-  amber: { ink: '#835a0a', fill: '#fff7de', border: '#e9d392', selected: '#fcebb5', icon: 'leaf' },
-  coral: { ink: '#a34436', fill: '#fff0ec', border: '#efbdb2', selected: '#ffdad0', icon: 'bowl' },
-  ice: { ink: '#176779', fill: '#e9f8fc', border: '#abdce7', selected: '#ccedf5', icon: 'snowflake' },
-  caramel: { ink: '#795039', fill: '#f7eee6', border: '#ddc5b1', selected: '#edd8c7', icon: 'coffee' },
+  all: { ink: '#0d9488', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'grid' },
+  peach: { ink: '#ea580c', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'candy' },
+  lavender: { ink: '#9333ea', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'sparkles' },
+  sky: { ink: '#0284c7', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'bottle' },
+  indigo: { ink: '#4f46e5', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'home' },
+  amber: { ink: '#16a34a', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'leaf' },
+  coral: { ink: '#e11d48', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'bowl' },
+  ice: { ink: '#0891b2', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'snowflake' },
+  caramel: { ink: '#854d0e', fill: '#ffffff', border: '#dce4e0', selected: '#0d9488', icon: 'coffee' },
 } as const;
 const known: Record<string, keyof typeof themes> = {
   BANH_KEO_DO_KHO: 'peach', CHAM_SOC_CA_NHAN: 'lavender', DO_UONG_SUA: 'sky',

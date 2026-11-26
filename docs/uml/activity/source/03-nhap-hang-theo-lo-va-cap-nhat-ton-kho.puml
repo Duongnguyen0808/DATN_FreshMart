@@ -1,0 +1,79 @@
+@startuml
+title Sơ đồ hoạt động: Nhập hàng theo đơn đặt hàng (PO) và quản lý lô hạn dùng
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Nhân viên kho|
+start
+:Mở đơn đặt hàng (PO) đang mở;
+:Nhập số lượng thực nhận, mã lô,\nhạn sử dụng và ảnh chứng từ (nếu có);
+
+|Giao diện Web|
+:Gửi yêu cầu POST /purchase-orders/:id/receive;
+
+|Backend/API|
+:Xác thực JWT và kiểm tra quyền purchase_orders.receive;
+|Cơ sở dữ liệu|
+:Truy vấn đơn đặt hàng, kho nhận và các dòng SKU;
+|Backend/API|
+if (Đơn ở trạng thái OPEN, đúng chi nhánh\nvà số nhận <= số còn lại?) then ([Không hợp lệ])
+  :Trả lỗi 400/403/409;
+  |Giao diện Web|
+  :Hiển thị thông báo lỗi nhận hàng;
+  stop
+else ([Hợp lệ])
+  if (Có ảnh chứng từ đính kèm?) then ([Có])
+    |Dịch vụ bên ngoài|
+    :Tải song song ảnh chứng từ lên Cloudinary\n(Promise.all);
+  else ([Không])
+  endif
+
+  |Backend/API|
+  :Bắt đầu giao dịch Serializable Transaction;
+  |Cơ sở dữ liệu|
+  :Khóa và kiểm tra lại số lượng còn lại của đơn PO;
+  :Xác nhận sự kiện IoT đầu vào (nếu có);
+  :Tạo phiếu nhập kho (GoodsReceipt) và chi tiết;
+
+  repeat
+    :Tạo hoặc lấy bản ghi tồn kho SKU tại kho nhận;
+    |Backend/API|
+    if (Hàng có hạn dùng/quản lý lô\nnhưng thiếu mã lô?) then ([Thiếu mã lô])
+      :Hủy giao dịch (Rollback)\nvà trả lỗi 400 LOT_REQUIRED;
+      |Giao diện Web|
+      :Hiển thị yêu cầu nhập mã lô;
+      stop
+    else ([Hợp lệ])
+      |Cơ sở dữ liệu|
+      :Tạo lô hàng mới (AVAILABLE nếu còn hạn,\nQUARANTINE nếu đã hết hạn) và ghi LotMovement;
+      :Tăng tồn kho onHand và ghi InventoryTransaction;
+      :Cập nhật số lượng đã nhận trên dòng PO;
+    endif
+  repeat while (Còn dòng sản phẩm nhận hàng?) is ([Còn])
+  -> [Hết dòng];
+
+  |Cơ sở dữ liệu|
+  :Tạo mới hoặc cộng dồn công nợ phải trả (Payable)\nvà cập nhật công nợ nhà cung cấp;
+  :Cập nhật trạng thái PO\n(COMPLETED nếu đã nhận đủ, ngược lại OPEN);
+  :Ghi nhật ký AuditLog (purchase_order.receive);
+  :Xác nhận giao dịch (Commit);
+
+  |Backend/API|
+  :Phát sự kiện Socket.IO inventory:updated;
+  :Trả về kết quả đơn PO và mã phiếu nhập;
+endif
+
+|Giao diện Web|
+:Hiển thị phiếu nhập thành công và cập nhật tồn kho;
+stop
+@enduml

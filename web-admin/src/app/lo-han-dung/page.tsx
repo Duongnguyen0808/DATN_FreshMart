@@ -12,6 +12,7 @@ import {
 } from '../../lib/forecasts-api';
 import { Protected, useAuth } from '../../components/auth-provider';
 import { MetricCard, MetricGrid } from '../../components/ui/metric-card';
+import { ProductImage } from '../../components/ui/product-image';
 import { StatusBadge } from '../../components/ui/status-badge';
 import { useToast } from '../../components/ui/toast-provider';
 import './lots.css';
@@ -175,8 +176,8 @@ function Lots() {
     <main className="suite-page lots-screen">
       <header className="suite-heading">
         <div>
-          <div className="breadcrumb">Hàng hóa & Kho · FEFO × AI Forecast</div>
-          <h1>Lô hàng, Hạn sử dụng (FEFO) & Dự báo AI</h1>
+          <div className="breadcrumb">Hàng hóa và Kho · Lô và hạn sử dụng</div>
+          <h1>Quản lý Lô và Hạn sử dụng</h1>
           <p>Quản lý hạn sử dụng theo từng lô (hết hạn trước xuất trước) và đối chiếu sức mua AI để phát hiện sớm lô cận hạn có nguy cơ tồn đọng.</p>
         </div>
         <div className="heading-actions">
@@ -189,10 +190,10 @@ function Lots() {
 
       <MetricGrid label="Tổng quan lô hàng">
         <MetricCard tone="blue" label="Tổng số lô" value={fmtNum(lots.length)} caption="Đang quản lý trong kho" />
-        <MetricCard tone={soonCount ? 'amber' : 'teal'} label="Sắp hết hạn (≤ 30 ngày)" value={fmtNum(soonCount)} caption="Ưu tiên xuất bán FEFO" />
+        <MetricCard tone={soonCount ? 'amber' : 'teal'} label="Sắp hết hạn (≤ 30 ngày)" value={fmtNum(soonCount)} caption="Ưu tiên xuất lô hạn gần trước" />
         <MetricCard
           tone={aiRiskCount ? 'red' : 'green'}
-          label="Nguy cơ dư (AI × FEFO)"
+          label="Nguy cơ tồn dư cận hạn"
           value={`${fmtNum(aiRiskCount)} lô`}
           caption={aiRiskCount ? `${fmtNum(fefoAiReport?.summary?.totalAtRiskUnits ?? 0)} đv · Vốn ${fmtNum(fefoAiReport?.summary?.totalAtRiskValue ?? 0)} đ` : 'Tốc độ bán kịp trước hạn'}
         />
@@ -203,34 +204,15 @@ function Lots() {
         <section className="panel">
           <div className="panel-heading">
             <div>
-              <h2>Mô phỏng phân bổ FEFO × Dự báo nhu cầu AI (14 ngày) & Quy tắc gợi ý xử lý</h2>
+              <h2>Phân bổ lô cận hạn và Dự báo nhu cầu (14 ngày)</h2>
               <p className="panel-meta">
-                <b>(1) Mô phỏng FEFO × AI:</b> Phân bổ nhu cầu dự báo 14 ngày (giả định phân bổ đều theo ngày trong tầm nhìn dự báo) cho các lô theo thứ tự hạn dùng tăng dần, không tính trùng nhu cầu giữa các lô và không ngoại suy ngoài 14 ngày.{' '}
-                <b>(2) Quy tắc nghiệp vụ cấu hình:</b> Khi phát hiện nguy cơ dư trong 14 ngày tới, hệ thống gợi ý có điều kiện các phương án vận hành (giảm giá theo bậc, cân nhắc chương trình mua kèm/Mua 1 tặng 1, điều chuyển nội bộ hoặc khóa lô hết hạn).
+                Đối chiếu sức mua dự kiến (14 ngày) theo thứ tự hạn dùng tăng dần để phát hiện sớm lô có nguy cơ tồn đọng.
               </p>
             </div>
             <div className="lots-actions">
               <button type="button" className="outline-button" onClick={() => setShowAllAiLots(v => !v)}>
                 {showAllAiLots ? `Chỉ xem lô nguy cơ (${aiRiskCount})` : `Xem tất cả lô (${fefoAiReport.items.filter(i => i.daysRemaining <= 35 || i.atRiskQuantity > 0).length})`}
               </button>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10, padding: '0 18px 14px' }}>
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#fff1f2', border: '1px solid #fecdd3', borderLeft: '4px solid #e11d48' }}>
-              <strong style={{ display: 'block', fontSize: 12.5, color: '#9f1239' }}>🎁 Quy tắc 1: Gợi ý Mua kèm / Mua 1 Tặng 1 (Có điều kiện)</strong>
-              <small style={{ color: '#475569', fontSize: 11.5 }}>Tham số cấu hình: gợi ý cân nhắc khi <b>còn ≤ 10 ngày</b> hoặc <b>tỷ lệ dư dự kiến ≥ 45%</b> (trong tầm nhìn 14 ngày). Là đề xuất chính sách bán hàng, không tự giả định tốc độ bán tăng gấp đôi.</small>
-            </div>
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#fffbeb', border: '1px solid #fde68a', borderLeft: '4px solid #d97706' }}>
-              <strong style={{ display: 'block', fontSize: 12.5, color: '#92400e' }}>🏷️ Quy tắc 2: Bậc giảm giá tham khảo 10%–35%</strong>
-              <small style={{ color: '#475569', fontSize: 11.5 }}>Tham số cấu hình theo hạn còn lại (≤7 ngày: 35%, ≤14 ngày: 25%, ≤21 ngày: 15%). Hỗ trợ quản lý cửa hàng tham khảo mức chiết khấu xả lô cận hạn.</small>
-            </div>
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#eff6ff', border: '1px solid #bfdbfe', borderLeft: '4px solid #2563eb' }}>
-              <strong style={{ display: 'block', fontSize: 12.5, color: '#1e40af' }}>🚚 Quy tắc 3: Điều chuyển nội bộ (Cân bằng tồn & FEFO)</strong>
-              <small style={{ color: '#475569', fontSize: 11.5 }}>Xét phần vượt tồn an toàn kho nguồn, trừ <b>2 ngày vận chuyển</b> và trừ <b>các lô FEFO cạnh tranh tại kho nhận</b>, chỉ đề xuất khi kho nhận có tốc độ cầu dự báo ≥ max(2, 1.4× kho nguồn).</small>
-            </div>
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: '#f8fafc', border: '1px solid #cbd5e1', borderLeft: '4px solid #475569' }}>
-              <strong style={{ display: 'block', fontSize: 12.5, color: '#1e293b' }}>🛑 Quy tắc 4: Chặn xuất POS & Cách ly tiêu hủy</strong>
-              <small style={{ color: '#475569', fontSize: 11.5 }}>Khi <b>quá hạn (&lt; 0 ngày)</b> hoặc đang cách ly, Backend POS tự động chặn xuất bán lô này trong giao dịch Serializable và yêu cầu lập biên bản hủy.</small>
             </div>
           </div>
           {visibleAiRows.length > 0 ? (
@@ -240,9 +222,9 @@ function Lots() {
                   <tr>
                     <th>Sản phẩm / Kho</th>
                     <th>Mã lô / Hạn dùng</th>
-                    <th>Tồn lô / Phân bổ FEFO</th>
+                    <th>Tồn lô / Phân bổ hạn dùng</th>
                     <th>Đánh giá nguy cơ dư (14 ngày)</th>
-                    <th>Đề xuất xử lý (Tách biệt AI Forecast & Quy tắc)</th>
+                    <th>Đề xuất xử lý</th>
                     <th>Thao tác</th>
                   </tr>
                 </thead>
@@ -258,8 +240,13 @@ function Lots() {
                     return (
                     <tr key={item.lotId}>
                       <td>
-                        <strong>{item.productName}</strong>
-                        <small>{item.warehouseName}</small>
+                        <div className="product-identity">
+                          <ProductImage src={item.imageUrl} name={item.productName} size="sm" />
+                          <div>
+                            <strong>{item.productName}</strong>
+                            <small>{item.warehouseName}</small>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         <span className="lot-code" title={item.lotCode}>{item.lotCode}</span>
@@ -310,60 +297,92 @@ function Lots() {
                       </td>
                       <td>
                         {item.daysRemaining < 0 || item.allocationStatus === 'EXPIRED_OR_QUARANTINED' ? (
-                          <div className="lots-plan-list"><span>🛑 [Quy tắc kho]: Đã chặn bán FEFO tại POS · Cách ly & Lập phiếu tiêu hủy</span></div>
+                          <div className="lots-plan-list"><span>[Quy tắc kho]: Đã chặn xuất bán tại POS · Cách ly và Lập phiếu tiêu hủy</span></div>
                         ) : item.allocationStatus === 'NO_FORECAST_RUN' || item.allocationStatus === 'NO_SALES_HISTORY' ? (
-                          <div className="lots-plan-list"><span className="lots-plan-muted">ℹ️ Chưa chạy dự báo AI hoặc chưa có lịch sử bán (không tự tạo dự báo giả)</span></div>
+                          <div className="lots-plan-list"><span className="lots-plan-muted">Chưa chạy dự báo AI hoặc chưa có lịch sử bán (không tự tạo dự báo giả)</span></div>
                         ) : item.beyondHorizon || item.allocationStatus === 'BEYOND_FORECAST_HORIZON' ? (
                           <div className="lots-plan-list">
                             <span className="lots-plan-muted">
-                              ℹ️ Còn {item.daysRemaining} ngày (&gt; tầm nhìn dự báo {item.horizonDays} ngày). Dự kiến tiêu thụ {item.projectedSoldBeforeExpiry}/{item.lotQuantity} {item.unit} trong {item.horizonDays} ngày đầu; tiếp tục theo dõi định kỳ.
+                              Còn {item.daysRemaining} ngày (&gt; tầm nhìn dự báo {item.horizonDays} ngày). Dự kiến tiêu thụ {item.projectedSoldBeforeExpiry}/{item.lotQuantity} {item.unit} trong {item.horizonDays} ngày đầu; tiếp tục theo dõi định kỳ.
                             </span>
                           </div>
                         ) : item.atRiskQuantity > 0 ? (
                           <div className="lots-plan-list">
                             <span>
-                              🏷️ <b>[Gợi ý quy tắc]:</b> Tham khảo giảm {item.suggestedDiscountPercent}% (giá sau giảm {fmtNum(item.discountedPrice)} đ/{item.unit}, thu hồi tối đa ~{fmtNum(item.recoverableValue)} đ nếu bán hết lượng dư)
+                              <b>[Gợi ý quy tắc]:</b> Tham khảo giảm {item.suggestedDiscountPercent}% (giá sau giảm {fmtNum(item.discountedPrice)} đ/{item.unit}, thu hồi tối đa ~{fmtNum(item.recoverableValue)} đ nếu bán hết lượng dư)
                             </span>
                             {recommendBogo && (
                               <span className="lots-plan-sub" style={{ color: '#be123c', fontWeight: 600 }}>
-                                🎁 <b>[Gợi ý có điều kiện]:</b> Cân nhắc chương trình Mua kèm / Mua 1 tặng 1 nếu biên lợi nhuận cho phép (tham số cấu hình: ≤10 ngày hoặc dư ≥45%)
+                                <b>[Gợi ý có điều kiện]:</b> Cân nhắc chương trình Mua kèm / Mua 1 tặng 1 nếu biên lợi nhuận cho phép (tham số cấu hình: ≤10 ngày hoặc dư ≥45%)
                               </span>
                             )}
                             {item.recommendedTransferBranch && (
                               <span className="lots-plan-sub">
-                                🚚 <b>[Cân bằng điều chuyển]:</b> Chuyển {item.recommendedTransferBranch.absorbableQuantity} {item.unit} → {item.recommendedTransferBranch.warehouseName} (cầu dự báo {item.recommendedTransferBranch.dailyDemandRate}/ngày, đã trừ 2 ngày vận chuyển & tồn FEFO cạnh tranh tại kho nhận)
+                                <b>[Cân bằng điều chuyển]:</b> Chuyển {item.recommendedTransferBranch.absorbableQuantity} {item.unit} → {item.recommendedTransferBranch.warehouseName} (cầu dự báo {item.recommendedTransferBranch.dailyDemandRate}/ngày, đã trừ 2 ngày vận chuyển và tồn cận hạn tại kho nhận)
                               </span>
                             )}
                           </div>
                         ) : (
-                          <div className="lots-plan-list"><span className="lots-plan-muted">✅ [AI × FEFO]: Sức mua dự báo đủ hấp thụ hết trước hạn</span></div>
+                          <div className="lots-plan-list"><span className="lots-plan-muted">[Dự báo nhu cầu]: Sức mua dự báo đủ hấp thụ hết trước hạn</span></div>
                         )}
                       </td>
                       <td>
-                        <div className="lots-actions">
-                          {item.pendingTransfer ? (
-                            <Link className="outline-button" href={`/dieu-chuyen/${item.pendingTransfer.id}`}>
-                              Phiếu {item.pendingTransfer.code} →
-                            </Link>
-                          ) : item.atRiskQuantity > 0 && item.recommendedTransferBranch && can('transfers.create') ? (
-                            <button
-                              type="button"
-                              className="primary-button"
-                              disabled={transferringLotId === item.lotId}
-                              onClick={() => void handleFefoAiTransfer(item)}
-                            >
-                              {transferringLotId === item.lotId
-                                ? 'Đang tạo…'
-                                : `Chuyển → ${item.recommendedTransferBranch.warehouseName}`}
-                            </button>
-                          ) : item.atRiskQuantity > 0 ? (
-                            <Link className="outline-button" href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`FEFO-${item.lotCode.toUpperCase()}`)}`}>
-                              🏷️ Bán POS · Mã FEFO-{item.lotCode.toUpperCase()} →
-                            </Link>
-                          ) : (
-                            <span className="lots-plan-muted">—</span>
-                          )}
-                        </div>
+                        {(() => {
+                          const matchedLot = lots.find(l => l.id === item.lotId);
+                          const isExpiredRow = item.daysRemaining < 0 || item.allocationStatus === 'EXPIRED_OR_QUARANTINED';
+                          return (
+                            <div className="lots-actions" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {isExpiredRow ? (
+                                matchedLot && matchedLot.quantity > 0 && can('stocktakes.create') ? (
+                                  <>
+                                    <button type="button" className="ui-action-button action-edit" disabled={busy} onClick={() => setOperation({ kind: 'quarantine', lot: matchedLot })}>Cách ly</button>
+                                    <button type="button" className="ui-action-button action-danger" disabled={busy} onClick={() => setOperation({ kind: 'dispose', lot: matchedLot })}>Tiêu hủy</button>
+                                  </>
+                                ) : (
+                                  <span className="lots-plan-muted">Đã khóa tại POS</span>
+                                )
+                              ) : (
+                                <>
+                                  {item.pendingTransfer ? (
+                                    <Link className="ui-action-button action-view" href={`/dieu-chuyen/${item.pendingTransfer.id}`}>
+                                      Phiếu {item.pendingTransfer.code} →
+                                    </Link>
+                                  ) : item.atRiskQuantity > 0 && item.recommendedTransferBranch && can('transfers.create') ? (
+                                    <button
+                                      type="button"
+                                      className="ui-action-button action-approve"
+                                      disabled={transferringLotId === item.lotId}
+                                      onClick={() => void handleFefoAiTransfer(item)}
+                                    >
+                                      {transferringLotId === item.lotId
+                                        ? 'Đang tạo…'
+                                        : `Chuyển → ${item.recommendedTransferBranch.warehouseName}`}
+                                    </button>
+                                  ) : null}
+                                  {item.atRiskQuantity > 0 && item.daysRemaining >= 0 && item.daysRemaining <= 21 && item.lotQuantity >= 1 && (
+                                    <Link
+                                      className="ui-action-button action-edit"
+                                      href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`FEFO-${item.lotCode.toUpperCase()}`)}&skuId=${encodeURIComponent(item.skuId)}&warehouseId=${encodeURIComponent(item.warehouseId)}`}
+                                    >
+                                      Bán xả -{item.suggestedDiscountPercent}% →
+                                    </Link>
+                                  )}
+                                  {item.atRiskQuantity > 0 && item.daysRemaining >= 0 && item.daysRemaining <= 10 && item.lotQuantity >= 2 && (
+                                    <Link
+                                      className="ui-action-button action-view"
+                                      href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`BOGO-${item.lotCode.toUpperCase()}`)}&skuId=${encodeURIComponent(item.skuId)}&warehouseId=${encodeURIComponent(item.warehouseId)}`}
+                                    >
+                                      Mua 1 Tặng 1 →
+                                    </Link>
+                                  )}
+                                  {item.atRiskQuantity <= 0 && !item.pendingTransfer && (
+                                    <span className="lots-plan-muted">—</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );})}
@@ -450,7 +469,7 @@ function Lots() {
             <h2>Danh sách lô tồn kho vật lý</h2>
             <p>{visible.length} / {lots.length} lô · ưu tiên xem các lô cần xử lý trước</p>
           </div>
-          <span className="lots-fefo"><b>FEFO</b> Hết hạn trước · xuất trước</span>
+          <span className="lots-fefo"><b>Quy tắc</b> Hết hạn trước · xuất trước</span>
         </div>
         <div className="table-scroll">
           <table>
@@ -466,7 +485,15 @@ function Lots() {
             <tbody>
               {visible.map(lot => (
                 <tr key={lot.id}>
-                  <td><strong>{lot.inventory.sku.product.name}</strong><small>{lot.inventory.warehouse.name}</small></td>
+                  <td>
+                    <div className="product-identity">
+                      <ProductImage src={lot.inventory.sku.product.imageUrl} name={lot.inventory.sku.product.name} size="sm" />
+                      <div>
+                        <strong>{lot.inventory.sku.product.name}</strong>
+                        <small>{lot.inventory.warehouse.name}</small>
+                      </div>
+                    </div>
+                  </td>
                   <td>
                     <span className="lot-code" title={lot.code}>{lot.code}</span>
                     <small>
@@ -496,12 +523,12 @@ function Lots() {
                     <div className="lots-actions">
                       {lot.quantity > 0 && can('stocktakes.create') && (
                         <>
-                          <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'quarantine', lot })}>Cách ly</button>
-                          <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'dispose', lot })}>Lập phiếu tiêu hủy</button>
+                          <button type="button" className="ui-action-button action-edit" disabled={busy} onClick={() => setOperation({ kind: 'quarantine', lot })}>Cách ly</button>
+                          <button type="button" className="ui-action-button action-danger" disabled={busy} onClick={() => setOperation({ kind: 'dispose', lot })}>Lập phiếu tiêu hủy</button>
                         </>
                       )}
                       {can('stocktakes.approve') && (
-                        <button className="outline-button" disabled={busy} onClick={() => setOperation({ kind: 'count', lot })}>Kiểm đếm lô</button>
+                        <button type="button" className="ui-action-button action-view" disabled={busy} onClick={() => setOperation({ kind: 'count', lot })}>Kiểm đếm lô</button>
                       )}
                     </div>
                     <details>

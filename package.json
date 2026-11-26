@@ -6,10 +6,15 @@
     "web-admin"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others --names backend,web,ai --prefix-colors cyan,magenta,green \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:ai\"",
+    "dev": "concurrently --kill-others --names tunnel,backend,web,ai --prefix-colors yellow,cyan,magenta,green \"npm run dev:tunnel\" \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:ai\"",
+    "dev:all": "concurrently --names tunnel,backend,web,ai,mobile --prefix-colors yellow,cyan,magenta,green,blue \"npm run dev:tunnel\" \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:ai\" \"npm run dev:mobile\"",
+    "dev:tunnel": "cloudflared tunnel run freshmart-tunnel",
     "dev:backend": "npm run dev -w backend",
     "dev:web": "npm run dev -w web-admin",
     "dev:ai": "node ai-service/scripts/dev.mjs",
+    "dev:mobile": "npm --prefix mobile-app start",
+    "dev:mobile-web": "npm --prefix mobile-app run web",
+    "dev:backend-mobile": "concurrently --names backend,mobile --prefix-colors cyan,green \"npm run dev:backend\" \"npm run dev:mobile\"",
     "build": "npm run build -w backend && npm run build -w web-admin",
     "test": "npm run test -w backend",
     "test:demo": "npm run test:demo -w web-admin",

@@ -1,0 +1,53 @@
+@startuml
+title Sơ đồ Use Case Chi tiết: Giám sát IoT RFID và Vận hành Mobile Ops
+
+left to right direction
+skinparam linetype polyline
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam usecaseBorderColor #222222
+skinparam usecaseBackgroundColor #F8FCFB
+skinparam rectangleBorderColor #444444
+skinparam ArrowColor #333333
+skinparam nodesep 24
+skinparam ranksep 65
+
+actor "Nhân viên\n(EMPLOYEE)" as Staff
+actor "Quản lý chi nhánh\n(BRANCH_MANAGER)" as Manager
+
+rectangle "Phân hệ IoT Cửa kho & Vận hành Mobile" {
+  usecase "Quét Barcode\ntra cứu sản phẩm" as UC_MOB_01
+  usecase "Gửi phiếu kiểm đếm\nnhanh trên Mobile" as UC_MOB_03
+  usecase "Báo cáo sự cố\nkèm ảnh chụp" as UC_MOB_05
+  usecase "Xem nhật ký hoạt\nđộng cá nhân" as UC_MOB_07
+  usecase "Thực hiện Checklist\nca làm việc" as UC_MOB_02
+  usecase "Giám sát cửa kho\nvà nhật ký RFID" as UC_MOB_08
+  usecase "Phê duyệt phiếu\nkiểm đếm nhanh" as UC_MOB_04
+  usecase "Xử lý báo cáo\nsự cố" as UC_MOB_06
+  usecase "Đăng ký thiết bị\nvà gán thẻ RFID" as UC_MOB_10
+  usecase "Ghi nhận sự kiện\nquẹt thẻ và cửa" as UC_MOB_09
+}
+
+actor "Thiết bị IoT\n(ESP32)" as IoT
+
+Staff -- UC_MOB_01
+Staff -- UC_MOB_03
+Staff -- UC_MOB_05
+Staff -- UC_MOB_07
+Staff -- UC_MOB_02
+Staff -- UC_MOB_08
+
+Manager -- UC_MOB_02
+Manager -- UC_MOB_08
+Manager -- UC_MOB_04
+Manager -- UC_MOB_06
+Manager -- UC_MOB_10
+
+UC_MOB_09 -- IoT
+
+UC_MOB_03 ..> UC_MOB_01 : <<extend>>
+UC_MOB_05 ..> UC_MOB_01 : <<extend>>
+@enduml

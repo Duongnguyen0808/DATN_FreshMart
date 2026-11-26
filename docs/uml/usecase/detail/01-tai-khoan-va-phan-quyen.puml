@@ -1,0 +1,44 @@
+@startuml
+title Sơ đồ Use Case Chi tiết: Tài khoản, Phân quyền và Tổ chức chi nhánh
+
+left to right direction
+skinparam linetype polyline
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam usecaseBorderColor #222222
+skinparam usecaseBackgroundColor #F8FCFB
+skinparam rectangleBorderColor #444444
+skinparam ArrowColor #333333
+skinparam nodesep 26
+skinparam ranksep 65
+
+actor "Người dùng\nhệ thống" as User
+actor "Quản lý chi nhánh\n(BRANCH_MANAGER)" as Manager
+actor "Chủ hệ thống\n(OWNER)" as Owner
+
+Manager --|> User
+Owner --|> User
+
+rectangle "Phân hệ Tài khoản, Phân quyền & Tổ chức" {
+  usecase "Đăng nhập và\ncấp phát phiên" as UC_AUTH_01
+  usecase "Làm mới token\nvà đăng xuất" as UC_AUTH_02
+  usecase "Chuyển đổi chi nhánh\nlàm việc" as UC_AUTH_03
+  usecase "Quản lý người dùng\nvà gán chi nhánh" as UC_AUTH_04
+  usecase "Quản lý vai trò\nvà quyền RBAC" as UC_AUTH_05
+  usecase "Quản lý chi nhánh\nvà kho hàng" as UC_AUTH_06
+  usecase "Xem nhật ký\nkiểm toán (Audit)" as UC_AUTH_07
+}
+
+User -- UC_AUTH_01
+User -- UC_AUTH_02
+User -- UC_AUTH_03
+
+Manager -- UC_AUTH_04
+Owner -- UC_AUTH_04
+Owner -- UC_AUTH_05
+Owner -- UC_AUTH_06
+Owner -- UC_AUTH_07
+@enduml

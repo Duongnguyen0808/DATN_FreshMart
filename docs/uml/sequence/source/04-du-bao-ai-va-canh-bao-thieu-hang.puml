@@ -1,0 +1,64 @@
+@startuml
+title Sơ đồ tuần tự: Dự báo nhu cầu AI và cảnh báo thiếu hàng
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ParticipantPadding 14
+skinparam BoxPadding 8
+skinparam maxMessageSize 210
+skinparam SequenceMessageAlign center
+skinparam ArrowColor #222222
+skinparam SequenceLifeLineBorderColor #444444
+hide footbox
+
+actor "Quản lý chi nhánh" as Manager
+boundary "Giao diện\nWeb/Mobile" as UI
+control "ForecastsService" as Service
+database "SQL Server\n(Prisma)" as DB
+control "Dịch vụ AI\n(Gradient Boosting)" as AI
+
+Manager -> UI : Chọn chi nhánh, kỳ dự báo\n(7/14/30 ngày) và chạy dự báo
+activate UI
+
+UI -> Service : Yêu cầu tạo dự báo nhu cầu\n(đã xác thực JWT & phạm vi chi nhánh)
+activate Service
+
+Service -> DB : Truy vấn tồn kho khả dụng\n(loại trừ lô QUARANTINE/hết hạn)
+activate DB
+DB --> Service : Danh sách tồn khả dụng theo SKU
+deactivate DB
+
+alt Chi nhánh chưa có SKU tồn kho
+  Service --> UI : Lỗi 409 NO_STOCK_SKUS
+  UI --> Manager : Thông báo chưa có SKU để dự báo
+else Có SKU tồn kho
+  Service -> DB : Truy vấn lịch sử bán hàng 366 ngày
+  activate DB
+  DB --> Service : Chuỗi thời gian bán hàng
+  deactivate DB
+
+  Service -> AI : Gửi lịch sử bán hàng và kỳ dự báo
+  activate AI
+  AI -> AI : Tiền xử lý, chạy Gradient Boosting\nvà tính Safety Stock (Backtest P95)
+  AI --> Service : JSON dự báo và chất lượng dữ liệu
+  deactivate AI
+
+  Service -> Service : Xác thực cấu trúc phản hồi\nbằng Zod schema (aiResponse)
+
+  Service -> DB : Lưu ForecastRun và danh sách DemandForecast
+  activate DB
+  DB --> Service : Xác nhận lưu phiên dự báo
+  deactivate DB
+
+  Service -> Service : Đánh giá thiếu hụt (assessShortage)\nvà lập đề xuất bổ sung/điều chuyển
+
+  Service --> UI : Kết quả dự báo và danh sách cảnh báo
+  deactivate Service
+
+  UI --> Manager : Hiển thị kỳ dự báo, mô hình\nvà các SKU có nguy cơ thiếu hàng
+end
+
+deactivate UI
+@enduml

@@ -16,8 +16,8 @@
 #define SERVER_QR_DECODING 1
 #endif
 
-// VGA (640x480) gives optimal detail for QR decoding while enabling 25+ FPS streaming.
-ESP32QRCodeReader reader(CAMERA_MODEL_AI_THINKER, FRAMESIZE_VGA);
+// SVGA (800x600) preserves sharp 1D barcode bars and crisp QR modules while keeping smooth PSRAM streaming.
+ESP32QRCodeReader reader(CAMERA_MODEL_AI_THINKER, FRAMESIZE_SVGA);
 Preferences wifiPrefs;
 String runtimeSsid = WIFI_SSID;
 String runtimePassword = WIFI_PASSWORD;
@@ -195,7 +195,7 @@ void cameraCaptureTask(void *) {
       }
     }
     esp_camera_fb_return(frame);
-    vTaskDelay(pdMS_TO_TICKS(22)); // ~28-32 FPS sensor capture rate
+    vTaskDelay(pdMS_TO_TICKS(15)); // ~30 FPS sensor capture rate
   }
 }
 
@@ -333,7 +333,7 @@ void cameraUploadTask(void *) {
   uint32_t lastUploadedSeq = 0;
 
   while (true) {
-    vTaskDelay(pdMS_TO_TICKS(160));
+    vTaskDelay(pdMS_TO_TICKS(32)); // ~25 FPS continuous push to backend
     if (WiFi.status() != WL_CONNECTED) {
       vTaskDelay(pdMS_TO_TICKS(200));
       continue;

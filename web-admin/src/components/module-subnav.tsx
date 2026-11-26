@@ -17,8 +17,8 @@ const aiItems = [
 export function ModuleSubnav({ kind }: { kind: 'reports' | 'ai' }) {
   const path = usePathname();
   const items = kind === 'reports' ? reportItems : aiItems;
-  return <nav className="module-subnav" aria-label={kind === 'reports' ? 'Các báo cáo' : 'Phân tích và AI'}>
-    <span>{kind === 'reports' ? 'Báo cáo' : 'Dự báo hàng'}</span>
+  return <nav className="module-subnav" aria-label={kind === 'reports' ? 'Các thống kê' : 'Phân tích và AI'}>
+    <span>{kind === 'reports' ? 'Thống kê' : 'Dự báo hàng'}</span>
     <div>{items.map(([label, href]) => <Link key={href} href={href} aria-current={path === href || path.startsWith(`${href}/`) ? 'page' : undefined}>{label}</Link>)}</div>
   </nav>;
 }

@@ -9,7 +9,13 @@ import { ActionButton } from '../../../components/ui/action-button';
 import { StatusBadge } from '../../../components/ui/status-badge';
 import { useToast } from '../../../components/ui/toast-provider';
 import { errorMessage } from '../../../lib/auth-api';
+import { QRCodeSVG } from 'qrcode.react';
 import * as api from '../../../lib/invoices-api';
+import {
+  buildInvoiceReturnQrUrl,
+  formatPaymentReferenceLabel,
+  getInvoiceCashTenderInfo,
+} from '../../../lib/invoice-receipt';
 import { printInvoice } from '../../../lib/print-invoice';
 
 const money = (value: number) => new Intl.NumberFormat('vi-VN').format(Math.round(value)) + ' đ';
@@ -34,9 +40,15 @@ function InvoiceDetail() {
   useEffect(() => { void load(); }, [id]);
   useEffect(() => {
     if (!invoice || typeof window === 'undefined' || new URLSearchParams(window.location.search).get('return') !== '1') return;
-    if (invoice.status === 'COMPLETED' && invoice.refundedAmount < invoice.total) openReturn();
+    if (canReturn && invoice.status === 'COMPLETED' && invoice.refundedAmount < invoice.total) {
+      openReturn();
+    } else if (invoice.status === 'CANCELLED') {
+      showToast('Hóa đơn này đã hủy, không thể tạo phiếu trả hàng.', 'info');
+    } else if (invoice.refundedAmount >= invoice.total) {
+      showToast('Hóa đơn này đã được hoàn trả toàn bộ.', 'info');
+    }
     window.history.replaceState({}, '', window.location.pathname);
-  }, [invoice?.id]);
+  }, [invoice?.id, canReturn]);
 
   const returned = useMemo(() => {
     const values = new Map<string, number>();
@@ -64,9 +76,58 @@ function InvoiceDetail() {
   if (error && !invoice) return <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>;
   if (!invoice) return <p role="status">Đang tải chi tiết hóa đơn…</p>;
   const fullyReturned = invoice.refundedAmount >= invoice.total;
+  const cashTenderInfo = getInvoiceCashTenderInfo(invoice);
+  const returnQrUrl = buildInvoiceReturnQrUrl(invoice.id);
 
   return <div className="suite-page invoice-detail-page"><div className="detail-back"><Link href="/hoa-don">‹ Quay lại danh sách hóa đơn</Link></div><header className="detail-heading"><div><div className="breadcrumb">Bán hàng <span>›</span> Hóa đơn <span>›</span> {invoice.code}</div><h1>{invoice.code}</h1><p>{invoice.store.name} · {invoice.shift.posCode} · {dateTime(invoice.completedAt)}</p></div><div><StatusBadge tone={invoice.status === 'CANCELLED' ? 'red' : fullyReturned ? 'violet' : invoice.refundedAmount > 0 ? 'amber' : 'green'}>{invoice.status === 'CANCELLED' ? 'Đã hủy' : fullyReturned ? 'Đã trả toàn bộ' : invoice.refundedAmount > 0 ? 'Đã trả một phần' : 'Hoàn tất'}</StatusBadge><ActionButton tone="print" onClick={() => printInvoice(invoice)}>In hóa đơn</ActionButton>{canReturn && invoice.status === 'COMPLETED' && !fullyReturned && returnableItems.length > 0 && <ActionButton tone="danger" onClick={openReturn}>Tạo phiếu trả hàng</ActionButton>}{canCancel && invoice.status === 'COMPLETED' && invoice.salesReturns.length === 0 && invoice.shift.status === 'OPEN' && <ActionButton tone="danger" onClick={() => { setError(''); setCancelOpen(true); }}>Hủy hóa đơn</ActionButton>}</div></header>
-    <div className="detail-grid"><article><h2>Thông tin giao dịch</h2><dl><div><dt>Khách hàng</dt><dd>{invoice.customerName ?? 'Khách lẻ'}</dd></div><div><dt>Số điện thoại</dt><dd>{invoice.customerPhone ?? '—'}</dd></div><div><dt>Thu ngân</dt><dd>{invoice.cashier.name}</dd></div><div><dt>Ca làm việc</dt><dd>{invoice.shift.code} · {invoice.shift.name}</dd></div><div><dt>Ghi chú</dt><dd>{invoice.note ?? '—'}</dd></div></dl></article><article><h2>Thanh toán</h2><dl>{invoice.payments.map(payment => <div key={payment.id}><dt>{paymentName[payment.method]}{payment.reference ? ` · ${payment.reference}` : ''}</dt><dd>{money(payment.amount)}</dd></div>)}{invoice.creditAmount > 0 && <div><dt>Bán chịu</dt><dd>{invoice.receivable ? <Link href={`/cong-no-phai-thu/${invoice.receivable.id}`}><strong>{money(invoice.creditAmount)} · {invoice.receivable.code}</strong></Link> : money(invoice.creditAmount)}</dd></div>}<div><dt>Tiền hàng</dt><dd>{money(invoice.subtotal)}</dd></div><div><dt>Giảm giá</dt><dd>{money(invoice.discount)}</dd></div><div><dt>Tổng thanh toán</dt><dd><strong>{money(invoice.total)}</strong></dd></div><div><dt>Đã hoàn</dt><dd className="negative"><strong>{money(invoice.refundedAmount)}</strong></dd></div><div><dt>Doanh thu còn lại</dt><dd className="positive"><strong>{money(invoice.total - invoice.refundedAmount)}</strong></dd></div></dl></article></div>
+    <div className="detail-grid">
+      <article>
+        <h2>Thông tin giao dịch</h2>
+        <dl>
+          <div><dt>Khách mua</dt><dd>Khách vãng lai</dd></div>
+          <div><dt>Hình thức bán</dt><dd>Bán lẻ trực tiếp tại quầy POS</dd></div>
+          <div><dt>Thu ngân</dt><dd>{invoice.cashier.name}</dd></div>
+          <div><dt>Ca làm việc</dt><dd>{invoice.shift.code} · {invoice.shift.name}</dd></div>
+          <div><dt>Ghi chú</dt><dd>{invoice.note ?? '—'}</dd></div>
+        </dl>
+      </article>
+      <article>
+        <h2>Thanh toán</h2>
+        <dl>
+          {invoice.payments.map(payment => {
+            const refLabel = formatPaymentReferenceLabel(payment.method, payment.reference);
+            return <div key={payment.id}><dt>{paymentName[payment.method]}{refLabel && payment.method !== 'CASH' ? ` · ${refLabel}` : ''}</dt><dd>{money(payment.amount)}</dd></div>;
+          })}
+          {cashTenderInfo && <>
+            <div><dt>Tiền mặt khách đưa</dt><dd><strong>{money(cashTenderInfo.tendered)}</strong></dd></div>
+            <div><dt>Tiền thừa trả khách</dt><dd className="positive"><strong>{money(cashTenderInfo.change)}</strong></dd></div>
+          </>}
+          <div><dt>Tiền hàng</dt><dd>{money(invoice.subtotal)}</dd></div>
+          <div><dt>Giảm giá</dt><dd>{money(invoice.discount)}</dd></div>
+          <div><dt>Tổng thanh toán</dt><dd><strong>{money(invoice.total)}</strong></dd></div>
+          <div><dt>Đã hoàn</dt><dd className="negative"><strong>{money(invoice.refundedAmount)}</strong></dd></div>
+          <div><dt>Doanh thu còn lại</dt><dd className="positive"><strong>{money(invoice.total - invoice.refundedAmount)}</strong></dd></div>
+        </dl>
+      </article>
+      <article className="invoice-return-qr-card">
+        <h2>Mã QR tra cứu &amp; đổi trả</h2>
+        <div className="invoice-return-qr-body">
+          <div className="invoice-return-qr-frame">
+            <QRCodeSVG value={returnQrUrl} size={132} level="M" includeMargin />
+          </div>
+          <div className="invoice-return-qr-copy">
+            <strong>{invoice.code}</strong>
+            <p>Mã QR này được in trực tiếp dưới chân hóa đơn K80. Khi khách mang bill quay lại, quét bằng Camera POS / Trả hàng hoặc Camera điện thoại để mở thẳng phiếu đổi trả.</p>
+            <div className="invoice-return-qr-actions">
+              <ActionButton tone="print" onClick={() => printInvoice(invoice)}>In bill K80 có QR</ActionButton>
+              {canReturn && invoice.status === 'COMPLETED' && !fullyReturned && returnableItems.length > 0 && (
+                <ActionButton tone="view" onClick={openReturn}>Mở phiếu trả hàng</ActionButton>
+              )}
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
     <section className="detail-table"><header><h2>Sản phẩm bán ra</h2><p>Số lượng có thể trả đã trừ các lần trả hàng trước.</p></header><div className="table-scroll"><table><thead><tr><th>Mã sản phẩm</th><th>Sản phẩm</th><th>ĐVT</th><th className="numeric">Đã mua</th><th className="numeric">Đã trả</th><th className="numeric">Còn có thể trả</th><th className="numeric">Đơn giá</th><th className="numeric">Thành tiền</th></tr></thead><tbody>{invoice.items.map(item => { const returnedQuantity = returned.get(item.id) ?? 0; return <tr key={item.id}><td><strong className="document-code">{item.productCode}</strong></td><td><div className="invoice-product-cell">{item.sku.product.imageUrl ? <img src={item.sku.product.imageUrl} alt="" /> : <span aria-hidden="true">{item.productName.slice(0,1)}</span>}<strong>{item.productName}</strong></div></td><td>{item.unit}</td><td className="numeric">{item.quantity}</td><td className="numeric negative">{returnedQuantity}</td><td className="numeric positive"><strong>{item.quantity - returnedQuantity}</strong></td><td className="numeric">{money(item.unitPrice)}</td><td className="numeric"><strong>{money(item.lineTotal)}</strong></td></tr>; })}</tbody></table></div></section>
     {invoice.salesReturns.length > 0 && <section className="detail-table return-history"><header><h2>Lịch sử trả hàng và hoàn tiền</h2><p>Mỗi phiếu lưu người xử lý, phương thức hoàn và trạng thái nhập lại kho.</p></header>{invoice.salesReturns.map(salesReturn => <article key={salesReturn.id}><div><strong>{salesReturn.code}</strong><span>{dateTime(salesReturn.createdAt)} · {salesReturn.processedBy.name}</span><StatusBadge tone="red">Hoàn {money(salesReturn.refundAmount)}</StatusBadge></div><p><b>Lý do:</b> {salesReturn.reason} · <b>Hình thức:</b> {paymentName[salesReturn.refundMethod]}{salesReturn.refundReference ? ` · ${salesReturn.refundReference}` : ''}</p><ul>{salesReturn.items.map(item => <li key={item.id}><span>{item.invoiceItem.productCode} · {item.invoiceItem.productName}</span><strong>{item.quantity} {item.invoiceItem.unit} · {money(item.lineRefund)}</strong><StatusBadge tone={item.restock ? 'green' : 'neutral'}>{item.restock ? 'Đã nhập lại kho' : 'Không nhập kho'}</StatusBadge></li>)}</ul></article>)}</section>}
     {invoice.status === 'CANCELLED' && <section className="invoice-cancel-note"><strong>Hóa đơn đã hủy</strong><p>{invoice.cancellationReason}</p><small>{dateTime(invoice.cancelledAt)} · {invoice.cancelledBy?.name ?? 'Người dùng hệ thống'}</small></section>}
@@ -77,9 +138,10 @@ function InvoiceDetail() {
       <div className="receipt-meta" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 5, margin: '8px 0', padding: '7px 0', borderTop: '1px solid #777', borderBottom: '1px solid #777' }}><div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: '3px 5px', alignContent: 'start' }}><span>M\u00e3 H\u0110</span><b>#{invoice.code}</b><span>Kh\u00e1ch</span><b>{invoice.customerName || 'Kh\u00e1ch l\u1ebb'}</b><span>S\u0110T</span><b>{invoice.customerPhone || '\u2014'}</b></div><div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: '3px 5px', alignContent: 'start' }}><span>Thu ng\u00e2n</span><b>{invoice.cashier.name}</b><span>Ng\u00e0y gi\u1edd</span><b>{dateTime(invoice.completedAt)}</b></div></div>
       <table><thead><tr><th>T\u00ean h\u00e0ng / SL \u00d7 \u0110\u01a1n gi\u00e1</th><th>Th\u00e0nh ti\u1ec1n</th></tr></thead><tbody>{invoice.items.map(item => <tr key={item.id}><td><strong>{item.productName}</strong><small>{item.productCode} \u00b7 {item.quantity} {item.unit} \u00d7 {money(item.unitPrice)}</small></td><td>{money(item.lineTotal)}</td></tr>)}</tbody></table>
       <p className="receipt-item-count">T\u1ed5ng s\u1ed1 m\u1eb7t h\u00e0ng: {invoice.items.reduce((sum, item) => sum + item.quantity, 0)}</p>
-      <dl><div><dt>Ti\u1ec1n h\u00e0ng</dt><dd>{money(invoice.subtotal)}</dd></div><div><dt>Gi\u1ea3m gi\u00e1</dt><dd>{money(invoice.discount)}</dd></div><div className="receipt-total"><dt>T\u1ed4NG THANH TO\u00c1N</dt><dd>{money(invoice.total)}</dd></div>{invoice.payments.map(payment => <div key={payment.id}><dt>{paymentName[payment.method]}</dt><dd>{money(payment.amount)}</dd></div>)}{invoice.creditAmount > 0 && <div><dt>C\u00f2n n\u1ee3</dt><dd>{money(invoice.creditAmount)}</dd></div>}</dl>
+      <dl><div><dt>Tiền hàng</dt><dd>{money(invoice.subtotal)}</dd></div><div><dt>Giảm giá</dt><dd>{money(invoice.discount)}</dd></div><div className="receipt-total"><dt>TỔNG THANH TOÁN</dt><dd>{money(invoice.total)}</dd></div>{invoice.payments.map(payment => <div key={payment.id}><dt>{paymentName[payment.method]}</dt><dd>{money(payment.amount)}</dd></div>)}{cashTenderInfo && <><div><dt>Tiền khách đưa</dt><dd>{money(cashTenderInfo.tendered)}</dd></div><div><dt>Tiền thừa trả khách</dt><dd><strong>{money(cashTenderInfo.change)}</strong></dd></div></>}</dl>
       {invoice.status === 'CANCELLED' && <strong className="receipt-cancelled">{"H\u00d3A \u0110\u01a0N \u0110\u00c3 H\u1ee6Y"}</strong>}
-      <footer><strong>C\u1ea3m \u01a1n qu\u00fd kh\u00e1ch!</strong><span>H\u1eb9n g\u1eb7p l\u1ea1i</span><small>FreshMart - {invoice.store.name}</small></footer>
+      <div style={{ textAlign: 'center', margin: '8px 0' }}><QRCodeSVG value={returnQrUrl} size={112} level="M" includeMargin /><small style={{ display: 'block', marginTop: 3 }}>Quét QR tra cứu / đổi trả hàng</small></div>
+      <footer><strong>Cảm ơn quý khách!</strong><span>Hẹn gặp lại</span><small>FreshMart - {invoice.store.name}</small></footer>
     </section>    {returnOpen && <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget) setReturnOpen(false); }}><form className="ui-modal-card sales-return-modal" onSubmit={submitReturn}><header><div><h2>Tạo phiếu trả hàng</h2><p>{invoice.code} · tối đa còn lại {money(invoice.total - invoice.refundedAmount)}</p></div><button type="button" onClick={() => setReturnOpen(false)}>×</button></header>{error && <div className="ui-error" role="alert">{error}</div>}<fieldset><legend>Sản phẩm trả</legend><div className="sales-return-lines">{returnableItems.map(item => <div key={item.id}><span><strong>{item.productName}</strong><small>{item.productCode} · đã mua {item.quantity}, còn {item.remaining} {item.unit}</small></span><label>Số lượng<input type="number" min={0} max={item.remaining} value={quantities[item.id] ?? ''} onChange={event => setQuantities(old => { const next = { ...old }; if (event.target.value === '') delete next[item.id]; else next[item.id] = Number(event.target.value); return next; })} /></label><label className="check"><input type="checkbox" checked={restock[item.id] ?? true} onChange={event => setRestock(old => ({ ...old, [item.id]: event.target.checked }))} />Nhập lại kho</label></div>)}</div></fieldset><div className="form-grid"><label>Lý do trả hàng<textarea name="reason" required minLength={3} maxLength={500} rows={3} placeholder="Ví dụ: hàng lỗi, sai quy cách…" /></label><label>Phương thức hoàn tiền<select name="refundMethod" defaultValue="CASH"><option value="CASH">Tiền mặt</option><option value="QR">QR / chuyển khoản</option></select></label></div><div className="return-refund-preview"><span>Số tiền dự kiến hoàn</span><strong>{money(refundPreview)}</strong></div><footer><ActionButton tone="more" onClick={() => setReturnOpen(false)}>Đóng</ActionButton><ActionButton tone="danger" type="submit" disabled={busy}>{busy ? 'Đang xử lý…' : 'Xác nhận trả hàng'}</ActionButton></footer></form></div>}
     {cancelOpen && <div className="ui-modal" onMouseDown={event => { if (event.target === event.currentTarget && !busy) setCancelOpen(false); }}><form className="ui-modal-card" onSubmit={submitCancel}><header><div><h2>Hủy hóa đơn {invoice.code}</h2><p>Hệ thống sẽ hoàn tồn kho và điều chỉnh doanh thu ca theo giao dịch.</p></div><button type="button" aria-label="Đóng" disabled={busy} onClick={() => setCancelOpen(false)}>×</button></header>{error && <div className="ui-error" role="alert">{error}</div>}<label>Lý do hủy<textarea autoFocus required minLength={3} maxLength={500} value={cancelReason} onChange={event => setCancelReason(event.target.value)} placeholder="Ghi rõ lý do hủy hóa đơn"/></label><footer><ActionButton tone="more" onClick={() => setCancelOpen(false)} disabled={busy}>Đóng</ActionButton><ActionButton tone="danger" type="submit" disabled={busy || cancelReason.trim().length < 3}>{busy ? 'Đang hủy…' : 'Xác nhận hủy'}</ActionButton></footer></form></div>}
   </div>;

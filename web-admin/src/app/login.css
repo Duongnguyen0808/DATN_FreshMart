@@ -43,8 +43,13 @@ body.retail-ui .fm-login-form > label[for='login-password'] { margin-top:22px; }
 body.retail-ui .fm-login-form input { font-size:14px!important; font-weight:400!important; color:#263b37; caret-color:#087f78; }
 body.retail-ui .fm-login-form > input { padding:0 14px!important; margin:0!important; background:#f8fafa!important; border-color:#dce7e4; }
 .fm-login-form > input:focus, .fm-login-password:focus-within { border-color:#087f78!important; outline:none!important; box-shadow:0 0 0 3px #65cfc71f; }
-.fm-login-password { display:flex; align-items:center; }
-.fm-login-password input { min-width:0; width:100%; flex:1; height:48px; border:0!important; outline:0!important; box-shadow:none!important; background:transparent!important; padding:0 0 0 14px!important; margin:0!important; border-radius:10px; }
+.fm-login-password { display:flex; align-items:center; overflow:hidden; }
+body.retail-ui .fm-login-password input,
+.fm-login-password input { min-width:0; width:100%; flex:1; height:100%!important; min-height:0!important; border:0!important; outline:0!important; box-shadow:none!important; background:transparent!important; padding:0 6px 0 14px!important; margin:0!important; border-radius:0!important; }
+.fm-login-password input::-ms-reveal,
+.fm-login-password input::-ms-clear,
+input[type='password']::-ms-reveal,
+input[type='password']::-ms-clear { display:none!important; width:0!important; height:0!important; }
 body.retail-ui .fm-login-form input::placeholder { color:#96a29c; font-weight:400; opacity:1; }
 .fm-login-password button { display:grid; place-items:center; flex:none; width:38px; height:38px; margin-right:5px; color:#7a8c85; border-radius:8px; }
 .fm-login-password button:hover { background:#edf3f0; color:#087f78; }
@@ -70,8 +75,8 @@ body.retail-ui .fm-login-access-footer { display:block; text-align:center; margi
 .fm-login-form input:-webkit-autofill:focus {
   -webkit-text-fill-color:#263b37!important;
   caret-color:#087f78;
-  box-shadow:inset 0 0 0 1000px #f8fafa!important;
-  -webkit-box-shadow:inset 0 0 0 1000px #f8fafa!important;
+  box-shadow:inset 0 0 0 1000px #ffffff!important;
+  -webkit-box-shadow:inset 0 0 0 1000px #ffffff!important;
 }
 .fm-login-form > input:-webkit-autofill:focus { outline:2px solid #087f78!important; outline-offset:2px; }
 .fm-login button:focus-visible { outline:2px solid #087f78; outline-offset:3px; }

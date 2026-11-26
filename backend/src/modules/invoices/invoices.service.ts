@@ -1,5 +1,13 @@
 import { takeLots, receiveLot, restoreCancelledLots, expired, warehouseToday } from '../inventory/lot-stock.js';
-import { buildFefoPromoCode, calculateFefoPromoDiscount, parseFefoPromoLotCode, resolveFefoDiscountPercent } from '../forecasts/fefo-promo.js';
+import {
+  buildBogoPromoCode,
+  buildFefoPromoCode,
+  calculateFefoPromoDiscount,
+  isBogoEligibleByPolicy,
+  parseFefoPromoToken,
+  resolveFefoDiscountPercent,
+  type FefoPromoMode,
+} from '../forecasts/fefo-promo.js';
 import { publishInventoryUpdate } from '../iot/iot.realtime.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { prisma } from '../../common/database.js';
@@ -151,8 +159,11 @@ export async function listFefoPromoCodes(user: CurrentUser, warehouseId: string)
       if (isExpired || discountPercent <= 0 || daysRemaining === null) return null;
       const sellingPrice = Number(lot.inventory.sku.sellingPrice);
       const unit = lot.inventory.sku.product.unit;
+      const bogoEligible = isBogoEligibleByPolicy(daysRemaining, lot.quantity);
       return {
         promoCode: buildFefoPromoCode(lot.code),
+        bogoEligible,
+        bogoPromoCode: bogoEligible ? buildBogoPromoCode(lot.code) : null,
         lotId: lot.id,
         lotCode: lot.code,
         skuId: lot.inventory.skuId,
@@ -172,6 +183,7 @@ export async function listFefoPromoCodes(user: CurrentUser, warehouseId: string)
 
 type PromoVerificationItem = {
   promoCode: string;
+  mode: FefoPromoMode;
   lotId: string;
   lotCode: string;
   skuId: string;
@@ -182,6 +194,7 @@ type PromoVerificationItem = {
   lotQuantity: number;
   cartQuantity: number;
   eligibleQuantity: number;
+  freeQuantity: number;
   discountPercent: number;
   sellingPrice: number;
   discountAmount: number;
@@ -194,7 +207,12 @@ async function resolveVerifiedFefoPromos(
   promoCodes: string[],
   items: { skuId: string; quantity: number }[],
 ) {
-  const uniqueLotCodes = [...new Set(promoCodes.map(parseFefoPromoLotCode).filter((code): code is string => Boolean(code)))];
+  const modeByLotCode = new Map<string, FefoPromoMode>();
+  for (const raw of promoCodes) {
+    const parsed = parseFefoPromoToken(raw);
+    if (parsed) modeByLotCode.set(parsed.lotCode, parsed.mode);
+  }
+  const uniqueLotCodes = [...modeByLotCode.keys()];
   if (!uniqueLotCodes.length) throw new AppError(400, 'FEFO_PROMO_INVALID', 'Mã khuyến mãi FEFO không hợp lệ.');
   const today = warehouseToday();
   const itemQtyBySku = new Map(items.map(item => [item.skuId, item.quantity]));
@@ -210,12 +228,14 @@ async function resolveVerifiedFefoPromos(
 
   const verified: PromoVerificationItem[] = [];
   for (const lotCode of uniqueLotCodes) {
+    const mode = modeByLotCode.get(lotCode) ?? 'DISCOUNT';
+    const displayCode = mode === 'BOGO' ? buildBogoPromoCode(lotCode) : buildFefoPromoCode(lotCode);
     const lot = lotByCode.get(lotCode);
     if (!lot) throw new AppError(400, 'FEFO_PROMO_INVALID', `Không tìm thấy lô ${lotCode} tại kho xuất hàng.`);
     if (lot.status !== 'AVAILABLE') throw new AppError(409, 'FEFO_PROMO_UNAVAILABLE', `Lô ${lotCode} đang ở trạng thái ${lot.status}, không thể áp mã xả cận hạn.`);
     const skuId = lot.inventory.skuId;
     const cartQuantity = itemQtyBySku.get(skuId) ?? 0;
-    if (cartQuantity <= 0) throw new AppError(400, 'FEFO_PROMO_SKU_NOT_IN_CART', `Sản phẩm "${lot.inventory.sku.product.name}" của mã FEFO-${lotCode} chưa có trong giỏ hàng.`);
+    if (cartQuantity <= 0) throw new AppError(400, 'FEFO_PROMO_SKU_NOT_IN_CART', `Sản phẩm "${lot.inventory.sku.product.name}" của mã ${displayCode} chưa có trong giỏ hàng.`);
 
     const daysRemaining = daysUntilExpiry(lot.expiresAt, today);
     const calc = calculateFefoPromoDiscount({
@@ -226,12 +246,14 @@ async function resolveVerifiedFefoPromos(
       sellingPrice: Number(lot.inventory.sku.sellingPrice),
       cartQuantity,
       unit: lot.inventory.sku.product.unit,
+      mode,
     });
     if (!calc.eligible || daysRemaining === null || !lot.expiresAt) {
-      throw new AppError(400, 'FEFO_PROMO_INVALID', calc.reason ?? `Mã FEFO-${lotCode} không đủ điều kiện áp dụng.`);
+      throw new AppError(400, 'FEFO_PROMO_INVALID', calc.reason ?? `Mã ${displayCode} không đủ điều kiện áp dụng.`);
     }
     verified.push({
       promoCode: calc.promoCode,
+      mode: calc.mode,
       lotId: lot.id,
       lotCode,
       skuId,
@@ -242,6 +264,7 @@ async function resolveVerifiedFefoPromos(
       lotQuantity: lot.quantity,
       cartQuantity,
       eligibleQuantity: calc.eligibleQuantity,
+      freeQuantity: calc.freeQuantity,
       discountPercent: calc.discountPercent,
       sellingPrice: calc.sellingPrice,
       discountAmount: calc.discountAmount,

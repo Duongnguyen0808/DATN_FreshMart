@@ -253,7 +253,7 @@ function SimpleForecastPage() {
       </div>
       <div className="heading-actions">
         <Link className="outline-button" href="/du-bao-nhu-cau/khao-sat">Khảo sát mô hình AI</Link>
-        <Link className="outline-button" href="/lo-han-dung">Lô & hạn dùng FEFO</Link>
+        <Link className="outline-button" href="/lo-han-dung">Lô và hạn sử dụng</Link>
       </div>
     </header>
 
@@ -480,7 +480,7 @@ function SimpleForecastPage() {
                 {showAllFefo ? `Chỉ lô nguy cơ (${fefoAtRiskRows.length})` : `Xem thêm lô an toàn`}
               </button>
             )}
-            <Link className="outline-button" href="/lo-han-dung">Quản lý lô FEFO →</Link>
+            <Link className="outline-button" href="/lo-han-dung">Quản lý lô và hạn sử dụng →</Link>
           </div>
         </div>
         {visibleFefoRows.length > 0 ? (
@@ -533,6 +533,9 @@ function SimpleForecastPage() {
                       ) : lot.atRiskQuantity > 0 ? (
                         <div className="ai-plan-list">
                           <span>Giảm {lot.suggestedDiscountPercent}% xả hàng (thu ~{format(lot.recoverableValue)} đ)</span>
+                          {lot.daysRemaining <= 10 && lot.lotQuantity >= 2 && (
+                            <span style={{ color: '#be123c', fontWeight: 600 }}>🎁 Đủ điều kiện xả nhanh Mua 1 Tặng 1 tại POS</span>
+                          )}
                           {lot.recommendedTransferBranch && (
                             <span className="ai-plan-saved">
                               Chuyển {lot.recommendedTransferBranch.absorbableQuantity} {lot.unit} → {lot.recommendedTransferBranch.warehouseName} ({lot.recommendedTransferBranch.dailyDemandRate}/ngày)
@@ -560,9 +563,24 @@ function SimpleForecastPage() {
                               ? 'Đang tạo…'
                               : `Chuyển → ${lot.recommendedTransferBranch.warehouseName}`}
                           </button>
-                        ) : lot.atRiskQuantity > 0 ? (
-                          <span className="ai-plan-muted">Ưu tiên xuất FEFO</span>
-                        ) : (
+                        ) : null}
+                        {lot.atRiskQuantity > 0 && lot.daysRemaining >= 0 && lot.daysRemaining <= 21 && lot.lotQuantity >= 1 && (
+                          <Link
+                            className="outline-button"
+                            href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`FEFO-${lot.lotCode.toUpperCase()}`)}&skuId=${encodeURIComponent(lot.skuId)}&warehouseId=${encodeURIComponent(lot.warehouseId)}`}
+                          >
+                            🏷️ Bán POS -{lot.suggestedDiscountPercent}% →
+                          </Link>
+                        )}
+                        {lot.atRiskQuantity > 0 && lot.daysRemaining >= 0 && lot.daysRemaining <= 10 && lot.lotQuantity >= 2 && (
+                          <Link
+                            className="outline-button"
+                            href={`/hoa-don/tao?fefoPromo=${encodeURIComponent(`BOGO-${lot.lotCode.toUpperCase()}`)}&skuId=${encodeURIComponent(lot.skuId)}&warehouseId=${encodeURIComponent(lot.warehouseId)}`}
+                          >
+                            🎁 Bán 1 Tặng 1 →
+                          </Link>
+                        )}
+                        {lot.atRiskQuantity <= 0 && !lot.pendingTransfer && (
                           <span className="ai-plan-muted">—</span>
                         )}
                       </div>

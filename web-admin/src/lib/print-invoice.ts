@@ -1,17 +1,24 @@
 import type { Invoice, PaymentMethod } from './invoices-api';
+import {
+  buildInvoiceReturnQrUrl,
+  getInvoiceCashTenderInfo,
+  renderQrSvgMarkup,
+} from './invoice-receipt';
 
 const money = (value: number) => new Intl.NumberFormat('vi-VN').format(Math.round(value)) + ' đ';
 const dateTime = (value: string) => new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
 const paymentName: Record<PaymentMethod, string> = { CASH: 'Tiền mặt', QR: 'QR / chuyển khoản', CARD: 'Giao dịch cũ' };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
-export function printInvoice(invoice: Invoice) {
+export function printInvoice(invoice: Invoice, options?: { silentIfBlocked?: boolean }): boolean {
   // Open a full-size tab: Edge sizes its print preview to the opener window, and
   // a small popup makes the receipt preview look tiny even when paper sizing is correct.
   const printWindow = window.open('', '_blank');
   if (!printWindow) {
-    window.alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.');
-    return;
+    if (!options?.silentIfBlocked) {
+      window.alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên rồi thử lại.');
+    }
+    return false;
   }
 
   const items = invoice.items.map((item, index) => `
@@ -20,9 +27,16 @@ export function printInvoice(invoice: Invoice) {
       <td>${escapeHtml(money(item.lineTotal))}</td>
     </tr>`).join('');
   const payments = invoice.payments.map(payment => `<div><span>${escapeHtml(paymentName[payment.method])}</span><strong>${escapeHtml(money(payment.amount))}</strong></div>`).join('');
-  const phone = invoice.customerPhone ? `<div><span>Điện thoại</span><strong>${escapeHtml(invoice.customerPhone)}</strong></div>` : '';
+  const cashTender = getInvoiceCashTenderInfo(invoice);
+  const cashChangeBlock = cashTender
+    ? `<div class="cash-tender"><span>Tiền khách đưa</span><strong>${escapeHtml(money(cashTender.tendered))}</strong></div><div class="cash-change"><span>Tiền thừa trả khách</span><strong>${escapeHtml(money(cashTender.change))}</strong></div>`
+    : '';
   const cancelMark = invoice.status === 'CANCELLED' ? '<div class="cancelled">HÓA ĐƠN ĐÃ HỦY</div>' : '';
-  const credit = invoice.creditAmount > 0 ? `<div><span>Còn nợ</span><strong>${escapeHtml(money(invoice.creditAmount))}</strong></div>` : '';
+  const returnQrUrl = buildInvoiceReturnQrUrl(invoice.id, window.location.origin);
+  const returnQrSvg = renderQrSvgMarkup(returnQrUrl, 118);
+  const qrSection = returnQrSvg
+    ? `<section class="return-qr"><div class="return-qr-box">${returnQrSvg}</div><strong>Quét QR tra cứu / đổi trả hàng</strong><small>${escapeHtml(invoice.code)}</small></section>`
+    : '';
 
   printWindow.document.open();
   printWindow.document.write(`<!doctype html>
@@ -52,7 +66,13 @@ export function printInvoice(invoice: Invoice) {
       .count{font-size:11px;margin:5px 0}
       .totals{margin:7px 0}
       .totals .grand{border-top:1px solid #222;margin-top:4px;padding-top:6px;font-size:14px;font-weight:bold}
+      .totals .cash-tender{border-top:1px dashed #888;margin-top:5px;padding-top:5px}
+      .totals .cash-change{font-size:13px;font-weight:bold}
       .cancelled{text-align:center;font-size:13px;font-weight:bold;border:2px solid #111;padding:5px;margin:8px 0}
+      .return-qr{text-align:center;border-top:1px dashed #555;margin-top:9px;padding-top:8px}
+      .return-qr-box{display:inline-block;padding:4px;border:1px solid #222;background:#fff;line-height:0}
+      .return-qr strong{display:block;font-size:11px;margin-top:5px}
+      .return-qr small{display:block;font-size:10px;color:#333;margin-top:2px}
       .thanks{text-align:center;border-top:1px dashed #555;margin-top:9px;padding-top:7px}
       .thanks strong,.thanks span{display:block}
       .thanks small{display:block;margin-top:6px}
@@ -61,11 +81,11 @@ export function printInvoice(invoice: Invoice) {
       <header class="brand"><img src="${window.location.origin}/logo.png" alt="FreshMart"><h1>FreshMart</h1><p>HÓA ĐƠN BÁN HÀNG</p><b>${escapeHtml(invoice.code)}</b></header>
       <h2 class="title">CHI TIẾT THANH TOÁN</h2>
       <p class="store">${escapeHtml(invoice.store.name)} · ${escapeHtml(invoice.shift.posCode)}</p>
-      <section class="meta"><div><span>Ngày giờ</span><strong>${escapeHtml(dateTime(invoice.completedAt))}</strong></div><div><span>Thu ngân</span><strong>${escapeHtml(invoice.cashier.name)}</strong></div><div><span>Khách hàng</span><strong>${escapeHtml(invoice.customerName || 'Khách lẻ')}</strong></div>${phone}</section>
+      <section class="meta"><div><span>Ngày giờ</span><strong>${escapeHtml(dateTime(invoice.completedAt))}</strong></div><div><span>Thu ngân</span><strong>${escapeHtml(invoice.cashier.name)}</strong></div><div><span>Khách mua</span><strong>Khách vãng lai</strong></div></section>
       <table class="items"><thead><tr><th>Sản phẩm · SL × đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${items}</tbody></table>
       <p class="count">Tổng số lượng: ${invoice.items.reduce((sum, item) => sum + item.quantity, 0)}</p>
-      <section class="totals"><div><span>Tiền hàng</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div><div><span>Giảm giá</span><strong>${escapeHtml(money(invoice.discount))}</strong></div><div class="grand"><span>Tổng thanh toán</span><strong>${escapeHtml(money(invoice.total))}</strong></div>${payments}${credit}</section>
-      ${cancelMark}<footer class="thanks"><strong>Cảm ơn quý khách!</strong><span>Hẹn gặp lại</span><small>FreshMart · ${escapeHtml(invoice.store.name)}</small></footer>
+      <section class="totals"><div><span>Tiền hàng</span><strong>${escapeHtml(money(invoice.subtotal))}</strong></div><div><span>Giảm giá</span><strong>${escapeHtml(money(invoice.discount))}</strong></div><div class="grand"><span>Tổng thanh toán</span><strong>${escapeHtml(money(invoice.total))}</strong></div>${payments}${cashChangeBlock}</section>
+      ${cancelMark}${qrSection}<footer class="thanks"><strong>Cảm ơn quý khách!</strong><span>Hẹn gặp lại</span><small>FreshMart · ${escapeHtml(invoice.store.name)}</small></footer>
     </main></body></html>`);
   printWindow.document.close();
 
@@ -73,11 +93,12 @@ export function printInvoice(invoice: Invoice) {
     const images = Array.from(printWindow.document.images);
     await Promise.all(images.map(image => image.decode().catch(() => undefined)));
     const content = printWindow.document.getElementById('receipt');
-    const heightMm = Math.max(100, Math.ceil((((content?.scrollHeight ?? 450) * 25.4 / 96) + 6) / 5) * 5);
+    const heightMm = Math.max(110, Math.ceil((((content?.scrollHeight ?? 520) * 25.4 / 96) + 6) / 5) * 5);
     const pageStyle = printWindow.document.createElement('style');
     pageStyle.textContent = `@page{size:80mm ${heightMm}mm;margin:3mm}@media print{html,body{width:74mm;margin:0;padding:0}#receipt{width:74mm}}`;
     printWindow.document.head.appendChild(pageStyle);
     printWindow.focus();
     printWindow.print();
   }, 250);
+  return true;
 }

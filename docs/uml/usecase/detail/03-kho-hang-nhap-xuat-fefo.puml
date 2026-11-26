@@ -1,0 +1,50 @@
+@startuml
+title Sơ đồ Use Case Chi tiết: Kho hàng, Nhập xuất theo lô FEFO và Chuyển kho
+
+left to right direction
+skinparam linetype polyline
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam usecaseBorderColor #222222
+skinparam usecaseBackgroundColor #F8FCFB
+skinparam rectangleBorderColor #444444
+skinparam ArrowColor #333333
+skinparam nodesep 26
+skinparam ranksep 65
+
+actor "Nhân viên\n(EMPLOYEE)" as Staff
+actor "Quản lý chi nhánh\n(BRANCH_MANAGER)" as Manager
+
+rectangle "Phân hệ Kho hàng, Lô FEFO & Chuyển kho" {
+  usecase "Tạo yêu cầu\nmua hàng" as UC_INV_01
+  usecase "Nhập hàng theo PO\nvà ghi nhận lô" as UC_INV_03
+  usecase "Cập nhật tồn kho\nvà công nợ NCC" as UC_INV_05
+  usecase "Đính kèm ảnh\nchứng từ nhập" as UC_INV_04
+  usecase "Quản lý lô hàng\nvà hạn sử dụng" as UC_INV_06
+  usecase "Xuất và nhận hàng\nđiều chuyển" as UC_INV_08
+  usecase "Duyệt yêu cầu\nvà tạo đơn PO" as UC_INV_02
+  usecase "Tạo và duyệt phiếu\nđiều chuyển kho" as UC_INV_07
+  usecase "Thiết lập tồn kho\nan toàn" as UC_INV_09
+}
+
+actor "Cloudinary" as Cloud
+
+Staff -- UC_INV_01
+Staff -- UC_INV_03
+Staff -- UC_INV_06
+Staff -- UC_INV_08
+
+Manager -- UC_INV_03
+Manager -- UC_INV_06
+Manager -- UC_INV_08
+Manager -- UC_INV_02
+Manager -- UC_INV_07
+Manager -- UC_INV_09
+
+UC_INV_03 ..> UC_INV_05 : <<include>>
+UC_INV_04 ..> UC_INV_03 : <<extend>>
+UC_INV_04 -- Cloud
+@enduml

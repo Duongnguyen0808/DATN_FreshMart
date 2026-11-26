@@ -6,7 +6,7 @@ import { QRCodeSVG } from 'qrcode.react';
 const mock = vi.hoisted(() => ({ context: vi.fn(), ingest: vi.fn() }));
 vi.mock('./camera-demo-session.service.js', () => ({ getCameraDemo: mock.context }));
 vi.mock('./iot.service.js', () => ({ ingestEvent: mock.ingest }));
-import { decodeCameraJpeg, ingestCameraFrame } from './camera-image.service.js';
+import { decodeCameraJpeg, decodePosCodeFromImage, ingestCameraFrame } from './camera-image.service.js';
 
 const code = 'QR-11111111-2222-4333-8444-555555555555';
 async function photographedQr(value = code) {
@@ -37,5 +37,15 @@ describe('backend decoding of camera JPEGs', () => {
     await ingestCameraFrame({ ...input, eventId: 'next-frame' }, jpeg);
     expect(mock.ingest).toHaveBeenCalledTimes(1);
     expect(mock.ingest.mock.calls[0]).toMatchObject([{ tagId: code, warehouseId: 'destination', payload: { decoder: 'BACKEND_ZXING', reportedWarehouseId: 'physical', demoSessionId: 'session' } }, 'DEVICE', null]);
+  });
+
+  it('recovers a rotated soft-focused POS QR/barcode image via 2x upscale & rotation pass', async () => {
+    const svg = renderToStaticMarkup(createElement(QRCodeSVG, { value: '8930000000008', size: 120, marginSize: 3 }));
+    const softTile = await sharp(Buffer.from(svg)).rotate(90, { background: 'white' }).blur(1.1).png().toBuffer();
+    const frame = await sharp({ create: { width: 640, height: 480, channels: 3, background: '#3a4240' } })
+      .composite([{ input: softTile, gravity: 'centre' }])
+      .jpeg({ quality: 58 })
+      .toBuffer();
+    await expect(decodePosCodeFromImage(frame)).resolves.toMatchObject({ code: '8930000000008' });
   });
 });

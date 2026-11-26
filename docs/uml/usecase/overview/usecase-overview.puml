@@ -1,0 +1,68 @@
+@startuml
+title Sơ đồ Use Case Tổng quát – Hệ thống Chuỗi Cửa hàng Thông minh FreshMart
+
+left to right direction
+skinparam linetype polyline
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam usecaseFontSize 11
+skinparam actorFontSize 11
+skinparam usecaseBorderColor #222222
+skinparam usecaseBackgroundColor #F8FCFB
+skinparam rectangleBorderColor #444444
+skinparam ArrowColor #333333
+skinparam nodesep 22
+skinparam ranksep 70
+
+actor "Chủ hệ thống\n(OWNER)" as Owner
+actor "Quản lý chi nhánh\n(BRANCH_MANAGER)" as Manager
+actor "Nhân viên\n(EMPLOYEE)" as Staff
+
+rectangle "Hệ thống FreshMart Smart Retail (Web Admin & Mobile Ops)" {
+  usecase "Quản lý tài khoản\nvà phân quyền" as UC01
+  usecase "Quản lý chi nhánh,\nkho và sản phẩm" as UC02
+  usecase "Quản lý công nợ\nvà báo cáo" as UC09
+  usecase "Dự báo nhu cầu AI\nvà cảnh báo FEFO" as UC10
+  usecase "Nhập hàng theo PO\nvà quản lý lô" as UC05
+  usecase "Quản lý tồn kho\nvà xuất kho FEFO" as UC06
+  usecase "Điều chuyển hàng\ngiữa chi nhánh" as UC07
+  usecase "Kiểm kê kho\nvà kiểm đếm nhanh" as UC08
+  usecase "Giám sát cửa kho\nIoT và RFID" as UC11
+  usecase "Vận hành Mobile\n(Checklist & Sự cố)" as UC12
+  usecase "Bán hàng POS\nvà thanh toán" as UC03
+  usecase "Quản lý ca làm việc\nvà trả hàng" as UC04
+}
+
+actor "Dịch vụ AI" as AI
+actor "Thiết bị IoT\n(ESP32)" as IoT
+actor "Cổng PayOS" as PayOS
+
+Owner -- UC01
+Owner -- UC02
+Owner -- UC09
+Owner -- UC10
+
+Manager -- UC09
+Manager -- UC10
+Manager -- UC05
+Manager -- UC06
+Manager -- UC07
+Manager -- UC08
+Manager -- UC11
+Manager -- UC12
+Manager -- UC03
+
+Staff -- UC05
+Staff -- UC06
+Staff -- UC07
+Staff -- UC08
+Staff -- UC11
+Staff -- UC12
+Staff -- UC03
+Staff -- UC04
+
+UC10 -- AI
+UC11 -- IoT
+UC03 -- PayOS
+@enduml

@@ -70,26 +70,26 @@ function ProductDetails({ product, forecastAlert, loading, canManage, onEdit, on
         </div>
       </div>
       <div className="product-detail-fields">
-        <div className="detail-metric-box tone-blue"><small>Giá bán niêm yết</small><strong>{money(sellingPrice)}</strong><span>Giá bán lẻ tại quầy POS</span></div>
-        <div className="detail-metric-box tone-amber"><small>Giá vốn nhập</small><strong>{money(costPrice)}</strong><span>Lãi gộp: {money(profit)} / {product.unit}</span></div>
-        <div className="detail-metric-box tone-emerald"><small>Biên lợi nhuận</small><strong>{margin.toFixed(1)}%</strong><span>{margin >= 15 ? 'Hiệu quả sinh lời tốt' : 'Biên lợi nhuận tiêu chuẩn'}</span></div>
-        <div className="detail-metric-box tone-cyan"><small>Tồn kho khả dụng</small><strong>{stock} {product.unit}</strong><span>{stock > 0 ? 'Sẵn sàng xuất bán' : 'Cần lập đơn nhập bổ sung'}</span></div>
-        <div className="detail-metric-box tone-indigo"><small>Mã sản phẩm & Barcode</small><strong>{product.code}</strong><span>Barcode: {sku?.barcode || 'Chưa gán'}</span></div>
-        <div className="detail-metric-box tone-violet"><small>Danh mục & Quy cách</small><strong>{product.category.name}</strong><span>{conversionText}</span></div>
+        <div className="detail-metric-box"><small>Giá bán niêm yết</small><strong>{money(sellingPrice)}</strong><span>Giá bán lẻ tại quầy POS</span></div>
+        <div className="detail-metric-box"><small>Giá vốn nhập</small><strong>{money(costPrice)}</strong><span>Lãi gộp: {money(profit)} / {product.unit}</span></div>
+        <div className="detail-metric-box"><small>Biên lợi nhuận</small><strong>{margin.toFixed(1)}%</strong><span>{margin >= 15 ? 'Hiệu quả sinh lời tốt' : 'Biên lợi nhuận tiêu chuẩn'}</span></div>
+        <div className="detail-metric-box"><small>Tồn kho khả dụng</small><strong>{stock} {product.unit}</strong><span>{stock > 0 ? 'Sẵn sàng xuất bán' : 'Cần lập đơn nhập bổ sung'}</span></div>
+        <div className="detail-metric-box"><small>Mã sản phẩm & Barcode</small><strong>{product.code}</strong><span>Barcode: {sku?.barcode || 'Chưa gán'}</span></div>
+        <div className="detail-metric-box"><small>Danh mục & Quy cách</small><strong>{product.category.name}</strong><span>{conversionText}</span></div>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderRadius: 12, background: forecastAlert ? '#fffbeb' : '#f0fdf4', border: `1px solid ${forecastAlert ? '#fde68a' : '#bbf7d0'}` }}>
+      <div className="product-forecast-strip">
         <div>
-          <strong style={{ display: 'block', fontSize: 13.5, color: forecastAlert ? '#92400e' : '#166534' }}>
-            🤖 Dự báo AI & Khuyến nghị tồn kho (14 ngày tới): {forecastAlert ? `Cần nhập bù ${forecastAlert.shortageQuantity} ${product.unit} tại ${forecastAlert.storeName}` : 'Đủ tồn kho an toàn theo sức mua dự báo'}
+          <strong>
+            Dự báo nhu cầu và khuyến nghị tồn kho (14 ngày tới): {forecastAlert ? `Cần nhập bù ${forecastAlert.shortageQuantity} ${product.unit} tại ${forecastAlert.storeName}` : 'Đủ tồn kho an toàn theo sức mua dự báo'}
           </strong>
-          <span style={{ fontSize: 12.5, color: '#475569' }}>
+          <span>
             {forecastAlert
               ? `Dự báo nhu cầu: ${forecastAlert.predictedQuantity} ${product.unit} · Tồn an toàn: ${forecastAlert.safetyStock} ${product.unit} · Khả dụng: ${forecastAlert.available} ${product.unit}`
               : `Tồn khả dụng hiện tại (${stock} ${product.unit}) đáp ứng tốt nhu cầu bán dự kiến trong 14 ngày tới.`}
           </span>
         </div>
-        <Link className="outline-button" href={`/du-bao-nhu-cau?q=${encodeURIComponent(product.code)}`} style={{ fontSize: 12.5, padding: '6px 12px' }}>
-          📈 Xem biểu đồ dự báo AI →
+        <Link className="outline-button" href={`/du-bao-nhu-cau?q=${encodeURIComponent(product.code)}`}>
+          Xem dự báo →
         </Link>
       </div>
     </>}
@@ -180,7 +180,7 @@ export default function Products() {
   };
   useStockReceiptRefresh(() => { if (page !== 1) setPage(1); else void load(); });
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page, forecastOnly, forecastKey]);
+  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page, forecastOnly, forecastOnly ? forecastKey : '']);
   useEffect(() => { setPage(1); }, [query, categoryId, status, stockStatus]);
 
   const open = (type: Exclude<Modal, null>, product: productsApi.Product | null = null) => {
@@ -204,7 +204,10 @@ export default function Products() {
   const showProduct = async (product: productsApi.Product) => {
     if (viewing?.id === product.id) { setViewing(null); return; }
     setViewing(product); setDetailTab('info'); setViewLoading(true);
-    try { setViewing(await productsApi.getProduct(product.id)); }
+    try {
+      const detail = await productsApi.getProduct(product.id);
+      setViewing({ ...detail, availableStock: detail.availableStock ?? product.availableStock });
+    }
     catch (reason) { setViewing(null); setError(errorMessage(reason)); }
     finally { setViewLoading(false); }
   };
@@ -356,12 +359,12 @@ export default function Products() {
           className="ai-quick-toggle"
           aria-pressed={forecastOnly}
           onClick={() => { setPage(1); setForecastOnly(v => !v); }}
-          title="Lọc nhanh các mặt hàng có cảnh báo thiếu hụt theo Dự báo AI"
+          title="Lọc nhanh các mặt hàng sắp thiếu tồn cần nhập bổ sung"
         >
-          🤖 Cần nhập theo AI ({forecastAlerts.items.length})
+          Cần nhập bổ sung ({forecastAlerts.items.length})
         </button>
         <Link className="outline-button" href="/du-bao-nhu-cau" style={{ minHeight: 40, padding: '7px 12px', fontSize: 12.5 }}>
-          📈 Trang Dự báo AI
+          Bảng dự báo nhu cầu
         </Link>
         {(query || categoryId || status !== 'all' || stockStatus !== 'all' || forecastOnly) && (
           <button type="button" className="outline-button" onClick={() => { setQuery(''); setCategoryId(''); setStatus('all'); setStockStatus('all'); setForecastOnly(false); }}>
@@ -370,17 +373,17 @@ export default function Products() {
         )}
       </div>
       <TabBar className="products-category-tabs" value={categoryId || 'all'} onChange={value => setCategoryId(value === 'all' ? '' : value)} label="Lọc sản phẩm theo danh mục" items={[{ value: 'all', label: <><Icon name="grid" size={16}/>Tất cả sản phẩm</>, style: categoryTheme().style, className: 'category-filter' }, ...categories.filter(item => item.active).map(item => ({ value: item.id, label: <><Icon name={categoryTheme(item).icon} size={16}/>{item.name}</>, style: categoryTheme(item).style, className: 'category-filter' }))]}/>
-      {(query.trim() || categoryId || status !== 'all' || stockStatus !== 'all' || forecastOnly) && <div className="product-active-filters" style={{ padding: '8px 18px', borderBottom: '1px solid #e2ece9' }} aria-label="Điều kiện lọc đang áp dụng"><span>Đang lọc:</span>{query.trim() && <button type="button" onClick={() => setQuery('')} aria-label="Bỏ lọc từ khóa">Từ khóa: {query.trim()} <span aria-hidden="true">×</span></button>}{categoryId && <button type="button" onClick={() => setCategoryId('')} aria-label="Bỏ lọc nhóm hàng">{categories.find(item => item.id === categoryId)?.name ?? 'Nhóm hàng'} <span aria-hidden="true">×</span></button>}{stockStatus !== 'all' && <button type="button" onClick={() => setStockStatus('all')} aria-label="Bỏ lọc tồn kho">{stockStatus === 'IN_STOCK' ? 'Còn hàng' : 'Hết hàng'} <span aria-hidden="true">×</span></button>}{status !== 'all' && <button type="button" onClick={() => setStatus('all')} aria-label="Bỏ lọc trạng thái kinh doanh">{status === 'true' ? 'Đang kinh doanh' : 'Ngừng kinh doanh'} <span aria-hidden="true">×</span></button>}{forecastOnly && <button type="button" onClick={() => setForecastOnly(false)} aria-label="Bỏ lọc AI">Dự báo thiếu hàng AI <span aria-hidden="true">×</span></button>}</div>}
+      {(query.trim() || categoryId || status !== 'all' || stockStatus !== 'all' || forecastOnly) && <div className="product-active-filters" style={{ padding: '8px 18px', borderBottom: '1px solid #e2ece9' }} aria-label="Điều kiện lọc đang áp dụng"><span>Đang lọc:</span>{query.trim() && <button type="button" onClick={() => setQuery('')} aria-label="Bỏ lọc từ khóa">Từ khóa: {query.trim()} <span aria-hidden="true">×</span></button>}{categoryId && <button type="button" onClick={() => setCategoryId('')} aria-label="Bỏ lọc nhóm hàng">{categories.find(item => item.id === categoryId)?.name ?? 'Nhóm hàng'} <span aria-hidden="true">×</span></button>}{stockStatus !== 'all' && <button type="button" onClick={() => setStockStatus('all')} aria-label="Bỏ lọc tồn kho">{stockStatus === 'IN_STOCK' ? 'Còn hàng' : 'Hết hàng'} <span aria-hidden="true">×</span></button>}{status !== 'all' && <button type="button" onClick={() => setStatus('all')} aria-label="Bỏ lọc trạng thái kinh doanh">{status === 'true' ? 'Đang kinh doanh' : 'Ngừng kinh doanh'} <span aria-hidden="true">×</span></button>}{forecastOnly && <button type="button" onClick={() => setForecastOnly(false)} aria-label="Bỏ lọc hàng cần nhập bổ sung">Cần nhập bổ sung <span aria-hidden="true">×</span></button>}</div>}
       {error && !modal && <div className="ui-error" role="alert">{error} <button onClick={load}>Thử lại</button></div>}
-      <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng · Bấm vào dòng sản phẩm để xem chi tiết & Dự báo AI</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
+      <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng · Bấm vào dòng sản phẩm để xem chi tiết & dự báo tồn kho</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
       {display === 'gallery' && (loading ? <TableState loading message="Đang tải sản phẩm…"/> : result.items.length ? <><ProductGallery items={result.items} onOpen={showProduct}/>{viewing && <section className="gallery-detail"><ProductDetails product={viewing} forecastAlert={forecastAlerts.items.find(item => item.productId === viewing.id)} loading={viewLoading} canManage={canManage} onEdit={() => open('edit',viewing)} onClose={() => setViewing(null)}/></section>}</> : <TableState message="Không có sản phẩm phù hợp."/>)}
-      <div className="table-scroll" hidden={display !== 'table'}><table><thead><tr><th>Mã sản phẩm</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên lợi nhuận</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
+      <div className="table-scroll" hidden={display !== 'table'} suppressHydrationWarning><table><thead><tr><th>Mã SP</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên LN</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
         {loading ? <tr><td colSpan={11}><TableState message="Đang tải dữ liệu sản phẩm…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có sản phẩm phù hợp."/></td></tr> : result.items.map(product => {
           const sku = product.skus[0];
           const margin = sku?.sellingPrice ? (sku.sellingPrice - sku.costPrice) / sku.sellingPrice * 100 : 0;
-          return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm & dự báo AI">
+          return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm & dự báo tồn kho">
             <td><code>{product.code}</code></td><td>{sku?.barcode ?? '—'}</td>
-            <td><div className="product-name-cell"><div className="product-thumb">{product.imageUrl ? <img src={product.imageUrl} alt=""/> : <span>{product.name.charAt(0)}</span>}</div><strong>{product.name}</strong></div>{forecastAlerts.items.filter(item => item.productId === product.id).slice(0, 1).map(item => <ForecastAlertBadge key={`${item.storeId}-${item.skuId}`} item={item}/>)}</td>
+            <td><div className="product-name-cell"><div className="product-thumb">{product.imageUrl ? <img src={product.imageUrl} alt=""/> : <span>{product.name.charAt(0)}</span>}</div><div className="product-name-copy"><strong>{product.name}</strong>{forecastAlerts.items.filter(item => item.productId === product.id).slice(0, 1).map(item => <ForecastAlertBadge key={`${item.storeId}-${item.skuId}`} item={item}/>)}</div></div></td>
             <td><CategoryBadge category={product.category}/></td><td><strong>{product.unit}</strong>{product.baseUnit && product.unitsPerUnit > 1 && <small>1 {product.unit} = {product.unitsPerUnit} {product.baseUnit}</small>}</td><td className="numeric"><strong>{product.availableStock ?? 0}</strong><small>{(product.availableStock ?? 0) > 0 ? 'Còn hàng' : 'Hết hàng'}</small></td>
             <td className="numeric">{money(sku?.costPrice ?? 0)}</td><td className="numeric"><strong>{money(sku?.sellingPrice ?? 0)}</strong></td><td className="numeric"><strong className="positive">{margin.toFixed(1)}%</strong></td>
             <td><StatusBadge tone={product.active ? 'green' : 'red'}>{product.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh'}</StatusBadge></td>

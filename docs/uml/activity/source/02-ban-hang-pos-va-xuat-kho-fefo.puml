@@ -1,0 +1,87 @@
+@startuml
+title Sơ đồ hoạt động: Bán hàng POS, xuất kho theo FEFO và thanh toán
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "Arial"
+skinparam defaultFontSize 12
+skinparam ActivityBorderColor #222222
+skinparam ActivityBackgroundColor #FFFFFF
+skinparam ActivityDiamondBorderColor #222222
+skinparam ActivityDiamondBackgroundColor #F5F5F5
+skinparam ArrowColor #222222
+skinparam PartitionBorderColor #555555
+skinparam PartitionBackgroundColor #FAFAFA
+
+|Thu ngân|
+start
+:Quét hoặc chọn sản phẩm vào giỏ hàng;
+:Chọn phương thức thanh toán,\nmã xả cận hạn FEFO (nếu có) và xác nhận;
+
+|Giao diện POS|
+:Gửi yêu cầu POST /invoices;
+
+|Backend/API|
+:Xác thực JWT và kiểm tra quyền invoices.create;
+if (Thanh toán QR khi đã cấu hình PayOS?) then ([Có])
+  :Trả lỗi 409 yêu cầu xác minh qua PayOS;
+  |Giao diện POS|
+  :Chuyển luồng tạo mã QR PayOS;
+  stop
+else ([Không])
+endif
+
+|Cơ sở dữ liệu|
+:Truy vấn ca làm việc, kho xuất,\nkhách hàng và danh sách SKU;
+
+|Backend/API|
+if (Ca đang mở, thuộc phạm vi chi nhánh,\nSKU hợp lệ và cân đối thanh toán?) then ([Không hợp lệ])
+  :Trả lỗi tương ứng (400/403/404/409);
+  |Giao diện POS|
+  :Hiển thị thông báo lỗi nghiệp vụ;
+  stop
+else ([Hợp lệ])
+  |Backend/API|
+  :Bắt đầu giao dịch Serializable Transaction;
+  if (Có mã khuyến mãi FEFO?) then ([Có])
+    :Xác minh lô áp mã và tổng chiết khấu FEFO;
+  else ([Không])
+  endif
+
+  repeat
+    |Cơ sở dữ liệu|
+    :Truy vấn tồn kho SKU tại kho xuất;
+    |Backend/API|
+    if (Tồn khả dụng >= số lượng bán?) then ([Không đủ tồn])
+      :Hủy giao dịch (Rollback)\nvà trả lỗi 409 INSUFFICIENT_STOCK;
+      |Giao diện POS|
+      :Hiển thị cảnh báo không đủ tồn kho;
+      stop
+    else ([Đủ tồn kho])
+      |Cơ sở dữ liệu|
+      :Sắp xếp lô khả dụng chưa hết hạn\ntheo ngày hết hạn tăng dần (FEFO);
+      :Trừ tồn từng lô và ghi LotMovement (SALE);
+      :Giảm tồn kho onHand và ghi InventoryTransaction;
+    endif
+  repeat while (Còn SKU tiếp theo trong hóa đơn?) is ([Còn])
+  -> [Hết SKU];
+
+  |Cơ sở dữ liệu|
+  :Cập nhật doanh thu tiền mặt/chuyển khoản của ca;
+  :Lưu hóa đơn, chi tiết hóa đơn và thanh toán;
+  if (Có số tiền ghi nợ > 0?) then ([Có])
+    :Tạo bản ghi công nợ phải thu (Receivable);
+  else ([Không])
+  endif
+  :Ghi nhật ký AuditLog (invoice.create);
+  :Xác nhận hoàn tất giao dịch (Commit);
+
+  |Backend/API|
+  :Phát sự kiện Socket.IO inventory:updated;
+  :Trả về hóa đơn đã hoàn tất;
+endif
+
+|Giao diện POS|
+:Hiển thị hóa đơn thành công và cập nhật tồn kho;
+stop
+@enduml

@@ -10,7 +10,7 @@ export function ReportComposition({ kind, summary }: { kind: 'stock' | 'products
     { id: 'normal', label: 'Tồn ổn định', value: summary.normal }, { id: 'low', label: 'Sắp thiếu', value: summary.low },
     { id: 'out', label: 'Hết hàng', value: summary.out }, { id: 'high', label: 'Tồn cao', value: summary.high },
   ]}/>;
-  if (kind === 'products') return <DistributionPanel title="Độ phủ bán hàng" description="Sản phẩm có phát sinh bán so với danh mục đang kinh doanh trong phạm vi báo cáo." unit="mã hàng" rows={[
+  if (kind === 'products') return <DistributionPanel title="Độ phủ bán hàng" description="Sản phẩm có phát sinh bán so với danh mục đang kinh doanh trong phạm vi thống kê." unit="mã hàng" rows={[
     { id: 'sold', label: 'Có phát sinh bán', value: summary.soldSkus },
     { id: 'unsold', label: 'Chưa phát sinh bán', value: Math.max(0, summary.activeSkus - summary.soldSkus) },
   ]}/>;

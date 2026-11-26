@@ -1,16 +1,16 @@
 import { EventEmitter } from 'node:events';
 import sharp from 'sharp';
-import {
+import zxingPkg, { type LuminanceSource } from '@zxing/library';
+const {
   BarcodeFormat,
   BinaryBitmap,
   DecodeHintType,
   GlobalHistogramBinarizer,
   HybridBinarizer,
-  type LuminanceSource,
   MultiFormatReader,
   QRCodeReader,
   RGBLuminanceSource,
-} from '@zxing/library';
+} = zxingPkg;
 import { AppError } from '../../common/app-error.js';
 import { getCameraDemo } from './camera-demo-session.service.js';
 import { ingestEvent } from './iot.service.js';
@@ -108,7 +108,7 @@ export async function decodeCameraJpeg(jpeg: Buffer) {
   return null;
 }
 
-const posBarcodeFormats = [
+const posOneDFormats = [
   BarcodeFormat.EAN_13,
   BarcodeFormat.EAN_8,
   BarcodeFormat.CODE_128,
@@ -116,12 +116,24 @@ const posBarcodeFormats = [
   BarcodeFormat.UPC_A,
   BarcodeFormat.UPC_E,
   BarcodeFormat.ITF,
-  BarcodeFormat.QR_CODE,
 ];
+const posQrFormats = [BarcodeFormat.QR_CODE];
 
-function tryDecodePosSource(source: LuminanceSource, tryHarder: boolean): { code: string; format: string } | null {
+function isExternalUrlCode(code: string): boolean {
+  const trimmed = code.trim();
+  if (!/^https?:\/\//i.test(trimmed)) return false;
+  // FreshMart internal invoice return QR URLs (/hoa-don/<uuid>?return=1) are actionable internal codes
+  if (/\/hoa-don\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(trimmed)) return false;
+  return true;
+}
+
+function tryDecodePosFormats(
+  source: LuminanceSource,
+  formats: BarcodeFormat[],
+  tryHarder: boolean,
+): { code: string; format: string } | null {
   const reader = new MultiFormatReader();
-  const hints = new Map<DecodeHintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, posBarcodeFormats]]);
+  const hints = new Map<DecodeHintType, unknown>([[DecodeHintType.POSSIBLE_FORMATS, formats]]);
   if (tryHarder) hints.set(DecodeHintType.TRY_HARDER, true);
   reader.setHints(hints);
   const binarizers = [new HybridBinarizer(source), new GlobalHistogramBinarizer(source)];
@@ -140,13 +152,13 @@ function tryDecodePosSource(source: LuminanceSource, tryHarder: boolean): { code
 }
 
 export async function decodePosCodeFromImage(imageBuffer: Buffer): Promise<{ code: string; format: string } | null> {
-  if (imageBuffer.length < 4 || imageBuffer.length > 2 * 1024 * 1024) {
-    throw new AppError(400, 'CAMERA_IMAGE_INVALID', 'Ảnh camera không hợp lệ.');
+  if (imageBuffer.length < 4 || imageBuffer.length > 10 * 1024 * 1024) {
+    throw new AppError(400, 'CAMERA_IMAGE_INVALID', 'Ảnh camera không phải định dạng hợp lệ.');
   }
 
   let rawImage;
   try {
-    rawImage = await sharp(imageBuffer, { limitInputPixels: 1920 * 1080, failOn: 'none' })
+    rawImage = await sharp(imageBuffer, { failOn: 'none' })
       .greyscale()
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -157,27 +169,42 @@ export async function decodePosCodeFromImage(imageBuffer: Buffer): Promise<{ cod
   const { width, height, channels } = rawImage.info;
   if (channels !== 1 || width < 32 || height < 32) return null;
 
+  let fallbackUrlQr: { code: string; format: string } | null = null;
+  const checkSources = (sources: LuminanceSource[], tryHarder: boolean) => {
+    for (const src of sources) {
+      const oneD = tryDecodePosFormats(src, posOneDFormats, tryHarder);
+      if (oneD) return oneD;
+    }
+    for (const src of sources) {
+      const qr = tryDecodePosFormats(src, posQrFormats, tryHarder);
+      if (qr) {
+        if (!isExternalUrlCode(qr.code)) return qr;
+        if (!fallbackUrlQr) fallbackUrlQr = qr;
+      }
+    }
+    return null;
+  };
+
   const fullSource = new RGBLuminanceSource(new Uint8ClampedArray(rawImage.data), width, height);
   const side = Math.min(480, width, height);
   const cropLeft = Math.floor((width - side) / 2);
   const cropTop = Math.floor((height - side) / 2);
   const centerSource = fullSource.crop(cropLeft, cropTop, side, side);
-  const bandHeight = Math.max(64, Math.floor(height * 0.45));
+  const bandHeight = Math.max(64, Math.floor(height * 0.48));
   const bandTop = Math.floor((height - bandHeight) / 2);
   const horizontalBand = fullSource.crop(0, bandTop, width, bandHeight);
 
+  // Stage 1: Fast native pass (1D barcodes first, then QR codes)
   const fastHit =
-    tryDecodePosSource(horizontalBand, false) ??
-    tryDecodePosSource(centerSource, false) ??
-    tryDecodePosSource(fullSource, false) ??
-    tryDecodePosSource(horizontalBand, true) ??
-    tryDecodePosSource(centerSource, true);
+    checkSources([horizontalBand, centerSource, fullSource], false) ??
+    checkSources([horizontalBand, centerSource], true);
   if (fastHit) return fastHit;
 
+  // Stage 2: Native contrast normalization + edge sharpen (handles low indoor lighting)
   try {
     const enhanced = await sharp(rawImage.data, { raw: { width, height, channels: 1 } })
       .normalise()
-      .sharpen({ sigma: 1.2, m1: 1.6, m2: 3.2 })
+      .sharpen({ sigma: 1.2, m1: 1.7, m2: 3.4 })
       .raw()
       .toBuffer();
 
@@ -185,22 +212,50 @@ export async function decodePosCodeFromImage(imageBuffer: Buffer): Promise<{ cod
     const enhancedBand = enhancedFull.crop(0, bandTop, width, bandHeight);
     const enhancedCenter = enhancedFull.crop(cropLeft, cropTop, side, side);
 
-    const enhancedHit =
-      tryDecodePosSource(enhancedBand, true) ??
-      tryDecodePosSource(enhancedCenter, true) ??
-      tryDecodePosSource(enhancedFull, true) ??
-      tryDecodePosSource(enhancedBand.invert(), true);
+    const enhancedHit = checkSources([enhancedBand, enhancedCenter, enhancedFull, enhancedBand.invert()], true);
     if (enhancedHit) return enhancedHit;
+
+    // Fast 90-degree vertical rotation on native resolution (~4ms instead of 2x Lanczos 250ms)
+    const rotated = await sharp(enhanced, { raw: { width, height, channels: 1 } })
+      .rotate(90)
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const rotFull = new RGBLuminanceSource(
+      new Uint8ClampedArray(rotated.data),
+      rotated.info.width,
+      rotated.info.height,
+    );
+    const rotBandH = Math.max(64, Math.floor(rotated.info.height * 0.48));
+    const rotBand = rotFull.crop(0, Math.floor((rotated.info.height - rotBandH) / 2), rotated.info.width, rotBandH);
+    const rotHit = checkSources([rotBand, rotFull], true);
+    if (rotHit) return rotHit;
   } catch {
     // Ignore enhancement errors
   }
 
-  return null;
+  // Stage 2b: Threshold binarization for blurry/low-contrast 1D barcode stripes (~4ms)
+  try {
+    const binarized = await sharp(rawImage.data, { raw: { width, height, channels: 1 } })
+      .normalise()
+      .sharpen({ sigma: 1.4, m1: 2.0, m2: 4.0 })
+      .threshold(128)
+      .raw()
+      .toBuffer();
+    const binFull = new RGBLuminanceSource(new Uint8ClampedArray(binarized), width, height);
+    const binBand = binFull.crop(0, bandTop, width, bandHeight);
+    const binHit = checkSources([binBand, binFull], true);
+    if (binHit) return binHit;
+  } catch {
+    // Ignore threshold errors
+  }
+
+  return fallbackUrlQr;
 }
 
 export async function ingestCameraFrame(
   input: Omit<z.infer<typeof iotEventInput>, 'eventType' | 'tagId' | 'payload'>,
   jpeg: Buffer,
+  cacheOnly = false,
 ) {
   if (jpeg.length >= 4 && jpeg[0] === 255 && jpeg[1] === 216) {
     latestFrame = {
@@ -211,50 +266,56 @@ export async function ingestCameraFrame(
     };
     cameraFrameBus.emit('frame', latestFrame);
   }
-
-  if (inFlight >= 4) {
+  if (cacheOnly) {
     return { decoded: false, decodeMs: 0, event: null };
   }
-  inFlight++;
-  try {
-    const started = performance.now();
-    const code = await decodeCameraJpeg(jpeg);
-    const decodeMs = Math.round(performance.now() - started);
-    if (!code) return { decoded: false, decodeMs, event: null };
 
-    // Bind only a real decoded QR to an authenticated user's active demo.
-    const context = await getCameraDemo(input.deviceId, code);
-    const warehouseId = context?.warehouseId ?? input.warehouseId;
-    const key = `${input.deviceId}:${code}:${warehouseId}:${context?.sessionId ?? ''}`;
-    const cached = recentlyRead.get(key);
-    if (cached && Date.now() - cached.at < 1500) {
-      return { decoded: true, code, decodeMs, event: cached.event };
-    }
-    const result = await ingestEvent(
-      {
-        ...input,
-        warehouseId,
-        eventType: 'CAMERA_CODE_DETECTED',
-        tagId: code,
-        payload: {
-          reader: 'ESP32-CAM',
-          capture: 'CAMERA',
-          decoder: 'BACKEND_ZXING',
-          decodeMs,
-          reportedWarehouseId: input.warehouseId,
-          ...(context ? { demoSessionId: context.sessionId } : {}),
-        },
-      },
-      'DEVICE',
-      null,
-    );
-    for (const [entry, value] of recentlyRead) {
-      if (Date.now() - value.at > 1500) recentlyRead.delete(entry);
-    }
-    if (recentlyRead.size >= 128) recentlyRead.delete(recentlyRead.keys().next().value!);
-    recentlyRead.set(key, { at: Date.now(), event: result.event });
-    return { decoded: true, code, decodeMs, event: result.event };
-  } finally {
-    inFlight--;
+  // Non-blocking background QR decode: return HTTP 200 to ESP32-CAM immediately (<1ms)
+  // so ESP32-CAM can push 25 FPS continuously without waiting for server image processing!
+  if (inFlight < 1) {
+    inFlight++;
+    setImmediate(async () => {
+      try {
+        const started = performance.now();
+        const code = await decodeCameraJpeg(jpeg);
+        const decodeMs = Math.round(performance.now() - started);
+        if (!code) return;
+
+        const context = await getCameraDemo(input.deviceId, code);
+        const warehouseId = context?.warehouseId ?? input.warehouseId;
+        const key = `${input.deviceId}:${code}:${warehouseId}:${context?.sessionId ?? ''}`;
+        const cached = recentlyRead.get(key);
+        if (cached && Date.now() - cached.at < 1500) return;
+
+        const result = await ingestEvent(
+          {
+            ...input,
+            warehouseId,
+            eventType: 'CAMERA_CODE_DETECTED',
+            tagId: code,
+            payload: {
+              reader: 'ESP32-CAM',
+              capture: 'CAMERA',
+              decoder: 'BACKEND_ZXING',
+              decodeMs,
+              reportedWarehouseId: input.warehouseId,
+              ...(context ? { demoSessionId: context.sessionId } : {}),
+            },
+          },
+          'DEVICE',
+          null,
+        );
+        for (const [entry, value] of recentlyRead) {
+          if (Date.now() - value.at > 1500) recentlyRead.delete(entry);
+        }
+        if (recentlyRead.size >= 128) recentlyRead.delete(recentlyRead.keys().next().value!);
+        recentlyRead.set(key, { at: Date.now(), event: result.event });
+      } catch {
+        // Ignore background decode errors
+      } finally {
+        inFlight--;
+      }
+    });
   }
+  return { decoded: false, decodeMs: 0, event: null };
 }

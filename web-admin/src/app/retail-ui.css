@@ -6,7 +6,7 @@
     --blue: #176b57;
     --border: #e1e6e9;
     --bg: #f4f6f7;
-    font-family: Roboto, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     background: var(--bg);
@@ -46,7 +46,7 @@
   .retail-ui .top-module-dropdown { border-color: var(--border); border-radius: 0 0 8px 8px; box-shadow: 0 10px 26px #24334616; }
   .retail-ui .top-module-dropdown section > a { font-size: 13px; padding: 10px 8px; }
   .retail-ui .top-module-dropdown section > a:hover { background: #eff6f2; color: #176b57; }
-  .retail-ui .main-content { max-width: 1528px; margin-inline: auto; padding: 28px 24px 48px; background: transparent !important; }
+  .retail-ui .main-content { width: 100%; max-width: 100%; margin: 0; padding: 24px 28px 48px; background: transparent !important; box-sizing: border-box; }
   .retail-ui :is(.suite-page,.inventory-page,.report-page,.operational-page,.live-inbound,.network-page,.recommend-page) { font-size: 14px; }
   .retail-ui :is(.suite-heading,.inventory-heading,.dashboard-heading,.page-heading,.detail-heading,.li-head) { margin-bottom: 24px; gap: 16px; }
   .retail-ui .suite-heading { background: transparent !important; padding: 0; }
@@ -197,7 +197,7 @@
   .retail-ui .commerce-shell .topbar .scope-label { gap: 6px; }
   .retail-ui .commerce-shell .topbar .scope-label img { display: none; }
   .retail-ui .commerce-shell .topbar .scope-brand-name { font-size: 13px; color: #6e7a73; font-weight: 500; letter-spacing: 0; }
-  .retail-ui .commerce-shell .main-content { max-width: 1440px; padding: 32px 36px 48px; }
+  .retail-ui .commerce-shell .main-content { width: 100%; max-width: 100%; margin: 0; padding: 24px 28px 48px; box-sizing: border-box; }
   .retail-ui .commerce-nav-backdrop { display: none; }
   .retail-ui .commerce-dashboard .breadcrumb { display: none; }
   .retail-ui .commerce-dashboard .dashboard-heading { margin: 0 0 16px; align-items: center; }

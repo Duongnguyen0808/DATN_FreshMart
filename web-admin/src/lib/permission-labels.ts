@@ -13,6 +13,6 @@ export const permissionLabels: Record<string, string> = {
   'purchase_requests.read': 'Xem \u0111\u1ec1 ngh\u1ecb mua h\u00e0ng', 'purchase_requests.create': 'T\u1ea1o \u0111\u1ec1 ngh\u1ecb mua h\u00e0ng', 'purchase_requests.approve': 'Quyền cũ — không còn bước duyệt',
   'purchase_orders.read': 'Xem \u0111\u01a1n mua h\u00e0ng', 'purchase_orders.create': 'T\u1ea1o \u0111\u01a1n mua h\u00e0ng', 'purchase_orders.receive': 'Nh\u1eadn h\u00e0ng theo \u0111\u01a1n mua',
   'payables.read': 'Xem c\u00f4ng n\u1ee3 ph\u1ea3i tr\u1ea3', 'payables.pay': 'Ghi nh\u1eadn thanh to\u00e1n c\u00f4ng n\u1ee3', 'receivables.read': 'Xem c\u00f4ng n\u1ee3 ph\u1ea3i thu', 'receivables.pay': 'Ghi nh\u1eadn thu ti\u1ec1n',
-  'dashboard.read': 'Xem t\u1ed5ng quan', 'reports.read': 'Xem b\u00e1o c\u00e1o',
+  'dashboard.read': 'Xem tổng quan', 'reports.read': 'Xem thống kê',
 };
 export const permissionLabel = (code: string) => permissionLabels[code] ?? 'Quy\u1ec1n nghi\u1ec7p v\u1ee5';
