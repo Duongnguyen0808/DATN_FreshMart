@@ -11,7 +11,7 @@ import './analytics-studio.css';
 import './turquoise-theme.css';
 import './enterprise-ui.css';
 import './table-align-clean.css';
-import './freshmart-offio-theme.css';
+import './warehouse-pos-theme.css';
 import './login.css';
 import { AuthProvider } from '../components/auth-provider';
 import { ToastProvider } from '../components/ui/toast-provider';
