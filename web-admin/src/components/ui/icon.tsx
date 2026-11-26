@@ -1,6 +1,9 @@
 import type { CSSProperties } from 'react';
 const paths: Record<string, string> = {
   cookie: 'M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5 M8.5 8.5v.01 M7.5 15.5v.01 M12 12v.01 M15.5 15.5v.01',
+  add: 'M12 5v14 M5 12h14',
+  scan: 'M4 8V6a2 2 0 0 1 2-2h2 M16 4h2a2 2 0 0 1 2 2v2 M20 16v2a2 2 0 0 1-2 2h-2 M8 20H6a2 2 0 0 1-2-2v-2 M7 12h10',
+  layers: 'M12 2L2 7l10 5 10-5-10-5z M2 12l10 5 10-5 M2 17l10 5 10-5',
   candy: 'M16.5 7.5a4.24 4.24 0 0 0-6 0l-3 3a4.24 4.24 0 0 0 6 6l3-3a4.24 4.24 0 0 0 0-6z M18 6l3.5-3.5 M6 18l-3.5 3.5',
   sparkles: 'M12 3l2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z M20 2v4 M18 4h4',
   bottle: 'M9 2h6v4l2 3v12H7V9l2-3z M7 12h10 M9 5h6',
