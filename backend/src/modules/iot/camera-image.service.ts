@@ -1,6 +1,12 @@
 import { EventEmitter } from 'node:events';
 import sharp from 'sharp';
-import zxingPkg, { type LuminanceSource } from '@zxing/library';
+import zxingPkg, {
+  type BarcodeFormat as BarcodeFormatType,
+  type DecodeHintType as DecodeHintTypeType,
+  type LuminanceSource,
+} from '@zxing/library';
+type BarcodeFormat = BarcodeFormatType;
+type DecodeHintType = DecodeHintTypeType;
 const {
   BarcodeFormat,
   BinaryBitmap,
