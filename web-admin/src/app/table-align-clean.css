@@ -3,12 +3,44 @@
   body.retail-ui .table-scroll {
     container-type: inline-size !important;
   }
-  body.retail-ui .table-scroll :is(th, thead td, td),
-  body.retail-ui .table-scroll :is(th, thead td, td).numeric,
-  body.retail-ui table :is(th, thead td, td),
-  body.retail-ui table :is(th, thead td, td).numeric {
+
+  /* Strict 1:1 Column Header ↔ Column Body ↔ Column Footer Left-Edge Alignment across ALL tables */
+  body.retail-ui table:not(.invoice-print-receipt table) :is(th, thead td),
+  body.retail-ui table:not(.invoice-print-receipt table) :is(th, thead td).numeric,
+  body.retail-ui table:not(.invoice-print-receipt table) tbody td:not([colspan]),
+  body.retail-ui table:not(.invoice-print-receipt table) tbody td:not([colspan]).numeric,
+  body.retail-ui table:not(.invoice-print-receipt table) tfoot :is(th, td),
+  body.retail-ui table:not(.invoice-print-receipt table) tfoot :is(th, td).numeric,
+  body.retail-ui .table-scroll :is(th, thead td, td:not([colspan])),
+  body.retail-ui .table-scroll :is(th, thead td, td:not([colspan])).numeric {
+    text-align: left !important;
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  body.retail-ui table:not(.invoice-print-receipt table) :is(thead, tbody, tfoot) > tr > :is(th, td):first-child:not([colspan]),
+  body.retail-ui .table-scroll :is(thead, tbody, tfoot) > tr > :is(th, td):first-child:not([colspan]) {
+    padding-left: 16px !important;
+  }
+
+  body.retail-ui table:not(.invoice-print-receipt table) :is(thead, tbody, tfoot) > tr > :is(th, td):last-child:not([colspan]),
+  body.retail-ui .table-scroll :is(thead, tbody, tfoot) > tr > :is(th, td):last-child:not([colspan]) {
+    padding-right: 16px !important;
+  }
+
+  /* Ensure stacked numbers + sublabels (e.g. "303" + "Còn hàng") align flush left under their header */
+  body.retail-ui table:not(.invoice-print-receipt table) td:not([colspan]) > :is(strong, small, code, p),
+  body.retail-ui table:not(.invoice-print-receipt table) td.numeric > :is(strong, small, code, p) {
+    text-align: left !important;
+    margin-left: 0 !important;
+  }
+
+  body.retail-ui table:not(.invoice-print-receipt table) td:not([colspan]) > strong + small {
+    display: block !important;
+    margin-top: 3px !important;
     text-align: left !important;
   }
+
   body.retail-ui td .forecast-alert-detail {
     display: block !important;
     width: fit-content !important;
@@ -16,14 +48,14 @@
     text-align: left !important;
   }
 
-  /* Fit all 11 columns of /san-pham inside the frame without cutting off the right edge */
-  body.retail-ui .products-page .table-scroll :is(th, td) {
+  /* Fit all 11 columns of /san-pham inside the frame with identical th & td horizontal padding */
+  body.retail-ui .products-page .table-scroll table :is(th, td:not([colspan])) {
     padding: 11px 9px !important;
   }
-  body.retail-ui .products-page .table-scroll :is(th, td):first-child {
+  body.retail-ui .products-page .table-scroll table :is(thead, tbody, tfoot) > tr > :is(th, td):first-child:not([colspan]) {
     padding-left: 14px !important;
   }
-  body.retail-ui .products-page .table-scroll :is(th, td):last-child {
+  body.retail-ui .products-page .table-scroll table :is(thead, tbody, tfoot) > tr > :is(th, td):last-child:not([colspan]) {
     padding-right: 14px !important;
   }
   body.retail-ui .products-page .table-scroll td:nth-child(3) {
