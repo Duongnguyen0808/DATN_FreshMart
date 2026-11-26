@@ -64,14 +64,31 @@ export async function changeCategoryStatus(user: CurrentUser, id: string, active
   return prisma.$transaction(async tx => { const row = await tx.category.update({ where: { id }, data: { active } }); await tx.auditLog.create({ data: { actorId: user.id, action: active ? 'category.activate' : 'category.deactivate', targetId: id } }); return row; });
 }
 
+const normVi = (s: string | null | undefined) => (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().trim();
+const rankVi = (q: string, name: string, pCode: string, barcode?: string | null) => {
+  const nq = normVi(q);
+  const nn = normVi(name);
+  const nc = normVi(pCode);
+  const nb = normVi(barcode);
+  if (nc === nq || nb === nq || nn === nq) return 1000;
+  if (nc.startsWith(nq) || nb.startsWith(nq)) return 700;
+  if (nn.startsWith(nq)) return 500;
+  if (nn.split(/[^a-z0-9]+/).some(w => w.startsWith(nq))) return 350;
+  return 100;
+};
+
 export async function listProducts(input: z.infer<typeof listInput>, user: CurrentUser) {
   const warehouseScope = user.globalAccess ? {} : { warehouse: { storeId: { in: user.stores.map(store => store.id) } } };
   const inventoryStock = input.stockStatus === 'IN_STOCK' ? { some: { onHand: { gt: 0 }, ...warehouseScope } } : input.stockStatus === 'OUT_OF_STOCK' ? { none: { onHand: { gt: 0 }, ...warehouseScope } } : undefined;
   const where = { archivedAt: null, ...(input.active === 'all' ? {} : { active: input.active === 'true' }), ...(input.categoryId ? { categoryId: input.categoryId } : {}), ...(inventoryStock ? { skus: { some: { inventories: inventoryStock } } } : {}), ...(input.q ? { OR: [{ code: { contains: input.q } }, { name: { contains: input.q } }, { skus: { some: { OR: [{ code: { contains: input.q } }, { barcode: { contains: input.q } }] } } }] } : {}) };
-  const [items, total, activeCount, inactiveCount] = await prisma.$transaction([
-    prisma.product.findMany({ where, include: includeList, orderBy: [{ lastReceivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { code: 'asc' }], skip: (input.page - 1) * input.pageSize, take: input.pageSize }),
+  const [matchedAll, total, activeCount, inactiveCount] = await prisma.$transaction([
+    prisma.product.findMany({ where, include: includeList, orderBy: [{ lastReceivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }, { code: 'asc' }], ...(input.q ? {} : { skip: (input.page - 1) * input.pageSize, take: input.pageSize }) }),
     prisma.product.count({ where }), prisma.product.count({ where: { active: true, archivedAt: null } }), prisma.product.count({ where: { active: false, archivedAt: null } }),
   ]);
+  if (input.q) {
+    matchedAll.sort((a, b) => rankVi(input.q!, b.name, b.code, b.skus[0]?.barcode) - rankVi(input.q!, a.name, a.code, a.skus[0]?.barcode));
+  }
+  const items = input.q ? matchedAll.slice((input.page - 1) * input.pageSize, input.page * input.pageSize) : matchedAll;
   const skuIds = items.flatMap(product => product.skus.map(sku => sku.id));
   const inventory = skuIds.length ? await prisma.inventory.groupBy({
     by: ['skuId'],

@@ -448,41 +448,48 @@ function NewInvoicePage() {
     }
     setStockLoading(true);
     let active = true;
-    const timer = window.setTimeout(() => {
-      getInventory({ warehouseId, q: query.trim() || undefined, pageSize: 50 })
-        .then(result => {
-          if (!active) return;
-          setStockRows(result.items);
+    void (async () => {
+      try {
+        const first = await getInventory({ warehouseId, pageSize: 100, page: 1 });
+        const extraPages =
+          first.pagination.totalPages > 1
+            ? await Promise.all(
+                Array.from({ length: first.pagination.totalPages - 1 }, (_, i) =>
+                  getInventory({ warehouseId, pageSize: 100, page: i + 2 }),
+                ),
+              )
+            : [];
+        if (!active) return;
+        const allItems = [...first.items, ...extraPages.flatMap(p => p.items)];
+        setStockRows(allItems);
+        setStockLoading(false);
+        // Refresh live available stock snapshot across all held tabs
+        const bySku = new Map(allItems.map(item => [item.skuId, item]));
+        setOrderTabs(prev =>
+          prev.map(tab => {
+            let changed = false;
+            const nextCart = tab.cart.map(line => {
+              const fresh = bySku.get(line.stock.skuId);
+              if (fresh && fresh !== line.stock) {
+                changed = true;
+                return { ...line, stock: fresh };
+              }
+              return line;
+            });
+            return changed ? { ...tab, cart: nextCart } : tab;
+          }),
+        );
+      } catch (reason) {
+        if (active) {
+          setError(errorMessage(reason));
           setStockLoading(false);
-          // Refresh live available stock snapshot across all held tabs
-          const bySku = new Map(result.items.map(item => [item.skuId, item]));
-          setOrderTabs(prev =>
-            prev.map(tab => {
-              let changed = false;
-              const nextCart = tab.cart.map(line => {
-                const fresh = bySku.get(line.stock.skuId);
-                if (fresh && fresh !== line.stock) {
-                  changed = true;
-                  return { ...line, stock: fresh };
-                }
-                return line;
-              });
-              return changed ? { ...tab, cart: nextCart } : tab;
-            }),
-          );
-        })
-        .catch(reason => {
-          if (active) {
-            setError(errorMessage(reason));
-            setStockLoading(false);
-          }
-        });
-    }, 250);
+        }
+      }
+    })();
     return () => {
       active = false;
-      window.clearTimeout(timer);
     };
-  }, [warehouseId, query]);
+  }, [warehouseId]);
 
   // Extract active tab fields cleanly
   const {

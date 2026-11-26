@@ -180,7 +180,7 @@ export default function Products() {
   };
   useStockReceiptRefresh(() => { if (page !== 1) setPage(1); else void load(); });
   useEffect(() => { loadCategories(); }, []);
-  useEffect(() => { const timer = window.setTimeout(load, 250); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page, forecastOnly, forecastOnly ? forecastKey : '']);
+  useEffect(() => { const timer = window.setTimeout(load, 120); return () => window.clearTimeout(timer); }, [query, categoryId, status, stockStatus, page, forecastOnly, forecastOnly ? forecastKey : '']);
   useEffect(() => { setPage(1); }, [query, categoryId, status, stockStatus]);
 
   const open = (type: Exclude<Modal, null>, product: productsApi.Product | null = null) => {
@@ -378,7 +378,7 @@ export default function Products() {
       <div className="catalog-viewbar"><span>{result.pagination.total} sản phẩm · {categories.filter(item => item.active).length} danh mục đang dùng · Bấm vào dòng sản phẩm để xem chi tiết & dự báo tồn kho</span><div role="group" aria-label="Cách xem hàng hóa"><button type="button" aria-pressed={display === 'table'} onClick={() => setDisplay('table')}><Icon name="menu" size={16}/>Danh sách</button><button type="button" aria-pressed={display === 'gallery'} onClick={() => setDisplay('gallery')}><Icon name="grid" size={16}/>Hình ảnh</button></div></div>
       {display === 'gallery' && (loading ? <TableState loading message="Đang tải sản phẩm…"/> : result.items.length ? <><ProductGallery items={result.items} onOpen={showProduct}/>{viewing && <section className="gallery-detail"><ProductDetails product={viewing} forecastAlert={forecastAlerts.items.find(item => item.productId === viewing.id)} loading={viewLoading} canManage={canManage} onEdit={() => open('edit',viewing)} onClose={() => setViewing(null)}/></section>}</> : <TableState message="Không có sản phẩm phù hợp."/>)}
       <div className="table-scroll" hidden={display !== 'table'} suppressHydrationWarning><table><thead><tr><th>Mã SP</th><th>Barcode</th><th>Tên sản phẩm</th><th>Danh mục</th><th>ĐVT</th><th className="numeric">Tồn kho</th><th className="numeric">Giá vốn</th><th className="numeric">Giá bán</th><th className="numeric">Biên LN</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-        {loading ? <tr><td colSpan={11}><TableState message="Đang tải dữ liệu sản phẩm…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có sản phẩm phù hợp."/></td></tr> : result.items.map(product => {
+        {loading && result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Đang tải dữ liệu sản phẩm…" loading/></td></tr> : result.items.length === 0 ? <tr><td colSpan={11}><TableState message="Không có sản phẩm phù hợp."/></td></tr> : result.items.map(product => {
           const sku = product.skus[0];
           const margin = sku?.sellingPrice ? (sku.sellingPrice - sku.costPrice) / sku.sellingPrice * 100 : 0;
           return <Fragment key={product.id}><tr className={`product-row-clickable ${viewing?.id===product.id?'product-row-selected':''}`} role="button" tabIndex={0} onClick={() => showProduct(product)} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); showProduct(product); } }} title="Bấm để xem chi tiết sản phẩm & dự báo tồn kho">

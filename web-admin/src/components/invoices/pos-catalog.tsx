@@ -11,6 +11,7 @@ import { ProductImage } from '../ui/product-image';
 import { Icon } from '../ui/icon';
 import type { Inventory } from '../../lib/inventory-api';
 import type { FefoPromoCodeItem } from '../../lib/invoices-api';
+import { scoreViMatch } from '../../lib/vn-search';
 import { categoryTheme } from '../../lib/category-theme';
 import { CategoryBadge } from '../products/category-badge';
 import { api } from '../../lib/auth-api';
@@ -422,14 +423,32 @@ export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onAddB
           : '';
 
   const shown = useMemo(() => {
+    let base = rows;
     if (selectedCategory === '__bogo') {
-      return rows.filter(row => promoBySku?.[row.skuId]?.bogoEligible && row.available >= 2);
+      base = rows.filter(row => promoBySku?.[row.skuId]?.bogoEligible && row.available >= 2);
+    } else if (selectedCategory === '__fefo') {
+      base = rows.filter(row => Boolean(promoBySku?.[row.skuId]) && row.available >= 1);
+    } else if (selectedCategory) {
+      base = rows.filter(row => row.sku.product.category?.id === selectedCategory);
     }
-    if (selectedCategory === '__fefo') {
-      return rows.filter(row => Boolean(promoBySku?.[row.skuId]) && row.available >= 1);
+
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) {
+      const scored: Array<{ row: Inventory; score: number }> = [];
+      for (const row of base) {
+        const score = scoreViMatch(trimmedQuery, row.sku.product.name, [
+          row.sku.product.code,
+          row.sku.code,
+          row.sku.barcode,
+          row.sku.product.category?.name,
+        ]);
+        if (score > 0) scored.push({ row, score });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map(item => item.row);
     }
-    const base = selectedCategory ? rows.filter(row => row.sku.product.category?.id === selectedCategory) : rows;
-    // Pin BOGO & near-expiry items to the top so cashiers spot them immediately!
+
+    // When not searching, pin BOGO & near-expiry items to the top so cashiers spot them immediately!
     return [...base].sort((a, b) => {
       const pa = promoBySku?.[a.skuId];
       const pb = promoBySku?.[b.skuId];
@@ -437,7 +456,7 @@ export function PosCatalog({ rows, ready, loading, query, onQuery, onAdd, onAddB
       const scoreB = pb ? (pb.bogoEligible && b.available >= 2 ? 2 : 1) : 0;
       return scoreB - scoreA;
     });
-  }, [rows, selectedCategory, promoBySku]);
+  }, [rows, selectedCategory, promoBySku, query]);
 
   const handleSearchKeyDown = async (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== 'Enter') return;

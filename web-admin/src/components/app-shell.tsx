@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { User } from '../lib/auth-api';
 import { Icon } from './ui/icon';
+import { scoreViMatch } from '../lib/vn-search';
 
 export const demoBranches = ['CN Ba Đình (Hà Nội)', 'CN Quận 1 (TP.HCM)', 'CN Cầu Giấy (Hà Nội)', 'CN Hải Châu (Đà Nẵng)', 'CN Thảo Điền (TP.HCM)'];
 const Context = createContext({ branch: 'all', showDetail: (_title: string, _text: string) => {} });
@@ -249,11 +250,14 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
   }, [visibleNav, preview]);
 
   const filteredSearch = useMemo(() => {
-    const q = quickQuery.trim().toLowerCase();
+    const q = quickQuery.trim();
     if (!q) return flatSearchItems.slice(0, 7);
     return flatSearchItems
-      .filter(i => i.label.toLowerCase().includes(q) || i.group.toLowerCase().includes(q))
-      .slice(0, 8);
+      .map(item => ({ item, score: scoreViMatch(q, item.label, [item.group, item.href]) }))
+      .filter(entry => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(entry => entry.item);
   }, [quickQuery, flatSearchItems]);
 
   const isLinkActive = (href: string) => {

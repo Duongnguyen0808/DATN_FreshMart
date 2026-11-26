@@ -155,4 +155,45 @@ if (existingUsers === 0 && fs.existsSync(snapshotPath)) {
   console.log(`[init-db] Database already initialized (${existingUsers} users). Skipping snapshot import.`);
 }
 
+// Ensure Vietnamese accent-insensitive collation (Latin1_General_100_CI_AI) on all searchable text columns
+// so unaccented queries like "banh", "sua", "dau", "nuoc mam", "quan 1" match accented Vietnamese text across Web & Mobile.
+const prodColCheck = await pool.request().query(`
+  SELECT collation_name FROM sys.columns WHERE object_id = OBJECT_ID('dbo.products') AND name = 'name'
+`);
+if (prodColCheck.recordset[0]?.collation_name !== 'Latin1_General_100_CI_AI') {
+  console.log('[init-db] Upgrading searchable NVARCHAR columns to Latin1_General_100_CI_AI (accent-insensitive Vietnamese search)...');
+  await pool.request().query(`
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.products') AND name = 'products_name_idx')
+      DROP INDEX [products_name_idx] ON dbo.[products];
+    ALTER TABLE dbo.[products] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    CREATE NONCLUSTERED INDEX [products_name_idx] ON dbo.[products]([name]);
+
+    IF EXISTS (SELECT 1 FROM sys.key_constraints WHERE parent_object_id = OBJECT_ID('dbo.categories') AND name = 'categories_name_key')
+      ALTER TABLE dbo.[categories] DROP CONSTRAINT [categories_name_key];
+    ALTER TABLE dbo.[categories] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    ALTER TABLE dbo.[categories] ADD CONSTRAINT [categories_name_key] UNIQUE ([name]);
+
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.customers') AND name = 'customers_name_idx')
+      DROP INDEX [customers_name_idx] ON dbo.[customers];
+    ALTER TABLE dbo.[customers] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    CREATE NONCLUSTERED INDEX [customers_name_idx] ON dbo.[customers]([name]);
+
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.suppliers') AND name = 'suppliers_name_idx')
+      DROP INDEX [suppliers_name_idx] ON dbo.[suppliers];
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.suppliers') AND name = 'suppliers_active_name_idx')
+      DROP INDEX [suppliers_active_name_idx] ON dbo.[suppliers];
+    ALTER TABLE dbo.[suppliers] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    CREATE NONCLUSTERED INDEX [suppliers_name_idx] ON dbo.[suppliers]([name]);
+    CREATE NONCLUSTERED INDEX [suppliers_active_name_idx] ON dbo.[suppliers]([active], [name]);
+
+    ALTER TABLE dbo.[suppliers] ALTER COLUMN [contactName] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    ALTER TABLE dbo.[stores] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    ALTER TABLE dbo.[warehouses] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    ALTER TABLE dbo.[users] ALTER COLUMN [name] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+    ALTER TABLE dbo.[invoices] ALTER COLUMN [customerName] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NULL;
+    ALTER TABLE dbo.[invoice_items] ALTER COLUMN [productName] NVARCHAR(191) COLLATE Latin1_General_100_CI_AI NOT NULL;
+  `);
+  console.log('[init-db] Accent-insensitive collation upgrade complete.');
+}
+
 await pool.close();
