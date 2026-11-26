@@ -69,7 +69,7 @@
   }
 
   /* ==========================================================================
-     2. WAREHOUSE POS 2-ROW DARK AURORA HEADER (#hmHeader.hm)
+     2. WAREHOUSE POS 2-ROW FRESHMART TEAL HEADER (#hmHeader.hm)
      ========================================================================== */
   @keyframes wmAurora {
     0% { background-position: 0% 0%; }
@@ -80,11 +80,11 @@
     position: sticky !important;
     top: 0 !important;
     z-index: 80 !important;
-    color: #cbd5e1 !important;
+    color: #f0fdfa !important;
     background:
-      radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 18px 18px,
-      var(--wm-dark-900) !important;
-    box-shadow: 0 10px 30px -12px rgba(6, 24, 22, 0.45) !important;
+      radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.09) 1px, transparent 0) 0 0 / 18px 18px,
+      linear-gradient(115deg, #0b6b64 0%, #0d7a73 42%, #129188 76%, #0d7a73 100%) !important;
+    box-shadow: 0 10px 28px -12px rgba(8, 76, 71, 0.42) !important;
   }
 
   body.retail-ui header.hm::before {
@@ -93,8 +93,8 @@
     inset: 0 !important;
     pointer-events: none !important;
     background:
-      radial-gradient(38% 120% at 10% -30%, rgba(20, 184, 166, 0.26), transparent 70%),
-      radial-gradient(34% 105% at 90% -30%, rgba(13, 122, 115, 0.24), transparent 70%) !important;
+      radial-gradient(40% 120% at 12% -30%, rgba(153, 246, 228, 0.28), transparent 70%),
+      radial-gradient(36% 110% at 88% -30%, rgba(45, 212, 191, 0.24), transparent 70%) !important;
     background-size: 135% 135% !important;
     animation: wmAurora 16s ease-in-out infinite alternate !important;
   }
@@ -102,12 +102,13 @@
   body.retail-ui .hm-bar {
     position: relative !important;
     height: 64px !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15) !important;
   }
 
   body.retail-ui .hm-menu {
     position: relative !important;
     height: 46px !important;
+    background: rgba(6, 62, 58, 0.22) !important;
   }
 
   body.retail-ui .hm-in {
@@ -125,13 +126,13 @@
     width: 36px !important;
     height: 36px !important;
     border-radius: 10px !important;
-    color: #cbd5e1 !important;
+    color: #f0fdfa !important;
     place-items: center !important;
     background: transparent !important;
     border: 0 !important;
   }
   body.retail-ui .hm-burger:hover {
-    background: rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.16) !important;
     color: #ffffff !important;
   }
 
@@ -144,14 +145,14 @@
   }
 
   body.retail-ui .hm-brand-logo {
-    width: 36px !important;
-    height: 36px !important;
-    border-radius: 10px !important;
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 11px !important;
     background: #ffffff !important;
     padding: 4px !important;
     display: grid !important;
     place-items: center !important;
-    box-shadow: 0 4px 12px rgba(20, 184, 166, 0.28) !important;
+    box-shadow: 0 4px 12px rgba(5, 52, 48, 0.24) !important;
   }
   body.retail-ui .hm-brand-logo img {
     width: 100% !important;
@@ -162,7 +163,7 @@
   body.retail-ui .hm-brand-text {
     display: inline-flex !important;
     align-items: baseline !important;
-    gap: 5px !important;
+    gap: 6px !important;
   }
   body.retail-ui .hm-brand-text strong {
     font-size: 18px !important;
@@ -177,8 +178,9 @@
     letter-spacing: 0.06em !important;
     padding: 2px 7px !important;
     border-radius: 6px !important;
-    background: linear-gradient(135deg, #2dd4bf, #0d9488) !important;
-    color: #062825 !important;
+    background: #ffffff !important;
+    color: #0b6b64 !important;
+    box-shadow: 0 2px 6px rgba(5, 52, 48, 0.18) !important;
   }
 
   /* Hub Location Pill */
@@ -190,22 +192,22 @@
     padding: 0 12px !important;
     margin-left: 6px !important;
     border-radius: 12px !important;
-    background: rgba(255, 255, 255, 0.055) !important;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22) !important;
     white-space: nowrap !important;
-    color: #5eead4 !important;
+    color: #ccfbf1 !important;
   }
   body.retail-ui .hm-loc-t small {
     display: block !important;
     font-size: 10.5px !important;
     line-height: 1.1 !important;
-    color: #94a3b8 !important;
+    color: #ccfbf1 !important;
   }
   body.retail-ui .hm-loc-t b,
   body.retail-ui .hm-loc-t select {
     display: block !important;
     font-size: 12.5px !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     line-height: 1.25 !important;
     color: #ffffff !important;
     background: transparent !important;
@@ -223,9 +225,9 @@
     gap: 5px !important;
     padding: 2px 8px !important;
     border-radius: 999px !important;
-    background: rgba(16, 185, 129, 0.16) !important;
-    box-shadow: inset 0 0 0 1px rgba(110, 231, 183, 0.3) !important;
-    color: #6ee7b7 !important;
+    background: rgba(255, 255, 255, 0.18) !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3) !important;
+    color: #ecfdf5 !important;
     font-size: 10px !important;
     font-weight: 800 !important;
     letter-spacing: 0.05em !important;
@@ -234,10 +236,11 @@
     width: 6px !important;
     height: 6px !important;
     border-radius: 50% !important;
-    background: #34d399 !important;
+    background: #6ee7b7 !important;
+    box-shadow: 0 0 6px #6ee7b7 !important;
   }
 
-  /* Command Search in Dark Header — strictly 1 clean border */
+  /* Command Search in FreshMart Teal Header — strictly 1 clean border */
   body.retail-ui .hm-search-wrap {
     position: relative !important;
     flex: 1 1 360px !important;
@@ -251,14 +254,14 @@
     height: 38px !important;
     padding: 0 10px 0 12px !important;
     border-radius: 11px !important;
-    background: rgba(255, 255, 255, 0.065) !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    color: #94a3b8 !important;
+    background: rgba(255, 255, 255, 0.14) !important;
+    border: 1px solid rgba(255, 255, 255, 0.26) !important;
+    color: #e6fffa !important;
     transition: background 150ms ease, border-color 150ms ease !important;
   }
   body.retail-ui .hm-search:focus-within {
-    background: rgba(255, 255, 255, 0.11) !important;
-    border-color: rgba(94, 234, 212, 0.5) !important;
+    background: rgba(255, 255, 255, 0.22) !important;
+    border-color: rgba(255, 255, 255, 0.65) !important;
     color: #ffffff !important;
   }
   body.retail-ui .hm-search > input {
@@ -276,14 +279,14 @@
     font-size: 13px !important;
   }
   body.retail-ui .hm-search > input::placeholder {
-    color: #94a3b8 !important;
+    color: rgba(240, 253, 250, 0.8) !important;
   }
   body.retail-ui .hm-search kbd {
     padding: 2px 6px !important;
     border-radius: 6px !important;
-    background: rgba(255, 255, 255, 0.08) !important;
-    border: 1px solid rgba(255, 255, 255, 0.14) !important;
-    color: #cbd5e1 !important;
+    background: rgba(255, 255, 255, 0.16) !important;
+    border: 1px solid rgba(255, 255, 255, 0.26) !important;
+    color: #ffffff !important;
     font-size: 10.5px !important;
     font-weight: 600 !important;
     white-space: nowrap !important;
@@ -351,17 +354,18 @@
     height: 36px !important;
     padding: 0 14px !important;
     border-radius: 10px !important;
-    background: linear-gradient(135deg, #14b8a6 0%, #0d7a73 100%) !important;
-    color: #ffffff !important;
+    background: #ffffff !important;
+    color: #0b6b64 !important;
     font-size: 12.5px !important;
-    font-weight: 700 !important;
-    box-shadow: 0 6px 16px -4px rgba(20, 184, 166, 0.45) !important;
+    font-weight: 750 !important;
+    box-shadow: 0 6px 16px -4px rgba(5, 48, 45, 0.28) !important;
     white-space: nowrap !important;
-    transition: transform 140ms ease, filter 140ms ease !important;
+    transition: transform 140ms ease, background 140ms ease !important;
   }
   body.retail-ui .wm-top-pos-btn:hover {
     transform: translateY(-1px) !important;
-    filter: brightness(1.06) !important;
+    background: #f0fdfa !important;
+    color: #084f4a !important;
   }
 
   body.retail-ui .hm-icon-btn {
@@ -369,15 +373,15 @@
     width: 36px !important;
     height: 36px !important;
     border-radius: 10px !important;
-    background: rgba(255, 255, 255, 0.06) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    color: #cbd5e1 !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
+    color: #f0fdfa !important;
     display: grid !important;
     place-items: center !important;
     transition: background 140ms ease, color 140ms ease !important;
   }
   body.retail-ui .hm-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.14) !important;
+    background: rgba(255, 255, 255, 0.22) !important;
     color: #ffffff !important;
   }
   body.retail-ui .hm-bell-dot {
@@ -387,14 +391,14 @@
     width: 7px !important;
     height: 7px !important;
     border-radius: 50% !important;
-    background: #2dd4bf !important;
-    box-shadow: 0 0 0 2px var(--wm-dark-900) !important;
+    background: #fde047 !important;
+    box-shadow: 0 0 0 2px #0d7a73 !important;
   }
 
   body.retail-ui .hm-sep {
     width: 1px !important;
     height: 24px !important;
-    background: rgba(255, 255, 255, 0.14) !important;
+    background: rgba(255, 255, 255, 0.22) !important;
     margin-inline: 2px !important;
   }
 
@@ -405,19 +409,19 @@
     height: 38px !important;
     padding: 3px 10px 3px 4px !important;
     border-radius: 11px !important;
-    background: rgba(255, 255, 255, 0.06) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.13) !important;
+    border: 1px solid rgba(255, 255, 255, 0.22) !important;
     color: #ffffff !important;
   }
   body.retail-ui .hm-user-btn:hover {
-    background: rgba(255, 255, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.22) !important;
   }
   body.retail-ui .hm-avatar {
     width: 30px !important;
     height: 30px !important;
     border-radius: 9px !important;
-    background: linear-gradient(135deg, #2dd4bf, #0d7a73) !important;
-    color: #062825 !important;
+    background: #ffffff !important;
+    color: #0d7a73 !important;
     display: grid !important;
     place-items: center !important;
   }
@@ -428,13 +432,13 @@
   body.retail-ui .hm-user-copy strong {
     display: block !important;
     font-size: 12.5px !important;
-    font-weight: 650 !important;
+    font-weight: 700 !important;
     color: #ffffff !important;
   }
   body.retail-ui .hm-user-copy small {
     display: block !important;
     font-size: 10.5px !important;
-    color: #94a3b8 !important;
+    color: #ccfbf1 !important;
   }
 
   body.retail-ui .hm-tools .account-menu {
@@ -516,9 +520,9 @@
     height: 36px !important;
     padding: 0 12px !important;
     border-radius: 10px !important;
-    color: #9fb3b0 !important;
+    color: rgba(240, 253, 250, 0.9) !important;
     font-size: 13px !important;
-    font-weight: 550 !important;
+    font-weight: 560 !important;
     background: transparent !important;
     border: 0 !important;
     white-space: nowrap !important;
@@ -527,32 +531,33 @@
   body.retail-ui .hm-top-ico {
     display: inline-grid !important;
     place-items: center !important;
-    color: #6d8884 !important;
+    color: #99f6e4 !important;
     transition: color 140ms ease !important;
   }
   body.retail-ui .hm-chev {
     display: inline-grid !important;
     place-items: center !important;
-    color: #6d8884 !important;
+    color: rgba(204, 251, 241, 0.82) !important;
     transition: transform 160ms ease, color 160ms ease !important;
   }
   body.retail-ui .hm-top:hover,
   body.retail-ui .hm-item.is-open > .hm-top,
   body.retail-ui .hm-top.has-active {
     color: #ffffff !important;
-    background: rgba(255, 255, 255, 0.085) !important;
+    background: rgba(255, 255, 255, 0.18) !important;
   }
   body.retail-ui .hm-top.has-active {
-    box-shadow: inset 0 -2px 0 #2dd4bf !important;
+    font-weight: 700 !important;
+    box-shadow: inset 0 -2px 0 #ffffff !important;
   }
   body.retail-ui .hm-top:hover .hm-top-ico,
   body.retail-ui .hm-item.is-open > .hm-top .hm-top-ico,
   body.retail-ui .hm-top.has-active .hm-top-ico {
-    color: #5eead4 !important;
+    color: #ffffff !important;
   }
   body.retail-ui .hm-item.is-open > .hm-top .hm-chev {
     transform: rotate(180deg) !important;
-    color: #cbd5e1 !important;
+    color: #ffffff !important;
   }
 
   /* Mega-Menu Dropdown Panel */
@@ -698,20 +703,20 @@
     width: 30px !important;
     height: 30px !important;
     border-radius: 50% !important;
-    background: conic-gradient(#2dd4bf 0% 82%, rgba(255, 255, 255, 0.14) 82% 100%) !important;
+    background: conic-gradient(#ffffff 0% 84%, rgba(255, 255, 255, 0.25) 84% 100%) !important;
     display: grid !important;
     place-items: center !important;
     font-size: 8.5px !important;
     font-weight: 800 !important;
-    color: #99f6e4 !important;
-    box-shadow: 0 0 14px -4px rgba(45, 212, 191, 0.55) !important;
+    color: #ffffff !important;
+    box-shadow: 0 0 12px -4px rgba(255, 255, 255, 0.45) !important;
   }
   body.retail-ui .hm-ring::before {
     content: '' !important;
     position: absolute !important;
     inset: 3px !important;
     border-radius: 50% !important;
-    background: var(--wm-dark-900) !important;
+    background: #0a635d !important;
   }
   body.retail-ui .hm-ring > span {
     position: relative !important;
@@ -719,14 +724,14 @@
   body.retail-ui .hm-cap-t b {
     display: block !important;
     font-size: 11.5px !important;
-    font-weight: 650 !important;
+    font-weight: 700 !important;
     color: #ffffff !important;
     line-height: 1.15 !important;
   }
   body.retail-ui .hm-cap-t small {
     display: block !important;
     font-size: 10px !important;
-    color: #94a3b8 !important;
+    color: #ccfbf1 !important;
     line-height: 1.15 !important;
   }
 
@@ -1927,13 +1932,13 @@
       bottom: 0 !important;
       left: 0 !important;
       width: min(310px, 86vw) !important;
-      background: var(--wm-dark-900) !important;
+      background: linear-gradient(180deg, #0b6b64 0%, #095852 100%) !important;
       z-index: 120 !important;
       padding: 16px !important;
       overflow-y: auto !important;
       transform: translateX(-105%) !important;
       transition: transform 200ms ease !important;
-      box-shadow: 20px 0 50px rgba(0, 0, 0, 0.5) !important;
+      box-shadow: 20px 0 50px rgba(4, 38, 35, 0.45) !important;
     }
     body.retail-ui .wm-drawer-open .hm-nav {
       transform: translateX(0) !important;
