@@ -36,9 +36,9 @@
     border: 0 !important;
   }
 
-  /* Keep POS right ticket below the 2-row sticky header */
+  /* Keep POS right ticket right below the slim 46px sticky menu bar */
   body.retail-ui .commerce-shell.wm-horizontal .pos-ticket {
-    top: 124px !important;
+    top: 60px !important;
   }
 
   /* Light Mint-Teal Footer */
@@ -59,16 +59,23 @@
   }
 
   /* ==========================================================================
-     2. 2-ROW LIGHT MINT-TEAL HEADER (#hmHeader.hm — MÀU XANH NHẠT CỦA BÀI)
+     2. 2-ROW LIGHT MINT-TEAL HEADER (#hmHeader.hm — SMART STICKY 46PX MENU)
+     - Row 1 (.hm-bar: 64px) scrolls away naturally when scrolling down
+     - Row 2 (.hm-menu: 46px) locks cleanly at top: 0 for maximum table/3D screen space
      ========================================================================== */
   body.retail-ui header.hm {
     position: sticky !important;
-    top: 0 !important;
+    top: -64px !important;
     z-index: 80 !important;
     color: #0f2928 !important;
     background: linear-gradient(120deg, #dcf6f1 0%, #eafbf8 46%, #cff1ea 100%) !important;
     border-bottom: 1px solid #b7e2d9 !important;
     box-shadow: 0 6px 20px -10px rgba(13, 122, 115, 0.16) !important;
+    transition: box-shadow 180ms ease !important;
+  }
+
+  body.retail-ui header.hm.is-scrolled {
+    box-shadow: 0 10px 24px -10px rgba(13, 122, 115, 0.24) !important;
   }
 
   body.retail-ui .hm-bar {
@@ -92,8 +99,9 @@
   body.retail-ui .hm-menu {
     position: relative !important;
     height: 46px !important;
-    background: rgba(255, 255, 255, 0.58) !important;
-    backdrop-filter: blur(8px) !important;
+    background: rgba(238, 252, 249, 0.88) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
   }
 
   body.retail-ui .hm-in {
@@ -735,6 +743,9 @@
   }
 
   @media (max-width: 1023px) {
+    body.retail-ui header.hm {
+      top: 0 !important;
+    }
     body.retail-ui .hm-burger {
       display: grid !important;
     }

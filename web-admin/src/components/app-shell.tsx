@@ -204,6 +204,7 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
   const [detail, setDetail] = useState<{ title: string; text: string } | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
   const headerRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -284,6 +285,9 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
     const onKey = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
+        if (window.scrollY > 12) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
         searchInputRef.current?.focus();
         setSearchOpen(true);
       } else if (event.key === 'Escape') {
@@ -300,11 +304,22 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
         setSearchOpen(false);
       }
     };
+    const onScroll = () => {
+      const passed = window.scrollY > 52;
+      setIsScrolled(prev => (prev === passed ? prev : passed));
+      if (passed) {
+        setSearchOpen(false);
+        setAccountOpen(false);
+      }
+    };
+    onScroll();
     window.addEventListener('keydown', onKey);
     window.addEventListener('mousedown', onClickOutside);
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('mousedown', onClickOutside);
+      window.removeEventListener('scroll', onScroll);
     };
   }, []);
 
@@ -334,8 +349,8 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
           />
         )}
 
-        {/* WareHouse POS 2-Row Dark Aurora Header */}
-        <header ref={headerRef} id="hmHeader" className="hm">
+        {/* FreshMart 2-Row Header (Row 1 scrolls away naturally, Row 2 slim 46px menu stays pinned) */}
+        <header ref={headerRef} id="hmHeader" className={`hm${isScrolled ? ' is-scrolled' : ''}`}>
           {/* Row 1: Brand, Active Hub Pill, Command Search, Quick Tools & Account */}
           <div className="hm-bar">
             <div className="hm-in">
