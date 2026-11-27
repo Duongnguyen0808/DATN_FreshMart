@@ -78,9 +78,6 @@ const NAV_CONFIG: TopNavItem[] = [
         icon: 'scan',
         links: [
           { label: 'Mô hình kho 3D & QR', href: '/kho/mo-hinh-3d', icon: 'layers', permission: 'inventory.read', badge: '3D' },
-          { label: 'Thẻ nhân viên RFID', href: '/kho/mo-hinh-3d/rfid', icon: 'shield', permission: 'inventory.read' },
-          { label: 'Camera quét kiện QR', href: '/kho/mo-hinh-3d/camera', icon: 'scan', permission: 'inventory.read' },
-          { label: 'Giám sát cửa kho', href: '/kho/giam-sat-cua', icon: 'store', permission: 'inventory.read' },
           { label: 'Danh sách kho hàng', href: '/kho', icon: 'box', permission: 'warehouses.read' },
         ],
       },
@@ -263,6 +260,13 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
 
   const isLinkActive = (href: string) => {
     if (href === '/') return dashboard;
+    if (href === '/kho') return path === '/kho';
+    if (href === '/kho/mo-hinh-3d') {
+      return path === '/kho/mo-hinh-3d' || path.startsWith('/kho/mo-hinh-3d/') || path.startsWith('/kho/giam-sat-cua');
+    }
+    if (href === '/hoa-don') {
+      return path === '/hoa-don' || (path.startsWith('/hoa-don/') && !path.startsWith('/hoa-don/tao'));
+    }
     return path === href || path.startsWith(`${href}/`);
   };
 
