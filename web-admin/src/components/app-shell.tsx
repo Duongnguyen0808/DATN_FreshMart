@@ -340,6 +340,8 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
       window.clearTimeout(closeTimerRef.current);
       closeTimerRef.current = null;
     }
+    setSearchOpen(false);
+    setAccountOpen(false);
     setOpenMenuId(id);
   };
 
@@ -424,8 +426,8 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
                     ref={searchInputRef}
                     type="text"
                     value={quickQuery}
-                    onFocus={() => setSearchOpen(true)}
-                    onChange={event => { setQuickQuery(event.target.value); setSearchOpen(true); }}
+                    onFocus={() => { setSearchOpen(true); setAccountOpen(false); setOpenMenuId(null); }}
+                    onChange={event => { setQuickQuery(event.target.value); setSearchOpen(true); setOpenMenuId(null); }}
                     placeholder="Tìm nhanh phân hệ, kho 3D, hóa đơn..."
                     aria-label="Tìm nhanh phân hệ"
                   />
@@ -479,7 +481,7 @@ export function AppShell({ children, user, onLogout, preview = false }: { childr
                     type="button"
                     className="account-button hm-user-btn"
                     aria-expanded={accountOpen}
-                    onClick={() => setAccountOpen(v => !v)}
+                    onClick={() => { setAccountOpen(v => !v); setSearchOpen(false); setOpenMenuId(null); }}
                   >
                     <span className="hm-avatar"><Icon name="user" size={16} /></span>
                     <span className="hm-user-copy">
