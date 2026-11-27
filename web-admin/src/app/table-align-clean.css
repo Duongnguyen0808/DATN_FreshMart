@@ -28,17 +28,42 @@
     padding-right: 16px !important;
   }
 
-  /* Ensure stacked numbers + sublabels (e.g. "303" + "Còn hàng") align flush left under their header */
+  /* Ensure stacked numbers + sublabels (e.g. "303" + "Còn hàng") align flush left under their header,
+     while inline number + unit (e.g. "<strong>10</strong> Chai") stays on 1 single line */
   body.retail-ui table:not(.invoice-print-receipt table) td:not([colspan]) > :is(strong, small, code, p),
   body.retail-ui table:not(.invoice-print-receipt table) td.numeric > :is(strong, small, code, p) {
     text-align: left !important;
     margin-left: 0 !important;
   }
 
+  body.retail-ui table:not(.invoice-print-receipt table) td:not([colspan]) > strong:not(:has(+ small)),
+  body.retail-ui .product-table td > strong {
+    display: inline !important;
+  }
+
   body.retail-ui table:not(.invoice-print-receipt table) td:not([colspan]) > strong + small {
     display: block !important;
     margin-top: 3px !important;
     text-align: left !important;
+  }
+
+  /* Fit all 3 columns of Dashboard "Top 5 sản phẩm bán chạy" cleanly without horizontal scrollbar */
+  body.retail-ui .dashboard-visuals .product-table {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+  body.retail-ui .dashboard-visuals .product-table :is(th, td) {
+    padding: 11px 12px !important;
+  }
+  body.retail-ui .dashboard-visuals .product-table td:first-child {
+    width: auto !important;
+    white-space: normal !important;
+  }
+  body.retail-ui .dashboard-visuals .product-table .product-identity {
+    min-width: 0 !important;
+  }
+  body.retail-ui .dashboard-visuals .product-table .product-identity > span:last-child {
+    min-width: 0 !important;
   }
 
   body.retail-ui td .forecast-alert-detail {
