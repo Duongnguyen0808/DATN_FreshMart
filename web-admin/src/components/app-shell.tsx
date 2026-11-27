@@ -137,9 +137,9 @@ const NAV_CONFIG: TopNavItem[] = [
     ],
   },
   {
-    id: 'analytics',
-    label: 'Dự báo AI & Thống kê',
-    icon: 'chart',
+    id: 'ai-forecast',
+    label: 'Dự báo AI',
+    icon: 'bulb',
     columns: [
       {
         title: 'Dự báo nhu cầu AI',
@@ -149,6 +149,13 @@ const NAV_CONFIG: TopNavItem[] = [
           { label: 'Cảnh báo thiếu hàng', href: '/canh-bao-thieu-hang', icon: 'warning', permission: 'reports.read' },
         ],
       },
+    ],
+  },
+  {
+    id: 'analytics',
+    label: 'Thống kê',
+    icon: 'chart',
+    columns: [
       {
         title: 'Thống kê vận hành',
         icon: 'chart',
